@@ -6,7 +6,7 @@
 }
 
 body {
-    background: #f5f7fb;
+    background: #F5F8FC;
     color: #172033;
 }
 
@@ -24,7 +24,7 @@ nav {
 .logo {
     font-size: 26px;
     font-weight: bold;
-    color: #176b3a;
+    color: #0251B0;
 }
 
 .nav-links {
@@ -41,14 +41,14 @@ nav {
 
 .login-btn {
     padding: 10px 20px;
-    border: 1px solid #176b3a;
+    border: 1px solid #0251B0;
     border-radius: 8px;
-    color: #176b3a !important;
+    color: #0251B0 !important;
 }
 
 .signup-btn {
     padding: 11px 20px;
-    background: #176b3a;
+    background: #0251B0;
     color: white !important;
     border-radius: 8px;
 }
@@ -74,7 +74,7 @@ nav {
 }
 
 .hero-text h1 span {
-    color: #176b3a;
+    color: #0251B0;
 }
 
 .hero-text p {
@@ -99,14 +99,14 @@ nav {
 }
 
 .primary-btn {
-    background: #176b3a;
+    background: #0251B0;
     color: white;
 }
 
 .secondary-btn {
     background: white;
-    border: 1px solid #176b3a;
-    color: #176b3a;
+    border: 1px solid #0251B0;
+    color: #0251B0;
 }
 
 /* HERO CARD */
@@ -128,12 +128,12 @@ nav {
     align-items: center;
     padding: 15px;
     margin-bottom: 12px;
-    background: #f5f7fb;
+    background: #F5F8FC;
     border-radius: 10px;
 }
 
 .network strong {
-    color: #176b3a;
+    color: #0251B0;
 }
 
 /* SERVICES */
@@ -164,7 +164,7 @@ nav {
 .service-card {
     padding: 35px;
     border-radius: 15px;
-    background: #f5f7fb;
+    background: #F5F8FC;
     text-align: left;
 }
 
@@ -219,4 +219,35 @@ footer {
     .service-container {
         grid-template-columns: 1fr;
     }
+}
+
+/* MELODEXS CONNECT brand logo */
+.logo {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 7px;
+    text-decoration: none;
+    white-space: nowrap;
+    letter-spacing: -0.6px;
+}
+.logo-main {
+    color: #0251B0;
+    font-size: 26px;
+    font-weight: 900;
+    letter-spacing: -1px;
+}
+.logo-connect {
+    color: #0251B0;
+    background: #D1FF42;
+    padding: 3px 7px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: 0.8px;
+    line-height: 1;
+}
+@media (max-width: 600px) {
+    .logo { gap: 5px; }
+    .logo-main { font-size: 21px; }
+    .logo-connect { font-size: 9px; padding: 3px 5px; }
 }

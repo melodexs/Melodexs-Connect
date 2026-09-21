@@ -2,7 +2,7 @@ const path = require("path");
 const axios = require("axios");
 const dotenv = require("dotenv");
 
-// Always load the .env file from the CheapData project root.
+// Always load the .env file from the MELODEXS CONNECT project root.
 dotenv.config({
     path: path.resolve(__dirname, "../../../.env")
 });

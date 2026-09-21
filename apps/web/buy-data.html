@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Buy Data - CheapData</title>
+    <title>Buy Data - MELODEXS CONNECT</title>
 
     <style>
         * {
@@ -14,12 +14,12 @@
         }
 
         body {
-            background: #f5f7fb;
+            background: #F5F8FC;
             color: #111827;
         }
 
         header {
-            background: #0b7a3b;
+            background: #0251B0;
             color: white;
             padding: 18px 20px;
         }
@@ -46,11 +46,11 @@
         }
 
         .balance {
-            background: #e8f7ee;
+            background: #EEF5FF;
             padding: 15px;
             border-radius: 10px;
             margin-bottom: 20px;
-            color: #0b7a3b;
+            color: #0251B0;
             font-weight: bold;
         }
 
@@ -99,9 +99,9 @@
         }
 
         .network.active {
-            border-color: #0b7a3b;
-            background: #e8f7ee;
-            color: #0b7a3b;
+            border-color: #0251B0;
+            background: #EEF5FF;
+            color: #0251B0;
         }
 
         .plans {
@@ -120,12 +120,12 @@
         }
 
         .plan:hover {
-            border-color: #0b7a3b;
+            border-color: #0251B0;
         }
 
         .plan.active {
-            border-color: #0b7a3b;
-            background: #e8f7ee;
+            border-color: #0251B0;
+            background: #EEF5FF;
         }
 
         .plan strong {
@@ -135,7 +135,7 @@
         }
 
         .price {
-            color: #0b7a3b;
+            color: #0251B0;
             font-weight: bold;
             font-size: 18px;
         }
@@ -154,7 +154,7 @@
             padding: 15px;
             border: none;
             border-radius: 10px;
-            background: #0b7a3b;
+            background: #0251B0;
             color: white;
             font-size: 17px;
             font-weight: bold;
@@ -162,7 +162,7 @@
         }
 
         .buy-btn:hover {
-            background: #096b34;
+            background: #01428F;
         }
 
         .buy-btn:disabled {
@@ -179,8 +179,8 @@
 
         .success {
             display: block;
-            background: #dcfce7;
-            color: #166534;
+            background: #EAF8C7;
+            color: #0251B0;
         }
 
         .error {
@@ -192,7 +192,7 @@
         .back {
             display: inline-block;
             margin-bottom: 20px;
-            color: #0b7a3b;
+            color: #0251B0;
             text-decoration: none;
             font-weight: bold;
         }
@@ -212,7 +212,7 @@
 <body>
 
 <header>
-    <h1>CheapData</h1>
+    <h1>MELODEXS CONNECT</h1>
 </header>
 
 <div class="container">
@@ -482,15 +482,38 @@
             return;
         }
 
-        container.innerHTML = plans.map(item => `
-            <button type="button" class="plan" data-plan="${item.plan}" data-price="${Number(item.selling_price)}">
-                <strong>${escapeHtml(item.plan)}</strong>
-                <span class="price">₦${Number(item.selling_price).toLocaleString("en-NG")}</span>
-            </button>
-        `).join("");
+        container.innerHTML = plans.map(item => {
+            /*
+             * WiseSub plan names can contain a provider denomination,
+             * for example: N100 100MB - 24 hrs.
+             *
+             * That N100 is part of the provider plan name, not the
+             * customer's selling price. Remove only that leading
+             * denomination from the customer-facing label while
+             * keeping the original item.plan for the purchase request.
+             */
+            const customerPlanName = String(item.plan || "")
+                .replace(/^N\s*[\d,]+(?:\.\d+)?\s+/i, "")
+                .trim();
+
+            const displayPlan = customerPlanName || item.plan;
+
+            return `
+                <button type="button" class="plan" data-plan="${escapeHtml(item.plan)}" data-price="${Number(item.selling_price)}">
+                    <strong>${escapeHtml(displayPlan)}</strong>
+                    <span class="price">₦${Number(item.selling_price).toLocaleString("en-NG")}</span>
+                </button>
+            `;
+        }).join("");
 
         container.querySelectorAll(".plan").forEach(button => {
-            button.addEventListener("click", () => selectPlan(button.dataset.plan, Number(button.dataset.price), button));
+            button.addEventListener("click", () => {
+                selectPlan(
+                    button.dataset.plan,
+                    Number(button.dataset.price),
+                    button
+                );
+            });
         });
     }
 

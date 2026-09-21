@@ -1,3 +1,5 @@
+const { pool } = require("./postgres");
+
 function requireAuth(req, res, next) {
     if (!req.session || !req.session.userId) {
         return res.status(401).json({
@@ -5,35 +7,53 @@ function requireAuth(req, res, next) {
             message: "Please log in to continue"
         });
     }
+
     next();
 }
 
-function getAdmin(db, userId) {
-    return db.prepare(`
+async function getAdmin(userId) {
+    if (!userId) {
+        return null;
+    }
+
+    const result = await pool.query(`
         SELECT
             id,
             name,
             email,
             is_admin
         FROM users
-        WHERE id = ?
+        WHERE id = $1
         AND is_admin = 1
-    `).get(userId);
+        LIMIT 1
+    `, [userId]);
+
+    return result.rows[0] || null;
 }
 
-function requireAdmin(req, res, next) {
-    const { db } = require("./db");
-    const admin = getAdmin(db, req.session && req.session.userId);
+async function requireAdmin(req, res, next) {
+    try {
+        const admin = await getAdmin(
+            req.session && req.session.userId
+        );
 
-    if (!admin) {
-        return res.status(403).json({
+        if (!admin) {
+            return res.status(403).json({
+                success: false,
+                message: "Admin access required"
+            });
+        }
+
+        req.admin = admin;
+        next();
+    } catch (error) {
+        console.error("Admin authentication error:", error);
+
+        return res.status(500).json({
             success: false,
-            message: "Admin access required"
+            message: "Could not verify admin access"
         });
     }
-
-    req.admin = admin;
-    next();
 }
 
 module.exports = {

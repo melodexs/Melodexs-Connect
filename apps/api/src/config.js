@@ -1,6 +1,6 @@
 const path = require("path");
 
-// Always load the root CheapData .env file.
+// Always load the root MELODEXS CONNECT .env file.
 // config.js is located at: apps/api/src/config.js
 require("dotenv").config({
     path: path.resolve(__dirname, "../../../.env")

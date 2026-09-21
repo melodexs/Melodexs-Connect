@@ -3,12 +3,12 @@ const helmet = require("helmet");
 const { rateLimit } = require("express-rate-limit");
 const axios = require("axios");
 const session = require("express-session");
-const SQLiteSessionStore = require("./sqlite-session-store");
+const PostgresSessionStore = require("./postgres-session-store");
 const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
 const { WEB_PUBLIC_DIR } = require("./config");
-const { db } = require("./db");
-const { requireAuth, requireAdmin } = require("./auth");
+const { pool } = require("./postgres");
+const { requireAuth, requireAdmin, getAdmin } = require("./auth");
 
 // =========================
 // BREVO EMAIL
@@ -26,7 +26,7 @@ async function sendBrevoEmail({ to, subject, htmlContent }) {
         "https://api.brevo.com/v3/smtp/email",
         {
             sender: {
-                name: process.env.BREVO_FROM_NAME || "CheapData",
+                name: process.env.BREVO_FROM_NAME || "MELODEXS CONNECT",
                 email: process.env.BREVO_FROM_EMAIL
             },
             to: [
@@ -148,7 +148,7 @@ app.use(helmet({
 app.post(
     "/api/paystack/webhook",
     express.raw({ type: "application/json" }),
-    (req, res) => {
+    async (req, res) => {
         try {
             const signature = req.headers["x-paystack-signature"];
 
@@ -214,7 +214,7 @@ app.post(
                 );
             }
 
-            const transaction = db.prepare(`
+            const transactionResult = await pool.query(`
                 SELECT
                     id,
                     user_id,
@@ -222,10 +222,12 @@ app.post(
                     status,
                     reference
                 FROM transactions
-                WHERE reference = ?
+                WHERE reference = $1
                   AND type = 'wallet_funding'
                 LIMIT 1
-            `).get(reference);
+            `, [reference]);
+
+            const transaction = transactionResult.rows[0];
 
             if (!transaction) {
                 console.warn(
@@ -235,18 +237,6 @@ app.post(
 
                 return res.status(200).send(
                     "Transaction not found"
-                );
-            }
-
-            // Prevent double wallet credit.
-            if (transaction.status === "successful") {
-                console.log(
-                    "Paystack webhook: already processed:",
-                    reference
-                );
-
-                return res.status(200).send(
-                    "Already processed"
                 );
             }
 
@@ -291,52 +281,87 @@ app.post(
                 );
             }
 
-            const creditPayment = db.transaction(() => {
-                const current = db.prepare(`
+            const client = await pool.connect();
+
+            let credited = false;
+
+            try {
+                await client.query("BEGIN");
+
+                const currentResult = await client.query(`
                     SELECT
+                        id,
                         status,
                         user_id,
                         amount
                     FROM transactions
-                    WHERE id = ?
-                `).get(transaction.id);
+                    WHERE id = $1
+                    FOR UPDATE
+                `, [transaction.id]);
+
+                const current = currentResult.rows[0];
 
                 if (
                     !current ||
                     current.status === "successful"
                 ) {
-                    return false;
+                    await client.query("ROLLBACK");
+
+                    console.log(
+                        "Paystack webhook: payment was already processed."
+                    );
+
+                    return res.status(200).send(
+                        "Already processed"
+                    );
                 }
 
-                const walletUpdate = db.prepare(`
+                const walletResult = await client.query(`
                     UPDATE users
-                    SET balance = balance + ?
-                    WHERE id = ?
-                `).run(
+                    SET balance = balance + $1
+                    WHERE id = $2
+                    RETURNING id, balance
+                `, [
                     current.amount,
                     current.user_id
-                );
+                ]);
 
-                if (walletUpdate.changes !== 1) {
+                if (walletResult.rowCount !== 1) {
                     throw new Error(
                         "User wallet could not be updated."
                     );
                 }
 
-                db.prepare(`
+                await client.query(`
                     UPDATE transactions
-                    SET status = 'successful',
-                        description = ?
-                    WHERE id = ?
-                `).run(
+                    SET
+                        status = 'successful',
+                        description = $1
+                    WHERE id = $2
+                `, [
                     "Paystack webhook wallet funding",
-                    transaction.id
-                );
+                    current.id
+                ]);
 
-                return true;
-            });
+                await client.query("COMMIT");
 
-            const credited = creditPayment();
+                credited = true;
+
+            } catch (error) {
+                try {
+                    await client.query("ROLLBACK");
+                } catch (rollbackError) {
+                    console.error(
+                        "Paystack webhook rollback error:",
+                        rollbackError
+                    );
+                }
+
+                throw error;
+
+            } finally {
+                client.release();
+            }
 
             console.log(
                 credited
@@ -376,7 +401,7 @@ app.use(express.urlencoded({
 // SESSION
 // =========================
 
-const sessionStore = new SQLiteSessionStore();
+const sessionStore = new PostgresSessionStore();
 
 app.use(
     session({
@@ -428,7 +453,7 @@ app.use((req, res, next) => {
     const origin = req.get("Origin");
 
     // If the browser provides an Origin header,
-    // it must match an allowed CheapData origin.
+    // it must match an allowed MELODEXS CONNECT origin.
     if (origin) {
         const configuredPublicUrl =
             process.env.CHEAPDATA_PUBLIC_URL;
@@ -477,7 +502,7 @@ app.use(express.static(WEB_PUBLIC_DIR));
 // SESSION CHECK
 // =========================
 
-app.get("/api/session", (req, res) => {
+app.get("/api/session", async (req, res) => {
     try {
         if (!req.session || !req.session.userId) {
             return res.json({
@@ -488,7 +513,7 @@ app.get("/api/session", (req, res) => {
             });
         }
 
-        const user = db.prepare(`
+        const result = await pool.query(`
             SELECT
                 id,
                 name,
@@ -502,8 +527,10 @@ app.get("/api/session", (req, res) => {
                 purchase_pin,
                 created_at
             FROM users
-            WHERE id = ?
-        `).get(req.session.userId);
+            WHERE id = $1
+        `, [req.session.userId]);
+
+        const user = result.rows[0];
 
         if (!user) {
             req.session.destroy(() => {});
@@ -525,7 +552,7 @@ app.get("/api/session", (req, res) => {
         return res.json({
             success: true,
             loggedIn: true,
-            user: user,
+            user,
             has_purchase_pin: hasPurchasePin
         });
 
@@ -542,6 +569,7 @@ app.get("/api/session", (req, res) => {
         });
     }
 });
+
 // =========================
 // HELPER FUNCTIONS
 // =========================
@@ -556,19 +584,6 @@ function isValidNigerianPhone(phone) {
     return /^0[7-9][0-1][0-9]{8}$/.test(phone);
 }
 
-function getAdmin(userId) {
-    return db.prepare(`
-        SELECT
-            id,
-            name,
-            email,
-            is_admin
-        FROM users
-        WHERE id = ?
-        AND is_admin = 1
-    `).get(userId);
-}
-
 // =========================
 // API STATUS
 // =========================
@@ -576,7 +591,7 @@ function getAdmin(userId) {
 app.get("/api/status", (req, res) => {
     res.json({
         success: true,
-        message: "CheapData API is running"
+        message: "MELODEXS CONNECT API is running"
     });
 });
 
@@ -618,18 +633,29 @@ app.post("/api/register", registerLimiter, async (req, res) => {
             });
         }
 
+        const normalizedEmail = String(email)
+            .trim()
+            .toLowerCase();
+
+        const normalizedPhone = String(phone)
+            .trim();
+
         // =========================
         // CHECK EXISTING USER
         // =========================
 
-        const existingUser = db.prepare(`
+        const existingResult = await pool.query(`
             SELECT id
             FROM users
-            WHERE email = ?
-               OR phone = ?
-        `).get(email, phone);
+            WHERE email = $1
+               OR phone = $2
+            LIMIT 1
+        `, [
+            normalizedEmail,
+            normalizedPhone
+        ]);
 
-        if (existingUser) {
+        if (existingResult.rows.length > 0) {
             return res.status(400).json({
                 success: false,
                 message: "Email or phone number already exists"
@@ -649,7 +675,7 @@ app.post("/api/register", registerLimiter, async (req, res) => {
         // CREATE USER
         // =========================
 
-        const result = db.prepare(`
+        const insertResult = await pool.query(`
             INSERT INTO users (
                 name,
                 email,
@@ -660,19 +686,31 @@ app.post("/api/register", registerLimiter, async (req, res) => {
                 kyc_status,
                 is_admin
             )
-            VALUES (?, ?, ?, ?, NULL, 0, 'pending', 0)
-        `).run(
+            VALUES (
+                $1,
+                $2,
+                $3,
+                $4,
+                NULL,
+                0,
+                'pending',
+                0
+            )
+            RETURNING id
+        `, [
             name,
-            email,
-            phone,
+            normalizedEmail,
+            normalizedPhone,
             hashedPassword
-        );
+        ]);
+
+        const newUserId = insertResult.rows[0].id;
 
         // =========================
         // GET NEW USER
         // =========================
 
-        const user = db.prepare(`
+        const userResult = await pool.query(`
             SELECT
                 id,
                 name,
@@ -686,8 +724,10 @@ app.post("/api/register", registerLimiter, async (req, res) => {
                 purchase_pin,
                 created_at
             FROM users
-            WHERE id = ?
-        `).get(result.lastInsertRowid);
+            WHERE id = $1
+        `, [newUserId]);
+
+        const user = userResult.rows[0];
 
         if (!user) {
             return res.status(500).json({
@@ -715,15 +755,12 @@ app.post("/api/register", registerLimiter, async (req, res) => {
 
                 return res.status(500).json({
                     success: false,
-                    message: "Account created but automatic login failed"
+                    message:
+                        "Account created but automatic login failed"
                 });
             }
 
             req.session.userId = user.id;
-
-            // =========================
-            // RESPONSE
-            // =========================
 
             return res.json({
                 success: true,
@@ -740,6 +777,15 @@ app.post("/api/register", registerLimiter, async (req, res) => {
             "Registration error:",
             error
         );
+
+        // PostgreSQL unique constraints can also catch
+        // simultaneous duplicate registrations.
+        if (error.code === "23505") {
+            return res.status(400).json({
+                success: false,
+                message: "Email or phone number already exists"
+            });
+        }
 
         return res.status(500).json({
             success: false,
@@ -766,11 +812,30 @@ app.post("/api/login", loginLimiter, async (req, res) => {
             });
         }
 
-        const user = db.prepare(`
-            SELECT *
+        const normalizedEmail = String(email)
+            .trim()
+            .toLowerCase();
+
+        const result = await pool.query(`
+            SELECT
+                id,
+                name,
+                email,
+                phone,
+                password,
+                balance,
+                virtual_account_number,
+                virtual_bank_name,
+                kyc_status,
+                is_admin,
+                purchase_pin,
+                created_at
             FROM users
-            WHERE email = ?
-        `).get(email);
+            WHERE LOWER(email) = $1
+            LIMIT 1
+        `, [normalizedEmail]);
+
+        const user = result.rows[0];
 
         if (!user) {
             return res.status(401).json({
@@ -793,7 +858,11 @@ app.post("/api/login", loginLimiter, async (req, res) => {
 
         req.session.regenerate((err) => {
             if (err) {
-                console.error("Session regenerate error:", err);
+                console.error(
+                    "Session regenerate error:",
+                    err
+                );
+
                 return res.status(500).json({
                     success: false,
                     message: "Login failed"
@@ -801,34 +870,31 @@ app.post("/api/login", loginLimiter, async (req, res) => {
             }
 
             req.session.userId = user.id;
-            finishLogin();
-        });
 
-        function finishLogin() {
-        res.json({
-            success: true,
-            message: "Login successful",
-            user: {
-                id: user.id,
-                name: user.name,
-                email: user.email,
-                phone: user.phone,
-                balance: user.balance,
-                virtual_account_number:
-                    user.virtual_account_number,
-                virtual_bank_name:
-                    user.virtual_bank_name,
-                kyc_status:
-                    user.kyc_status,
-                is_admin:
-                    user.is_admin,
-                has_purchase_pin:
-                    Boolean(user.purchase_pin),
-                created_at:
-                    user.created_at
-            }
+            return res.json({
+                success: true,
+                message: "Login successful",
+                user: {
+                    id: user.id,
+                    name: user.name,
+                    email: user.email,
+                    phone: user.phone,
+                    balance: user.balance,
+                    virtual_account_number:
+                        user.virtual_account_number,
+                    virtual_bank_name:
+                        user.virtual_bank_name,
+                    kyc_status:
+                        user.kyc_status,
+                    is_admin:
+                        user.is_admin,
+                    has_purchase_pin:
+                        Boolean(user.purchase_pin),
+                    created_at:
+                        user.created_at
+                }
+            });
         });
-        }
 
     } catch (error) {
         console.error(
@@ -836,7 +902,7 @@ app.post("/api/login", loginLimiter, async (req, res) => {
             error
         );
 
-        res.status(500).json({
+        return res.status(500).json({
             success: false,
             message: "Login failed"
         });
@@ -844,95 +910,10 @@ app.post("/api/login", loginLimiter, async (req, res) => {
 });
 
 // =========================
-// LOGOUT
-// =========================
-
-app.post("/api/logout", (req, res) => {
-    req.session.destroy((err) => {
-        if (err) {
-            console.error("Logout error:", err);
-            return res.status(500).json({
-                success: false,
-                message: "Logout failed"
-            });
-        }
-
-        res.clearCookie("connect.sid");
-        res.json({
-            success: true,
-            message: "Logged out"
-        });
-    });
-});
-
-// =========================
-// GET USER
-// =========================
-
-app.get("/api/user/:id", requireAuth, (req, res) => {
-    try {
-        const requestedId = Number(req.params.id);
-
-        if (requestedId !== req.session.userId && !getAdmin(req.session.userId)) {
-            return res.status(403).json({
-                success: false,
-                message: "You can only view your own account"
-            });
-        }
-
-        const user = db.prepare(`
-            SELECT
-                id,
-                name,
-                email,
-                phone,
-                balance,
-                virtual_account_number,
-                virtual_bank_name,
-                kyc_status,
-                is_admin,
-                purchase_pin,
-                created_at
-            FROM users
-            WHERE id = ?
-        `).get(req.params.id);
-
-        if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: "User not found"
-            });
-        }
-
-        const hasPurchasePin = Boolean(
-            user.purchase_pin
-        );
-
-        delete user.purchase_pin;
-
-        res.json({
-            success: true,
-            user: {
-                ...user,
-                has_purchase_pin: hasPurchasePin
-            }
-        });
-
-    } catch (error) {
-        console.error(
-            "User error:",
-            error
-        );
-
-        res.status(500).json({
-            success: false,
-            message: "Could not load user"
-        });
-    }
-});
-
-// =========================
 // PURCHASE PIN
+// =========================
+
+
 // =========================
 
 // SET PURCHASE PIN
@@ -958,13 +939,15 @@ app.post("/api/purchase-pin/set", requireAuth, async (req, res) => {
             });
         }
 
-        const user = db.prepare(`
+        const userResult = await pool.query(`
             SELECT
                 id,
                 purchase_pin
             FROM users
-            WHERE id = ?
-        `).get(userId);
+            WHERE id = $1
+        `, [userId]);
+
+        const user = userResult.rows[0];
 
         if (!user) {
             return res.status(404).json({
@@ -985,14 +968,14 @@ app.post("/api/purchase-pin/set", requireAuth, async (req, res) => {
             10
         );
 
-        db.prepare(`
+        await pool.query(`
             UPDATE users
-            SET purchase_pin = ?
-            WHERE id = ?
-        `).run(
+            SET purchase_pin = $1
+            WHERE id = $2
+        `, [
             hashedPin,
             userId
-        );
+        ]);
 
         res.json({
             success: true,
@@ -1059,13 +1042,15 @@ app.post("/api/purchase-pin/change", requireAuth, async (req, res) => {
             });
         }
 
-        const user = db.prepare(`
+        const userResult = await pool.query(`
             SELECT
                 id,
                 purchase_pin
             FROM users
-            WHERE id = ?
-        `).get(userId);
+            WHERE id = $1
+        `, [userId]);
+
+        const user = userResult.rows[0];
 
         if (!user) {
             return res.status(404).json({
@@ -1098,14 +1083,14 @@ app.post("/api/purchase-pin/change", requireAuth, async (req, res) => {
             10
         );
 
-        db.prepare(`
+        await pool.query(`
             UPDATE users
-            SET purchase_pin = ?
-            WHERE id = ?
-        `).run(
+            SET purchase_pin = $1
+            WHERE id = $2
+        `, [
             hashedNewPin,
             userId
-        );
+        ]);
 
         res.json({
             success: true,
@@ -1148,13 +1133,15 @@ app.post("/api/purchase-pin/verify", requireAuth, async (req, res) => {
             });
         }
 
-        const user = db.prepare(`
+        const userResult = await pool.query(`
             SELECT
                 id,
                 purchase_pin
             FROM users
-            WHERE id = ?
-        `).get(userId);
+            WHERE id = $1
+        `, [userId]);
+
+        const user = userResult.rows[0];
 
         if (!user) {
             return res.status(404).json({
@@ -1196,134 +1183,6 @@ app.post("/api/purchase-pin/verify", requireAuth, async (req, res) => {
         res.status(500).json({
             success: false,
             message: "Could not verify Purchase PIN"
-        });
-    }
-});
-
-// =========================
-// TEST FUND
-// DEVELOPMENT ONLY
-// ADMIN ONLY
-// =========================
-
-app.post("/api/test-fund", requireAuth, requireAdmin, (req, res) => {
-    try {
-        // Never allow test funding in production.
-        if (process.env.NODE_ENV === "production") {
-            return res.status(404).json({
-                success: false,
-                message: "Not found"
-            });
-        }
-
-        // Extra safety switch.
-        // Test funding is disabled unless explicitly enabled.
-        if (process.env.ALLOW_TEST_FUNDING !== "true") {
-            return res.status(404).json({
-                success: false,
-                message: "Not found"
-            });
-        }
-
-        const userId = req.session.userId;
-        const { amount } = req.body;
-
-        const fundAmount = Number(amount);
-
-        // Keep test funding within a reasonable development range.
-        if (
-            !Number.isFinite(fundAmount) ||
-            fundAmount < 100 ||
-            fundAmount > 500000
-        ) {
-            return res.status(400).json({
-                success: false,
-                message: "Test funding amount must be between ₦100 and ₦500,000."
-            });
-        }
-
-        // Only allow whole naira amounts.
-        if (!Number.isInteger(fundAmount)) {
-            return res.status(400).json({
-                success: false,
-                message: "Funding amount must be a whole naira amount."
-            });
-        }
-
-        const user = db.prepare(`
-            SELECT
-                id,
-                balance
-            FROM users
-            WHERE id = ?
-        `).get(userId);
-
-        if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: "User not found"
-            });
-        }
-
-        const reference = generateReference("TEST");
-
-        const transaction = db.transaction(() => {
-
-            const walletUpdate = db.prepare(`
-                UPDATE users
-                SET balance = balance + ?
-                WHERE id = ?
-            `).run(
-                fundAmount,
-                userId
-            );
-
-            if (walletUpdate.changes !== 1) {
-                throw new Error("Wallet could not be updated.");
-            }
-
-            db.prepare(`
-                INSERT INTO transactions (
-                    user_id,
-                    type,
-                    amount,
-                    status,
-                    reference,
-                    description
-                )
-                VALUES (?, ?, ?, ?, ?, ?)
-            `).run(
-                userId,
-                "wallet_funding",
-                fundAmount,
-                "successful",
-                reference,
-                "Development admin test wallet funding"
-            );
-        });
-
-        transaction();
-
-        const updatedUser = db.prepare(`
-            SELECT balance
-            FROM users
-            WHERE id = ?
-        `).get(userId);
-
-        return res.json({
-            success: true,
-            message: "Development test funding successful.",
-            amount: fundAmount,
-            balance: updatedUser.balance,
-            reference
-        });
-
-    } catch (error) {
-        console.error("Test funding error:", error);
-
-        return res.status(500).json({
-            success: false,
-            message: "Unable to process test funding."
         });
     }
 });
@@ -1394,7 +1253,7 @@ app.post("/api/purchase-data", requireAuth, async (req, res) => {
         // FIND WISESUB PLAN
         // =========================
 
-        const selectedPlan = db.prepare(`
+        const selectedPlanResult = await pool.query(`
             SELECT
                 id,
                 network,
@@ -1408,14 +1267,18 @@ app.post("/api/purchase-data", requireAuth, async (req, res) => {
                 provider_package_name,
                 source
             FROM data_plans
-            WHERE network = ?
-              AND plan = ?
+            WHERE network = $1
+              AND plan = $2
               AND active = 1
               AND source = 'wisesub'
-        `).get(
+            LIMIT 1
+        `, [
             network,
             plan
-        );
+        ]);
+
+        const selectedPlan =
+            selectedPlanResult.rows[0];
 
         if (!selectedPlan) {
             return res.status(400).json({
@@ -1462,14 +1325,16 @@ app.post("/api/purchase-data", requireAuth, async (req, res) => {
         // GET USER
         // =========================
 
-        const user = db.prepare(`
+        const userResult = await pool.query(`
             SELECT
                 id,
                 balance,
                 purchase_pin
             FROM users
-            WHERE id = ?
-        `).get(userId);
+            WHERE id = $1
+        `, [userId]);
+
+        const user = userResult.rows[0];
 
         if (!user) {
             return res.status(404).json({
@@ -1555,48 +1420,65 @@ app.post("/api/purchase-data", requireAuth, async (req, res) => {
         //
 
         try {
-            const reserveTransaction =
-                db.transaction(() => {
+            const client = await pool.connect();
 
-                    const debitResult =
-                        db.prepare(`
-                            UPDATE users
-                            SET balance = balance - ?
-                            WHERE id = ?
-                              AND balance >= ?
-                        `).run(
-                            sellingPrice,
-                            userId,
-                            sellingPrice
-                        );
+            try {
+                await client.query("BEGIN");
 
-                    if (debitResult.changes !== 1) {
-                        throw new Error(
-                            "INSUFFICIENT_BALANCE"
-                        );
-                    }
+                const debitResult = await client.query(`
+                    UPDATE users
+                    SET balance = balance - $1
+                    WHERE id = $2
+                      AND balance >= $1
+                    RETURNING id, balance
+                `, [
+                    sellingPrice,
+                    userId
+                ]);
 
-                    db.prepare(`
-                        INSERT INTO transactions (
-                            user_id,
-                            type,
-                            amount,
-                            status,
-                            reference,
-                            description
-                        )
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    `).run(
-                        userId,
-                        "debit",
-                        sellingPrice,
-                        "pending",
-                        localReference,
-                        `${network} ${plan} data purchase for ${phone} | Pending WiseSub confirmation`
+                if (debitResult.rowCount !== 1) {
+                    throw new Error(
+                        "INSUFFICIENT_BALANCE"
                     );
-                });
+                }
 
-            reserveTransaction();
+                await client.query(`
+                    INSERT INTO transactions (
+                        user_id,
+                        type,
+                        amount,
+                        status,
+                        reference,
+                        description
+                    )
+                    VALUES ($1, $2, $3, $4, $5, $6)
+                `, [
+                    userId,
+                    "debit",
+                    sellingPrice,
+                    "pending",
+                    localReference,
+                    `${network} ${plan} data purchase for ${phone} | Pending WiseSub confirmation`
+                ]);
+
+                await client.query("COMMIT");
+
+            } catch (transactionError) {
+
+                try {
+                    await client.query("ROLLBACK");
+                } catch (rollbackError) {
+                    console.error(
+                        "Data purchase reservation rollback error:",
+                        rollbackError
+                    );
+                }
+
+                throw transactionError;
+
+            } finally {
+                client.release();
+            }
 
         } catch (reserveError) {
 
@@ -1712,53 +1594,66 @@ app.post("/api/purchase-data", requireAuth, async (req, res) => {
 
                     try {
 
-                        const refundTransaction =
-                            db.transaction(() => {
+                        const client = await pool.connect();
 
-                                const refundResult =
-                                    db.prepare(`
-                                        UPDATE users
-                                        SET balance = balance + ?
-                                        WHERE id = ?
-                                    `).run(
-                                        sellingPrice,
-                                        userId
-                                    );
+                        try {
+                            await client.query("BEGIN");
 
-                                if (
-                                    refundResult.changes !== 1
-                                ) {
-                                    throw new Error(
-                                        "Wallet refund failed"
-                                    );
-                                }
+                            const refundResult = await client.query(`
+                                UPDATE users
+                                SET balance = balance + $1
+                                WHERE id = $2
+                                RETURNING id, balance
+                            `, [
+                                sellingPrice,
+                                userId
+                            ]);
 
-                                const updateResult =
-                                    db.prepare(`
-                                        UPDATE transactions
-                                        SET
-                                            status = ?,
-                                            description = ?
-                                        WHERE reference = ?
-                                          AND user_id = ?
-                                          AND status = 'pending'
-                                    `).run(
-                                        "failed",
-                                        `${network} ${plan} data purchase for ${phone} | WiseSub rejected the purchase`,
-                                        localReference,
-                                        userId
-                                    );
+                            if (refundResult.rowCount !== 1) {
+                                throw new Error(
+                                    "Wallet refund failed"
+                                );
+                            }
 
-                                if (
-                                    updateResult.changes !== 1
-                                ) {
-                                    throw new Error(
-                                        "Transaction status update failed"
-                                    );
-                                }
-                            });
+                            const updateResult = await client.query(`
+                                UPDATE transactions
+                                SET
+                                    status = $1,
+                                    description = $2
+                                WHERE reference = $3
+                                  AND user_id = $4
+                                  AND status = 'pending'
+                            `, [
+                                "failed",
+                                `${network} ${plan} data purchase for ${phone} | WiseSub rejected the purchase`,
+                                localReference,
+                                userId
+                            ]);
 
-                        refundTransaction();
+                            if (updateResult.rowCount !== 1) {
+                                throw new Error(
+                                    "Transaction status update failed"
+                                );
+                            }
+
+                            await client.query("COMMIT");
+
+                        } catch (transactionError) {
+
+                            try {
+                                await client.query("ROLLBACK");
+                            } catch (rollbackError) {
+                                console.error(
+                                    "Data purchase refund rollback error:",
+                                    rollbackError
+                                );
+                            }
+
+                            throw transactionError;
+
+                        } finally {
+                            client.release();
+                        }
 
                     } catch (refundError) {
 
@@ -1792,7 +1687,7 @@ app.post("/api/purchase-data", requireAuth, async (req, res) => {
                 // DO NOT refund automatically.
                 //
                 // WiseSub may have processed the purchase even
-                // though CheapData received a server error.
+                // though MELODEXS CONNECT received a server error.
                 //
 
                 return res.status(202).json({
@@ -1858,53 +1753,66 @@ app.post("/api/purchase-data", requireAuth, async (req, res) => {
 
             try {
 
-                const refundTransaction =
-                    db.transaction(() => {
+                const client = await pool.connect();
 
-                        const refundResult =
-                            db.prepare(`
-                                UPDATE users
-                                SET balance = balance + ?
-                                WHERE id = ?
-                            `).run(
-                                sellingPrice,
-                                userId
-                            );
+                try {
+                    await client.query("BEGIN");
 
-                        if (
-                            refundResult.changes !== 1
-                        ) {
-                            throw new Error(
-                                "Wallet refund failed"
-                            );
-                        }
+                    const refundResult = await client.query(`
+                        UPDATE users
+                        SET balance = balance + $1
+                        WHERE id = $2
+                        RETURNING id, balance
+                    `, [
+                        sellingPrice,
+                        userId
+                    ]);
 
-                        const updateResult =
-                            db.prepare(`
-                                UPDATE transactions
-                                SET
-                                    status = ?,
-                                    description = ?
-                                WHERE reference = ?
-                                  AND user_id = ?
-                                  AND status = 'pending'
-                            `).run(
-                                "failed",
-                                `${network} ${plan} data purchase for ${phone} | WiseSub did not complete the purchase`,
-                                localReference,
-                                userId
-                            );
+                    if (refundResult.rowCount !== 1) {
+                        throw new Error(
+                            "Wallet refund failed"
+                        );
+                    }
 
-                        if (
-                            updateResult.changes !== 1
-                        ) {
-                            throw new Error(
-                                "Transaction status update failed"
-                            );
-                        }
-                    });
+                    const updateResult = await client.query(`
+                        UPDATE transactions
+                        SET
+                            status = $1,
+                            description = $2
+                        WHERE reference = $3
+                          AND user_id = $4
+                          AND status = 'pending'
+                    `, [
+                        "failed",
+                        `${network} ${plan} data purchase for ${phone} | WiseSub did not complete the purchase`,
+                        localReference,
+                        userId
+                    ]);
 
-                refundTransaction();
+                    if (updateResult.rowCount !== 1) {
+                        throw new Error(
+                            "Transaction status update failed"
+                        );
+                    }
+
+                    await client.query("COMMIT");
+
+                } catch (transactionError) {
+
+                    try {
+                        await client.query("ROLLBACK");
+                    } catch (rollbackError) {
+                        console.error(
+                            "Data purchase refund rollback error:",
+                            rollbackError
+                        );
+                    }
+
+                    throw transactionError;
+
+                } finally {
+                    client.release();
+                }
 
             } catch (refundError) {
 
@@ -1972,41 +1880,54 @@ app.post("/api/purchase-data", requireAuth, async (req, res) => {
         // =========================
 
         try {
+    const client = await pool.connect();
 
-            const completeTransaction =
-                db.transaction(() => {
+    try {
+        await client.query("BEGIN");
 
-                    const updateResult =
-                        db.prepare(`
-                            UPDATE transactions
-                            SET
-                                status = ?,
-                                description = ?
-                            WHERE reference = ?
-                              AND user_id = ?
-                              AND status = 'pending'
-                        `).run(
-                            "successful",
-                            `${network} ${plan} data purchase for ${phone} | WiseSub reference: ${wiseSubReference}`,
-                            localReference,
-                            userId
-                        );
+        const updateResult = await client.query(`
+            UPDATE transactions
+            SET
+                status = $1,
+                description = $2
+            WHERE reference = $3
+              AND user_id = $4
+              AND status = 'pending'
+        `, [
+            "successful",
+            `${network} ${plan} data purchase for ${phone} | WiseSub reference: ${wiseSubReference}`,
+            localReference,
+            userId
+        ]);
 
-                    if (
-                        updateResult.changes !== 1
-                    ) {
-                        throw new Error(
-                            "Pending transaction could not be completed"
-                        );
-                    }
-                });
+        if (updateResult.rowCount !== 1) {
+            throw new Error(
+                "Pending transaction could not be completed"
+            );
+        }
 
-            completeTransaction();
+        await client.query("COMMIT");
 
-        } catch (completionError) {
+    } catch (transactionError) {
+        try {
+            await client.query("ROLLBACK");
+        } catch (rollbackError) {
+            console.error(
+                "Data purchase completion rollback error:",
+                rollbackError
+            );
+        }
+
+        throw transactionError;
+
+    } finally {
+        client.release();
+    }
+
+} catch (completionError) {
 
             console.error(
-                "CRITICAL: WiseSub data purchase succeeded but CheapData could not mark the transaction successful.",
+                "CRITICAL: WiseSub data purchase succeeded but MELODEXS CONNECT could not mark the transaction successful.",
                 completionError
             );
 
@@ -2025,12 +1946,13 @@ app.post("/api/purchase-data", requireAuth, async (req, res) => {
         // GET UPDATED BALANCE
         // =========================
 
-        const updatedUser =
-            db.prepare(`
-                SELECT balance
-                FROM users
-                WHERE id = ?
-            `).get(userId);
+const updatedUserResult = await pool.query(`
+    SELECT balance
+    FROM users
+    WHERE id = $1
+`, [userId]);
+
+const updatedUser = updatedUserResult.rows[0];
 
         // =========================
         // SUCCESS
@@ -2159,14 +2081,13 @@ app.post("/api/purchase-airtime", requireAuth, async (req, res) => {
         // GET USER
         // =========================
 
-        const user = db.prepare(`
-            SELECT
-                id,
-                balance,
-                purchase_pin
-            FROM users
-            WHERE id = ?
-        `).get(userId);
+const userResult = await pool.query(`
+    SELECT id, balance, purchase_pin
+    FROM users
+    WHERE id = $1
+`, [userId]);
+
+const user = userResult.rows[0];
 
         if (!user) {
             return res.status(404).json({
@@ -2266,50 +2187,62 @@ app.post("/api/purchase-airtime", requireAuth, async (req, res) => {
 
         try {
 
-            const reserveTransaction =
-                db.transaction(() => {
+const client = await pool.connect();
 
-                    const debitResult =
-                        db.prepare(`
-                            UPDATE users
-                            SET balance = balance - ?
-                            WHERE id = ?
-                              AND balance >= ?
-                        `).run(
-                            airtimeAmount,
-                            userId,
-                            airtimeAmount
-                        );
+try {
+    await client.query("BEGIN");
 
-                    if (
-                        debitResult.changes !== 1
-                    ) {
-                        throw new Error(
-                            "INSUFFICIENT_BALANCE"
-                        );
-                    }
+    const debitResult = await client.query(`
+        UPDATE users
+        SET balance = balance - $1
+        WHERE id = $2
+          AND balance >= $1
+        RETURNING id, balance
+    `, [
+        airtimeAmount,
+        userId
+    ]);
 
-                    db.prepare(`
-                        INSERT INTO transactions (
-                            user_id,
-                            type,
-                            amount,
-                            status,
-                            reference,
-                            description
-                        )
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    `).run(
-                        userId,
-                        "debit",
-                        airtimeAmount,
-                        "pending",
-                        localReference,
-                        `${network} airtime purchase for ${phone} | Pending WiseSub confirmation`
-                    );
-                });
+    if (debitResult.rowCount !== 1) {
+        throw new Error("INSUFFICIENT_BALANCE");
+    }
 
-            reserveTransaction();
+    await client.query(`
+        INSERT INTO transactions (
+            user_id,
+            type,
+            amount,
+            status,
+            reference,
+            description
+        )
+        VALUES ($1, $2, $3, $4, $5, $6)
+    `, [
+        userId,
+        "debit",
+        airtimeAmount,
+        "pending",
+        localReference,
+        `${network} airtime purchase for ${phone} | Pending WiseSub confirmation`
+    ]);
+
+    await client.query("COMMIT");
+
+} catch (transactionError) {
+    try {
+        await client.query("ROLLBACK");
+    } catch (rollbackError) {
+        console.error(
+            "Airtime wallet reservation rollback error:",
+            rollbackError
+        );
+    }
+
+    throw transactionError;
+
+} finally {
+    client.release();
+}
 
         } catch (reserveError) {
 
@@ -2423,53 +2356,66 @@ app.post("/api/purchase-airtime", requireAuth, async (req, res) => {
 
                     try {
 
-                        const refundTransaction =
-                            db.transaction(() => {
+ const client = await pool.connect();
 
-                                const refundResult =
-                                    db.prepare(`
-                                        UPDATE users
-                                        SET balance = balance + ?
-                                        WHERE id = ?
-                                    `).run(
-                                        airtimeAmount,
-                                        userId
-                                    );
+try {
+    await client.query("BEGIN");
 
-                                if (
-                                    refundResult.changes !== 1
-                                ) {
-                                    throw new Error(
-                                        "Wallet refund failed"
-                                    );
-                                }
+    const refundResult = await client.query(`
+        UPDATE users
+        SET balance = balance + $1
+        WHERE id = $2
+        RETURNING id, balance
+    `, [
+        airtimeAmount,
+        userId
+    ]);
 
-                                const updateResult =
-                                    db.prepare(`
-                                        UPDATE transactions
-                                        SET
-                                            status = ?,
-                                            description = ?
-                                        WHERE reference = ?
-                                          AND user_id = ?
-                                          AND status = 'pending'
-                                    `).run(
-                                        "failed",
-                                        `${network} airtime purchase for ${phone} | WiseSub rejected the purchase`,
-                                        localReference,
-                                        userId
-                                    );
+    if (refundResult.rowCount !== 1) {
+        throw new Error(
+            "Wallet refund failed"
+        );
+    }
 
-                                if (
-                                    updateResult.changes !== 1
-                                ) {
-                                    throw new Error(
-                                        "Transaction status update failed"
-                                    );
-                                }
-                            });
+    const updateResult = await client.query(`
+        UPDATE transactions
+        SET
+            status = $1,
+            description = $2
+        WHERE reference = $3
+          AND user_id = $4
+          AND status = 'pending'
+    `, [
+        "failed",
+        `${network} airtime purchase for ${phone} | WiseSub rejected the purchase`,
+        localReference,
+        userId
+    ]);
 
-                        refundTransaction();
+    if (updateResult.rowCount !== 1) {
+        throw new Error(
+            "Transaction status update failed"
+        );
+    }
+
+    await client.query("COMMIT");
+
+} catch (transactionError) {
+
+    try {
+        await client.query("ROLLBACK");
+    } catch (rollbackError) {
+        console.error(
+            "Airtime purchase refund rollback error:",
+            rollbackError
+        );
+    }
+
+    throw transactionError;
+
+} finally {
+    client.release();
+}
 
                     } catch (refundError) {
 
@@ -2556,53 +2502,66 @@ app.post("/api/purchase-airtime", requireAuth, async (req, res) => {
 
             try {
 
-                const refundTransaction =
-                    db.transaction(() => {
+const client = await pool.connect();
 
-                        const refundResult =
-                            db.prepare(`
-                                UPDATE users
-                                SET balance = balance + ?
-                                WHERE id = ?
-                            `).run(
-                                airtimeAmount,
-                                userId
-                            );
+try {
+    await client.query("BEGIN");
 
-                        if (
-                            refundResult.changes !== 1
-                        ) {
-                            throw new Error(
-                                "Wallet refund failed"
-                            );
-                        }
+    const refundResult = await client.query(`
+        UPDATE users
+        SET balance = balance + $1
+        WHERE id = $2
+        RETURNING id, balance
+    `, [
+        airtimeAmount,
+        userId
+    ]);
 
-                        const updateResult =
-                            db.prepare(`
-                                UPDATE transactions
-                                SET
-                                    status = ?,
-                                    description = ?
-                                WHERE reference = ?
-                                  AND user_id = ?
-                                  AND status = 'pending'
-                            `).run(
-                                "failed",
-                                `${network} airtime purchase for ${phone} | WiseSub did not complete the purchase`,
-                                localReference,
-                                userId
-                            );
+    if (refundResult.rowCount !== 1) {
+        throw new Error(
+            "Wallet refund failed"
+        );
+    }
 
-                        if (
-                            updateResult.changes !== 1
-                        ) {
-                            throw new Error(
-                                "Transaction status update failed"
-                            );
-                        }
-                    });
+    const updateResult = await client.query(`
+        UPDATE transactions
+        SET
+            status = $1,
+            description = $2
+        WHERE reference = $3
+          AND user_id = $4
+          AND status = 'pending'
+    `, [
+        "failed",
+        `${network} airtime purchase for ${phone} | WiseSub did not complete the purchase`,
+        localReference,
+        userId
+    ]);
 
-                refundTransaction();
+    if (updateResult.rowCount !== 1) {
+        throw new Error(
+            "Transaction status update failed"
+        );
+    }
+
+    await client.query("COMMIT");
+
+} catch (transactionError) {
+
+    try {
+        await client.query("ROLLBACK");
+    } catch (rollbackError) {
+        console.error(
+            "Airtime purchase refund rollback error:",
+            rollbackError
+        );
+    }
+
+    throw transactionError;
+
+} finally {
+    client.release();
+}
 
             } catch (refundError) {
 
@@ -2666,42 +2625,58 @@ app.post("/api/purchase-airtime", requireAuth, async (req, res) => {
         // MARK TRANSACTION SUCCESSFUL
         // =========================
 
+try {
+
+    const client = await pool.connect();
+
+    try {
+        await client.query("BEGIN");
+
+        const updateResult = await client.query(`
+            UPDATE transactions
+            SET
+                status = $1,
+                description = $2
+            WHERE reference = $3
+              AND user_id = $4
+              AND status = 'pending'
+        `, [
+            "successful",
+            `${network} airtime purchase for ${phone} | WiseSub reference: ${wiseSubReference}`,
+            localReference,
+            userId
+        ]);
+
+        if (updateResult.rowCount !== 1) {
+            throw new Error(
+                "Pending transaction could not be completed"
+            );
+        }
+
+        await client.query("COMMIT");
+
+    } catch (transactionError) {
+
         try {
+            await client.query("ROLLBACK");
+        } catch (rollbackError) {
+            console.error(
+                "Airtime completion rollback error:",
+                rollbackError
+            );
+        }
 
-            const completeTransaction =
-                db.transaction(() => {
+        throw transactionError;
 
-                    const updateResult =
-                        db.prepare(`
-                            UPDATE transactions
-                            SET
-                                status = ?,
-                                description = ?
-                            WHERE reference = ?
-                              AND user_id = ?
-                              AND status = 'pending'
-                        `).run(
-                            "successful",
-                            `${network} airtime purchase for ${phone} | WiseSub reference: ${wiseSubReference}`,
-                            localReference,
-                            userId
-                        );
+    } finally {
+        client.release();
+    }
 
-                    if (
-                        updateResult.changes !== 1
-                    ) {
-                        throw new Error(
-                            "Pending transaction could not be completed"
-                        );
-                    }
-                });
+} catch (completionError) {
 
-            completeTransaction();
-
-        } catch (completionError) {
 
             console.error(
-                "CRITICAL: WiseSub airtime purchase succeeded but CheapData could not mark the transaction successful.",
+                "CRITICAL: WiseSub airtime purchase succeeded but MELODEXS CONNECT could not mark the transaction successful.",
                 completionError
             );
 
@@ -2720,12 +2695,13 @@ app.post("/api/purchase-airtime", requireAuth, async (req, res) => {
         // GET UPDATED BALANCE
         // =========================
 
-        const updatedUser =
-            db.prepare(`
-                SELECT balance
-                FROM users
-                WHERE id = ?
-            `).get(userId);
+        const updatedUserResult = await pool.query(`
+            SELECT balance
+            FROM users
+            WHERE id = $1
+        `, [userId]);
+
+        const updatedUser = updatedUserResult.rows[0];
 
         // =========================
         // SUCCESS
@@ -2773,18 +2749,29 @@ app.post("/api/purchase-airtime", requireAuth, async (req, res) => {
 // USER TRANSACTIONS
 // =========================
 
-app.get("/api/transactions/:userId", requireAuth, (req, res) => {
+app.get("/api/transactions/:userId", requireAuth, async (req, res) => {
     try {
         const requestedId = Number(req.params.userId);
 
-        if (requestedId !== req.session.userId && !getAdmin(req.session.userId)) {
-            return res.status(403).json({
+        if (!Number.isInteger(requestedId) || requestedId <= 0) {
+            return res.status(400).json({
                 success: false,
-                message: "You can only view your own transactions"
+                message: "Invalid user ID"
             });
         }
 
-        const transactions = db.prepare(`
+        if (requestedId !== req.session.userId) {
+            const admin = await getAdmin(req.session.userId);
+
+            if (!admin) {
+                return res.status(403).json({
+                    success: false,
+                    message: "You can only view your own transactions"
+                });
+            }
+        }
+
+        const result = await pool.query(`
             SELECT
                 id,
                 type,
@@ -2794,13 +2781,13 @@ app.get("/api/transactions/:userId", requireAuth, (req, res) => {
                 description,
                 created_at
             FROM transactions
-            WHERE user_id = ?
+            WHERE user_id = $1
             ORDER BY id DESC
-        `).all(requestedId);
+        `, [requestedId]);
 
-        res.json({
+        return res.json({
             success: true,
-            transactions
+            transactions: result.rows
         });
 
     } catch (error) {
@@ -2809,7 +2796,7 @@ app.get("/api/transactions/:userId", requireAuth, (req, res) => {
             error
         );
 
-        res.status(500).json({
+        return res.status(500).json({
             success: false,
             message: "Could not load transactions"
         });
@@ -2821,9 +2808,9 @@ app.get("/api/transactions/:userId", requireAuth, (req, res) => {
 // =========================
 
 // Public: customer-facing active WiseSub plans.
-app.get("/api/data-plans", (req, res) => {
+app.get("/api/data-plans", async (req, res) => {
     try {
-        const plans = db.prepare(`
+        const result = await pool.query(`
             SELECT
                 id,
                 network,
@@ -2844,17 +2831,17 @@ app.get("/api/data-plans", (req, res) => {
                 END,
                 selling_price ASC,
                 id ASC
-        `).all();
+        `);
 
-        res.json({
+        return res.json({
             success: true,
-            plans
+            plans: result.rows
         });
 
     } catch (error) {
         console.error("Data plans error:", error);
 
-        res.status(500).json({
+        return res.status(500).json({
             success: false,
             message: "Could not load data plans"
         });
@@ -2862,9 +2849,9 @@ app.get("/api/data-plans", (req, res) => {
 });
 
 // Admin: active WiseSub plans only.
-app.get("/api/admin/data-plans", requireAuth, requireAdmin, (req, res) => {
+app.get("/api/admin/data-plans", requireAuth, requireAdmin, async (req, res) => {
     try {
-        const plans = db.prepare(`
+        const result = await pool.query(`
             SELECT
                 id,
                 network,
@@ -2897,103 +2884,227 @@ app.get("/api/admin/data-plans", requireAuth, requireAdmin, (req, res) => {
                 END,
                 selling_price ASC,
                 id ASC
-        `).all();
+        `);
 
-        res.json({
+        return res.json({
             success: true,
-            plans
+            plans: result.rows
         });
+
     } catch (error) {
         console.error("Admin data plans error:", error);
 
-        res.status(500).json({
+        return res.status(500).json({
             success: false,
             message: "Could not load data plans"
         });
     }
 });
 
-app.post("/api/admin/data-plans", requireAuth, requireAdmin, (req, res) => {
+app.post("/api/admin/data-plans", requireAuth, requireAdmin, async (req, res) => {
     try {
         const network = String(req.body.network || "").trim();
         const plan = String(req.body.plan || "").trim();
         const providerCost = Number(req.body.provider_cost);
         const sellingPrice = Number(req.body.selling_price);
-        const active = req.body.active === undefined ? 1 : (Number(req.body.active) ? 1 : 0);
+        const active =
+            req.body.active === undefined
+                ? 1
+                : (Number(req.body.active) ? 1 : 0);
 
-        const allowedNetworks = ["MTN", "Airtel", "Glo", "9mobile"];
+        const allowedNetworks = [
+            "MTN",
+            "Airtel",
+            "Glo",
+            "9mobile"
+        ];
+
         if (!allowedNetworks.includes(network)) {
-            return res.status(400).json({ success: false, message: "Invalid network" });
+            return res.status(400).json({
+                success: false,
+                message: "Invalid network"
+            });
         }
+
         if (!/^\d+(?:\.\d+)?(?:MB|GB)$/i.test(plan)) {
-            return res.status(400).json({ success: false, message: "Invalid plan format. Example: 1GB or 500MB" });
+            return res.status(400).json({
+                success: false,
+                message:
+                    "Invalid plan format. Example: 1GB or 500MB"
+            });
         }
+
         if (!Number.isFinite(providerCost) || providerCost < 0) {
-            return res.status(400).json({ success: false, message: "Provider cost must be 0 or greater" });
+            return res.status(400).json({
+                success: false,
+                message: "Provider cost must be 0 or greater"
+            });
         }
+
         if (!Number.isFinite(sellingPrice) || sellingPrice <= 0) {
-            return res.status(400).json({ success: false, message: "Selling price must be greater than 0" });
+            return res.status(400).json({
+                success: false,
+                message: "Selling price must be greater than 0"
+            });
         }
+
         if (sellingPrice < providerCost) {
-            return res.status(400).json({ success: false, message: "Selling price cannot be below provider cost" });
+            return res.status(400).json({
+                success: false,
+                message:
+                    "Selling price cannot be below provider cost"
+            });
         }
 
-        const result = db.prepare(`
-            INSERT INTO data_plans (network, plan, provider_cost, selling_price, active, updated_at)
-            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(network, plan) DO UPDATE SET
-                provider_cost = excluded.provider_cost,
-                selling_price = excluded.selling_price,
-                active = excluded.active,
+        const normalizedPlan = plan.toUpperCase();
+
+        const result = await pool.query(`
+            INSERT INTO data_plans (
+                network,
+                plan,
+                provider_cost,
+                selling_price,
+                active,
+                updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
+            ON CONFLICT(network, plan)
+            DO UPDATE SET
+                provider_cost = EXCLUDED.provider_cost,
+                selling_price = EXCLUDED.selling_price,
+                active = EXCLUDED.active,
                 updated_at = CURRENT_TIMESTAMP
-        `).run(network, plan.toUpperCase(), providerCost, sellingPrice, active);
+            RETURNING
+                id,
+                network,
+                plan,
+                provider_cost,
+                selling_price,
+                active,
+                (selling_price - provider_cost) AS margin,
+                updated_at
+        `, [
+            network,
+            normalizedPlan,
+            providerCost,
+            sellingPrice,
+            active
+        ]);
 
-        const saved = db.prepare(`SELECT id, network, plan, provider_cost, selling_price, active,
-            (selling_price - provider_cost) AS margin, updated_at
-            FROM data_plans WHERE network = ? AND plan = ?`).get(network, plan.toUpperCase());
+        return res.json({
+            success: true,
+            message: "Data plan saved successfully",
+            plan: result.rows[0]
+        });
 
-        res.json({ success: true, message: "Data plan saved successfully", plan: saved });
     } catch (error) {
         console.error("Save data plan error:", error);
-        res.status(500).json({ success: false, message: "Could not save data plan" });
+
+        return res.status(500).json({
+            success: false,
+            message: "Could not save data plan"
+        });
     }
 });
 
-app.patch("/api/admin/data-plans/:id", requireAuth, requireAdmin, (req, res) => {
+app.patch("/api/admin/data-plans/:id", requireAuth, requireAdmin, async (req, res) => {
     try {
         const id = Number(req.params.id);
+
         if (!Number.isInteger(id) || id <= 0) {
-            return res.status(400).json({ success: false, message: "Invalid plan ID" });
+            return res.status(400).json({
+                success: false,
+                message: "Invalid plan ID"
+            });
         }
 
-        const current = db.prepare(`SELECT * FROM data_plans WHERE id = ?`).get(id);
-        if (!current) return res.status(404).json({ success: false, message: "Data plan not found" });
+        const currentResult = await pool.query(`
+            SELECT *
+            FROM data_plans
+            WHERE id = $1
+        `, [id]);
 
-        const providerCost = req.body.provider_cost === undefined ? Number(current.provider_cost) : Number(req.body.provider_cost);
-        const sellingPrice = req.body.selling_price === undefined ? Number(current.selling_price) : Number(req.body.selling_price);
-        const active = req.body.active === undefined ? Number(current.active) : (Number(req.body.active) ? 1 : 0);
+        const current = currentResult.rows[0];
 
-        if (!Number.isFinite(providerCost) || providerCost < 0 || !Number.isFinite(sellingPrice) || sellingPrice <= 0) {
-            return res.status(400).json({ success: false, message: "Invalid pricing values" });
+        if (!current) {
+            return res.status(404).json({
+                success: false,
+                message: "Data plan not found"
+            });
         }
+
+        const providerCost =
+            req.body.provider_cost === undefined
+                ? Number(current.provider_cost)
+                : Number(req.body.provider_cost);
+
+        const sellingPrice =
+            req.body.selling_price === undefined
+                ? Number(current.selling_price)
+                : Number(req.body.selling_price);
+
+        const active =
+            req.body.active === undefined
+                ? Number(current.active)
+                : (Number(req.body.active) ? 1 : 0);
+
+        if (
+            !Number.isFinite(providerCost) ||
+            providerCost < 0 ||
+            !Number.isFinite(sellingPrice) ||
+            sellingPrice <= 0
+        ) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid pricing values"
+            });
+        }
+
         if (sellingPrice < providerCost) {
-            return res.status(400).json({ success: false, message: "Selling price cannot be below provider cost" });
+            return res.status(400).json({
+                success: false,
+                message:
+                    "Selling price cannot be below provider cost"
+            });
         }
 
-        db.prepare(`
+        const result = await pool.query(`
             UPDATE data_plans
-            SET provider_cost = ?, selling_price = ?, active = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-        `).run(providerCost, sellingPrice, active, id);
+            SET
+                provider_cost = $1,
+                selling_price = $2,
+                active = $3,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = $4
+            RETURNING
+                id,
+                network,
+                plan,
+                provider_cost,
+                selling_price,
+                active,
+                (selling_price - provider_cost) AS margin,
+                updated_at
+        `, [
+            providerCost,
+            sellingPrice,
+            active,
+            id
+        ]);
 
-        const saved = db.prepare(`SELECT id, network, plan, provider_cost, selling_price, active,
-            (selling_price - provider_cost) AS margin, updated_at
-            FROM data_plans WHERE id = ?`).get(id);
+        return res.json({
+            success: true,
+            message: "Data plan updated successfully",
+            plan: result.rows[0]
+        });
 
-        res.json({ success: true, message: "Data plan updated successfully", plan: saved });
     } catch (error) {
         console.error("Update data plan error:", error);
-        res.status(500).json({ success: false, message: "Could not update data plan" });
+
+        return res.status(500).json({
+            success: false,
+            message: "Could not update data plan"
+        });
     }
 });
 
@@ -3001,59 +3112,50 @@ app.patch("/api/admin/data-plans/:id", requireAuth, requireAdmin, (req, res) => 
 // ADMIN STATS
 // =========================
 
-app.get("/api/admin/stats", requireAuth, requireAdmin, (req, res) => {
+app.get("/api/admin/stats", requireAuth, requireAdmin, async (req, res) => {
     try {
-        const totalUsers = db.prepare(`
-            SELECT COUNT(*) AS count
-            FROM users
-        `).get().count;
+        const result = await pool.query(`
+            SELECT
+                (SELECT COUNT(*) FROM users) AS total_users,
+                (SELECT COALESCE(SUM(balance), 0) FROM users) AS total_balance,
+                (SELECT COUNT(*) FROM transactions) AS total_transactions,
+                (
+                    SELECT COUNT(*)
+                    FROM transactions
+                    WHERE type = 'debit'
+                      AND status = 'successful'
+                      AND description ILIKE '%data purchase%'
+                ) AS data_purchases,
+                (
+                    SELECT COUNT(*)
+                    FROM transactions
+                    WHERE type = 'debit'
+                      AND status = 'successful'
+                      AND description ILIKE '%airtime purchase%'
+                ) AS airtime_purchases,
+                (
+                    SELECT COALESCE(SUM(amount), 0)
+                    FROM transactions
+                    WHERE type = 'debit'
+                      AND status = 'successful'
+                      AND (
+                          description ILIKE '%data purchase%'
+                          OR description ILIKE '%airtime purchase%'
+                      )
+                ) AS total_revenue
+        `);
 
-        const totalBalance = db.prepare(`
-            SELECT COALESCE(SUM(balance), 0) AS total
-            FROM users
-        `).get().total;
+        const stats = result.rows[0];
 
-        const totalTransactions = db.prepare(`
-            SELECT COUNT(*) AS count
-            FROM transactions
-        `).get().count;
-
-        const dataPurchases = db.prepare(`
-            SELECT COUNT(*) AS count
-            FROM transactions
-            WHERE type = 'debit'
-            AND status = 'successful'
-            AND description LIKE '%data purchase%'
-        `).get().count;
-
-        const airtimePurchases = db.prepare(`
-            SELECT COUNT(*) AS count
-            FROM transactions
-            WHERE type = 'debit'
-            AND status = 'successful'
-            AND description LIKE '%airtime purchase%'
-        `).get().count;
-
-        const totalRevenue = db.prepare(`
-            SELECT COALESCE(SUM(amount), 0) AS total
-            FROM transactions
-            WHERE type = 'debit'
-            AND status = 'successful'
-            AND (
-                description LIKE '%data purchase%'
-                OR description LIKE '%airtime purchase%'
-            )
-        `).get().total;
-
-        res.json({
+        return res.json({
             success: true,
             stats: {
-                totalUsers,
-                totalBalance,
-                totalTransactions,
-                dataPurchases,
-                airtimePurchases,
-                totalRevenue
+                totalUsers: Number(stats.total_users),
+                totalBalance: Number(stats.total_balance),
+                totalTransactions: Number(stats.total_transactions),
+                dataPurchases: Number(stats.data_purchases),
+                airtimePurchases: Number(stats.airtime_purchases),
+                totalRevenue: Number(stats.total_revenue)
             }
         });
 
@@ -3063,7 +3165,7 @@ app.get("/api/admin/stats", requireAuth, requireAdmin, (req, res) => {
             error
         );
 
-        res.status(500).json({
+        return res.status(500).json({
             success: false,
             message: "Could not load admin statistics"
         });
@@ -3074,9 +3176,9 @@ app.get("/api/admin/stats", requireAuth, requireAdmin, (req, res) => {
 // ADMIN USERS
 // =========================
 
-app.get("/api/admin/users", requireAuth, requireAdmin, (req, res) => {
+app.get("/api/admin/users", requireAuth, requireAdmin, async (req, res) => {
     try {
-        const users = db.prepare(`
+        const result = await pool.query(`
             SELECT
                 id,
                 name,
@@ -3090,11 +3192,11 @@ app.get("/api/admin/users", requireAuth, requireAdmin, (req, res) => {
                 created_at
             FROM users
             ORDER BY id DESC
-        `).all();
+        `);
 
-        res.json({
+        return res.json({
             success: true,
-            users
+            users: result.rows
         });
 
     } catch (error) {
@@ -3103,7 +3205,7 @@ app.get("/api/admin/users", requireAuth, requireAdmin, (req, res) => {
             error
         );
 
-        res.status(500).json({
+        return res.status(500).json({
             success: false,
             message: "Could not load users"
         });
@@ -3114,9 +3216,9 @@ app.get("/api/admin/users", requireAuth, requireAdmin, (req, res) => {
 // ADMIN TRANSACTIONS
 // =========================
 
-app.get("/api/admin/transactions", requireAuth, requireAdmin, (req, res) => {
+app.get("/api/admin/transactions", requireAuth, requireAdmin, async (req, res) => {
     try {
-        const transactions = db.prepare(`
+        const result = await pool.query(`
             SELECT
                 transactions.id,
                 users.name AS user_name,
@@ -3132,11 +3234,11 @@ app.get("/api/admin/transactions", requireAuth, requireAdmin, (req, res) => {
                 ON users.id = transactions.user_id
             ORDER BY transactions.id DESC
             LIMIT 100
-        `).all();
+        `);
 
-        res.json({
+        return res.json({
             success: true,
-            transactions
+            transactions: result.rows
         });
 
     } catch (error) {
@@ -3145,7 +3247,7 @@ app.get("/api/admin/transactions", requireAuth, requireAdmin, (req, res) => {
             error
         );
 
-        res.status(500).json({
+        return res.status(500).json({
             success: false,
             message: "Could not load admin transactions"
         });
@@ -3154,6 +3256,8 @@ app.get("/api/admin/transactions", requireAuth, requireAdmin, (req, res) => {
 
 // =========================
 // SERVER
+
+
 // =========================
 
 // =========================
@@ -3171,11 +3275,14 @@ app.post("/api/forgot-password", forgotPasswordLimiter, async (req, res) => {
             });
         }
 
-        const user = db.prepare(`
+        const userResult = await pool.query(`
             SELECT id, email
             FROM users
-            WHERE LOWER(email) = ?
-        `).get(email);
+            WHERE LOWER(email) = $1
+            LIMIT 1
+        `, [email]);
+
+        const user = userResult.rows[0];
 
         // Always return the same message whether the email exists or not.
         // This helps prevent account enumeration.
@@ -3187,99 +3294,102 @@ app.post("/api/forgot-password", forgotPasswordLimiter, async (req, res) => {
             });
         }
 
-        // Generate a secure random reset token
+        // Generate a secure random reset token.
         const resetToken = crypto.randomBytes(32).toString("hex");
 
-        // Store only the SHA-256 hash of the token
+        // Store only the SHA-256 hash of the token.
         const resetTokenHash = crypto
             .createHash("sha256")
             .update(resetToken)
             .digest("hex");
 
-        // Token expires in 15 minutes
+        // Token expires in 15 minutes.
         const expiresAt = Date.now() + (15 * 60 * 1000);
 
-        db.prepare(`
+        await pool.query(`
             UPDATE users
-            SET reset_token_hash = ?,
-                reset_token_expires_at = ?
-            WHERE id = ?
-        `).run(
+            SET reset_token_hash = $1,
+                reset_token_expires_at = $2
+            WHERE id = $3
+        `, [
             resetTokenHash,
             expiresAt,
             user.id
-        );
+        ]);
 
         const resetUrl =
-    `${process.env.CHEAPDATA_PUBLIC_URL || `${req.protocol}://${req.get("host")}`}/reset-password.html?token=${resetToken}`;
+            `${process.env.CHEAPDATA_PUBLIC_URL || `${req.protocol}://${req.get("host")}`}/reset-password.html?token=${resetToken}`;
 
-if (process.env.NODE_ENV !== "production") {
-    console.log("");
-    console.log("======================================");
-    console.log("PASSWORD RESET REQUEST");
-    console.log("======================================");
-    console.log(`Email: ${user.email}`);
-    console.log(`Reset link: ${resetUrl}`);
-    console.log("Expires in: 15 minutes");
-    console.log("======================================");
-    console.log("");
-} else {
-    try {
-        await sendBrevoEmail({
-            to: user.email,
-            subject: "CheapData Password Reset",
-            htmlContent: `
-                <div style="font-family: Arial, sans-serif; line-height: 1.6;">
-                    <h2>Reset your CheapData password</h2>
+        if (process.env.NODE_ENV !== "production") {
+            console.log("");
+            console.log("======================================");
+            console.log("PASSWORD RESET REQUEST");
+            console.log("======================================");
+            console.log(`Email: ${user.email}`);
+            console.log(`Reset link: ${resetUrl}`);
+            console.log("Expires in: 15 minutes");
+            console.log("======================================");
+            console.log("");
+        } else {
+            try {
+                await sendBrevoEmail({
+                    to: user.email,
+                    subject: "MELODEXS CONNECT Password Reset",
+                    htmlContent: `
+                        <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+                            <h2>Reset your MELODEXS CONNECT password</h2>
 
-                    <p>We received a request to reset your CheapData password.</p>
+                            <p>We received a request to reset your MELODEXS CONNECT password.</p>
 
-                    <p>
-                        Click the button below to choose a new password:
-                    </p>
+                            <p>
+                                Click the button below to choose a new password:
+                            </p>
 
-                    <p>
-                        <a
-                            href="${resetUrl}"
-                            style="
-                                display:inline-block;
-                                padding:12px 20px;
-                                background:#2563eb;
-                                color:#ffffff;
-                                text-decoration:none;
-                                border-radius:6px;
-                            "
-                        >
-                            Reset Password
-                        </a>
-                    </p>
+                            <p>
+                                <a
+                                    href="${resetUrl}"
+                                    style="
+                                        display:inline-block;
+                                        padding:12px 20px;
+                                        background:#0251B0;
+                                        color:#ffffff;
+                                        text-decoration:none;
+                                        border-radius:6px;
+                                    "
+                                >
+                                    Reset Password
+                                </a>
+                            </p>
 
-                    <p>
-                        This link will expire in <strong>15 minutes</strong>.
-                    </p>
+                            <p>
+                                This link will expire in <strong>15 minutes</strong>.
+                            </p>
 
-                    <p>
-                        If you did not request a password reset, you can safely
-                        ignore this email.
-                    </p>
+                            <p>
+                                If you did not request a password reset, you can safely
+                                ignore this email.
+                            </p>
 
-                    <p>— CheapData</p>
-                </div>
-            `
-        });
-    } catch (emailError) {
-        console.error("Password reset email failed:", emailError.message);
+                            <p>— MELODEXS CONNECT</p>
+                        </div>
+                    `
+                });
+            } catch (emailError) {
+                console.error(
+                    "Password reset email failed:",
+                    emailError.message
+                );
 
-        db.prepare(`
-            UPDATE users
-            SET reset_token_hash = NULL,
-                reset_token_expires_at = NULL
-            WHERE id = ?
-        `).run(user.id);
+                await pool.query(`
+                    UPDATE users
+                    SET reset_token_hash = NULL,
+                        reset_token_expires_at = NULL
+                    WHERE id = $1
+                `, [user.id]);
 
-        throw new Error("Password reset email could not be sent.");
-    }
-}
+                throw new Error("Password reset email could not be sent.");
+            }
+        }
 
         return res.json({
             success: true,
@@ -3296,6 +3406,7 @@ if (process.env.NODE_ENV !== "production") {
         });
     }
 });
+
 // =========================
 // RESET PASSWORD
 // =========================
@@ -3318,52 +3429,61 @@ app.post("/api/reset-password", resetPasswordLimiter, async (req, res) => {
             });
         }
 
-        // Hash the token received from the reset link
+        // Hash the token received from the reset link.
         const tokenHash = crypto
             .createHash("sha256")
             .update(token)
             .digest("hex");
 
-        // Find a user with this token
-        const user = db.prepare(`
-            SELECT id, reset_token_hash, reset_token_expires_at
+        // Find a user with this token.
+        const userResult = await pool.query(`
+            SELECT
+                id,
+                reset_token_hash,
+                reset_token_expires_at
             FROM users
-            WHERE reset_token_hash = ?
-        `).get(tokenHash);
+            WHERE reset_token_hash = $1
+            LIMIT 1
+        `, [tokenHash]);
+
+        const user = userResult.rows[0];
 
         if (!user) {
             return res.status(400).json({
                 success: false,
-                message: "This password reset link is invalid or has already been used."
+                message:
+                    "This password reset link is invalid or has already been used."
             });
         }
 
-        // Check whether the token has expired
+        // Check whether the token has expired.
         if (
             !user.reset_token_expires_at ||
-            Date.now() > user.reset_token_expires_at
+            Date.now() > Number(user.reset_token_expires_at)
         ) {
             return res.status(400).json({
                 success: false,
-                message: "This password reset link has expired. Please request a new one."
+                message:
+                    "This password reset link has expired. Please request a new one."
             });
         }
 
-        // Hash the new password
+        // Hash the new password.
         const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-        // Save the new password and invalidate the reset token
-                db.prepare(`
+        // Save the new password and invalidate the reset token.
+        await pool.query(`
             UPDATE users
-            SET password = ?,
+            SET password = $1,
                 reset_token_hash = NULL,
                 reset_token_expires_at = NULL
-            WHERE id = ?
-        `).run(
+            WHERE id = $2
+        `, [
             hashedPassword,
             user.id
-        );
+        ]);
 
+        // Log the user out of all existing sessions.
         await new Promise((resolve, reject) => {
             sessionStore.destroyUserSessions(user.id, (error) => {
                 if (error) {
@@ -3415,11 +3535,13 @@ app.post("/api/fund-wallet", requireAuth, async (req, res) => {
         }
 
         // Find the user from the database
-        const user = db.prepare(`
+        const userResult = await pool.query(`
             SELECT id, email
             FROM users
-            WHERE id = ?
-        `).get(numericUserId);
+            WHERE id = $1
+        `, [numericUserId]);
+
+        const user = userResult.rows[0];
 
         if (!user) {
             return res.status(404).json({
@@ -3446,7 +3568,7 @@ app.post("/api/fund-wallet", requireAuth, async (req, res) => {
         // Record the funding attempt FIRST.
         // The wallet is NOT credited here.
         // Credit happens only after server-side verification/webhook validation.
-        db.prepare(`
+        await pool.query(`
             INSERT INTO transactions (
                 user_id,
                 type,
@@ -3455,15 +3577,15 @@ app.post("/api/fund-wallet", requireAuth, async (req, res) => {
                 reference,
                 description
             )
-            VALUES (?, ?, ?, ?, ?, ?)
-        `).run(
+            VALUES ($1, $2, $3, $4, $5, $6)
+        `, [
             user.id,
             "wallet_funding",
             fundingAmount,
             "pending",
             reference,
             "Paystack wallet funding"
-        );
+        ]);
 
         // Paystack expects the amount in kobo
         const amountInKobo = fundingAmount * 100;
@@ -3545,22 +3667,23 @@ app.post("/api/fund-wallet", requireAuth, async (req, res) => {
                 paystackData
             );
 
-            db.prepare(`
+            await pool.query(`
                 UPDATE transactions
-                SET status = ?,
-                    description = ?
-                WHERE reference = ?
-                  AND user_id = ?
-                  AND type = ?
-                  AND status = ?
-            `).run(
+                SET
+                    status = $1,
+                    description = $2
+                WHERE reference = $3
+                  AND user_id = $4
+                  AND type = $5
+                  AND status = $6
+            `, [
                 "failed",
                 "Paystack wallet funding initialization failed",
                 reference,
                 user.id,
                 "wallet_funding",
                 "pending"
-            );
+            ]);
 
             return res.status(400).json({
                 success: false,
@@ -3642,14 +3765,16 @@ app.post("/api/fund-wallet/verify", requireAuth, async (req, res) => {
             });
         }
 
-        const transaction = db.prepare(`
+        const transactionResult = await pool.query(`
             SELECT id, user_id, amount, status, reference
             FROM transactions
-            WHERE reference = ?
+            WHERE reference = $1
               AND type = 'wallet_funding'
-              AND user_id = ?
+              AND user_id = $2
             LIMIT 1
-        `).get(reference, req.session.userId);
+        `, [reference, req.session.userId]);
+
+        const transaction = transactionResult.rows[0];
 
         if (!transaction) {
             return res.status(404).json({
@@ -3660,7 +3785,13 @@ app.post("/api/fund-wallet/verify", requireAuth, async (req, res) => {
 
         // Idempotency: never credit an already-successful payment twice.
         if (transaction.status === "successful") {
-            const user = db.prepare(`SELECT balance FROM users WHERE id = ?`).get(req.session.userId);
+            const userResult = await pool.query(`
+                SELECT balance
+                FROM users
+                WHERE id = $1
+            `, [req.session.userId]);
+
+            const user = userResult.rows[0];
             return res.json({
                 success: true,
                 message: "Payment has already been credited.",
@@ -3704,46 +3835,91 @@ app.post("/api/fund-wallet/verify", requireAuth, async (req, res) => {
         ) {
             return res.status(400).json({
                 success: false,
-                message: "Payment could not be verified as a valid CheapData wallet funding."
+                message: "Payment could not be verified as a valid MELODEXS CONNECT wallet funding."
             });
         }
 
-        const credit = db.transaction(() => {
-            const current = db.prepare(`
+        let credited = false;
+
+        const client = await pool.connect();
+
+        try {
+            await client.query("BEGIN");
+
+            const currentResult = await client.query(`
                 SELECT status, user_id, amount
                 FROM transactions
-                WHERE id = ?
-            `).get(transaction.id);
+                WHERE id = $1
+                FOR UPDATE
+            `, [transaction.id]);
 
-            if (!current || current.status === "successful") {
-                return false;
+            const current = currentResult.rows[0];
+
+            if (!current) {
+                throw new Error("Funding transaction could not be found.");
             }
 
-            const walletUpdate = db.prepare(`
-                UPDATE users
-                SET balance = balance + ?
-                WHERE id = ?
-            `).run(current.amount, current.user_id);
+            if (current.status === "successful") {
+                await client.query("COMMIT");
+            } else {
+                const walletUpdate = await client.query(`
+                    UPDATE users
+                    SET balance = balance + $1
+                    WHERE id = $2
+                    RETURNING id, balance
+                `, [
+                    current.amount,
+                    current.user_id
+                ]);
 
-            if (walletUpdate.changes !== 1) {
-                throw new Error("Wallet could not be updated.");
+                if (walletUpdate.rowCount !== 1) {
+                    throw new Error("Wallet could not be updated.");
+                }
+
+                const transactionUpdate = await client.query(`
+                    UPDATE transactions
+                    SET
+                        status = 'successful',
+                        description = $1
+                    WHERE id = $2
+                      AND status <> 'successful'
+                `, [
+                    "Verified Paystack wallet funding",
+                    transaction.id
+                ]);
+
+                if (transactionUpdate.rowCount !== 1) {
+                    throw new Error("Funding transaction could not be completed.");
+                }
+
+                await client.query("COMMIT");
+
+                credited = true;
             }
 
-            db.prepare(`
-                UPDATE transactions
-                SET status = 'successful',
-                    description = ?
-                WHERE id = ?
-            `).run(
-                "Verified Paystack wallet funding",
-                transaction.id
-            );
+        } catch (creditError) {
+            try {
+                await client.query("ROLLBACK");
+            } catch (rollbackError) {
+                console.error(
+                    "Paystack wallet credit rollback error:",
+                    rollbackError
+                );
+            }
 
-            return true;
-        });
+            throw creditError;
 
-        const credited = credit();
-        const user = db.prepare(`SELECT balance FROM users WHERE id = ?`).get(req.session.userId);
+        } finally {
+            client.release();
+        }
+
+        const userResult = await pool.query(`
+            SELECT balance
+            FROM users
+            WHERE id = $1
+        `, [req.session.userId]);
+
+        const user = userResult.rows[0];
 
         return res.json({
             success: true,
@@ -3765,5 +3941,5 @@ app.post("/api/fund-wallet/verify", requireAuth, async (req, res) => {
 
 module.exports = {
     app,
-    db
+    sessionStore
 };

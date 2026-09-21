@@ -68,7 +68,7 @@ async function getPackages(network) {
 
 function suggestedPrice(providerCost) {
     /*
-     * CheapData markup.
+     * MELODEXS CONNECT markup.
      *
      * Change this later when we decide
      * exactly how much profit to make.
@@ -144,7 +144,7 @@ async function main() {
                 `Suggested price: ₦${sellingPrice.toFixed(2)}`
             );
             console.log(
-                `CheapData profit: ₦${profit.toFixed(2)}`
+                `MELODEXS CONNECT profit: ₦${profit.toFixed(2)}`
             );
         }
     }

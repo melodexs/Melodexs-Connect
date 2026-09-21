@@ -1,6 +1,6 @@
-# CheapData Upgrade Notes
+# MELODEXS CONNECT Upgrade Notes
 
-This package is a clean replacement copy of the current CheapData project.
+This package is a clean replacement copy of the current MELODEXS CONNECT project.
 
 ## Added
 

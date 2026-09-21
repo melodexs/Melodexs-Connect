@@ -1,8 +1,8 @@
-# CheapData Handover
+# MELODEXS CONNECT Handover
 
 ## 1. Project overview
 
-CheapData is a Node.js monorepo for a data and airtime reselling platform.
+MELODEXS CONNECT is a Node.js monorepo for a data and airtime reselling platform.
 Users register, log in, manage purchase PINs, fund a wallet, and purchase mobile
 data or airtime. Administrators can access usage summaries, user records, and
 transaction data. The backend is built with Express and SQLite; the frontend is a

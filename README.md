@@ -1,6 +1,6 @@
-# CheapData
+# MELODEXS CONNECT
 
-CheapData is a data and airtime reselling platform. Customers create accounts,
+MELODEXS CONNECT is a data and airtime reselling platform. Customers create accounts,
 fund a wallet through Paystack, and use their balance to purchase mobile data
 and airtime. The Express API handles authentication, wallet operations,
 purchases, transactions, and administration. The web workspace contains the
