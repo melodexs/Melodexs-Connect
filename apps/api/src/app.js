@@ -1005,7 +1005,20 @@ app.post("/api/login", loginLimiter, async (req, res) => {
 
             req.session.userId = user.id;
 
-            return res.json({
+            req.session.save((saveError) => {
+                if (saveError) {
+                    console.error(
+                        "Session save error:",
+                        saveError
+                    );
+
+                    return res.status(500).json({
+                        success: false,
+                        message: "Login session could not be saved"
+                    });
+                }
+
+                return res.json({
                 success: true,
                 message: "Login successful",
                 user: {
@@ -1027,6 +1040,7 @@ app.post("/api/login", loginLimiter, async (req, res) => {
                     created_at:
                         user.created_at
                 }
+                });
             });
         });
 
