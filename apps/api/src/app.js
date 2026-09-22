@@ -83,6 +83,64 @@ if (process.env.NODE_ENV === "production") {
 // =========================
 
 app.set("trust proxy", 1);
+
+// =========================
+// CORS
+// =========================
+// The frontend and API are separate Render services.
+// Credentials are enabled because authentication uses
+// an express-session cookie.
+
+app.use((req, res, next) => {
+    const origin = req.get("Origin");
+
+    if (!origin) {
+        return next();
+    }
+
+    let allowedOrigin = null;
+
+    if (process.env.CHEAPDATA_PUBLIC_URL) {
+        try {
+            allowedOrigin =
+                new URL(process.env.CHEAPDATA_PUBLIC_URL).origin;
+        } catch (error) {
+            console.error(
+                "Invalid CHEAPDATA_PUBLIC_URL:",
+                error.message
+            );
+        }
+    }
+
+    // During local development, allow the local frontend/API origin.
+    const requestOrigin =
+        `${req.protocol}://${req.get("host")}`;
+
+    const isDevelopmentOrigin =
+        process.env.NODE_ENV !== "production" &&
+        origin === requestOrigin;
+
+    if (origin === allowedOrigin || isDevelopmentOrigin) {
+        res.setHeader("Access-Control-Allow-Origin", origin);
+        res.setHeader("Access-Control-Allow-Credentials", "true");
+        res.setHeader(
+            "Access-Control-Allow-Headers",
+            "Content-Type"
+        );
+        res.setHeader(
+            "Access-Control-Allow-Methods",
+            "GET,POST,PUT,PATCH,DELETE,OPTIONS"
+        );
+        res.setHeader("Vary", "Origin");
+
+        if (req.method === "OPTIONS") {
+            return res.sendStatus(204);
+        }
+    }
+
+    next();
+});
+
 // =========================
 // RATE LIMITING
 // =========================

@@ -138,6 +138,7 @@
     }
 </style>
 
+    <script src="api.js"></script>
 </head>
 
 <body>
@@ -188,14 +189,13 @@
         max="100000"
         placeholder="Enter amount">
 
-    <button onclick="fundWallet()">
-        Add Test Funds
+    <button onclick="window.location.href='fund-wallet.html'">
+        Fund Wallet with Paystack
     </button>
 
     <div class="test-note">
-        Development mode: this button only simulates a successful
-        wallet credit. It does not move real money or communicate
-        with a bank/payment provider.
+        You will be redirected to the secure wallet funding page
+        to complete your payment through Paystack.
     </div>
 
 </div>
@@ -231,92 +231,7 @@ function displayBalance() {
 displayBalance();
 
 
-async function fundWallet() {
 
-    const amount =
-        Number(
-            document.getElementById("amount").value
-        );
-
-
-    if (!amount || amount < 100 || amount > 100000) {
-
-        showMessage(
-            "Enter an amount between ₦100 and ₦100,000.",
-            "error"
-        );
-
-        return;
-    }
-
-
-    try {
-
-        const response =
-            await fetch("/api/test-fund", {
-
-                method: "POST",
-
-                headers: {
-                    "Content-Type": "application/json"
-                },
-
-                body: JSON.stringify({
-                    amount: amount
-                })
-
-            });
-
-
-        const data =
-            await response.json();
-
-
-        if (!response.ok) {
-
-            showMessage(
-                data.message || "Funding failed.",
-                "error"
-            );
-
-            return;
-        }
-
-
-        user.balance =
-            data.balance;
-
-
-        localStorage.setItem(
-            "cheapdataUser",
-            JSON.stringify(user)
-        );
-
-
-        displayBalance();
-
-
-        document.getElementById("amount").value = "";
-
-
-        showMessage(
-            "Test funds added successfully.",
-            "success"
-        );
-
-
-    } catch (error) {
-
-        console.error(error);
-
-        showMessage(
-            "Unable to connect to the server.",
-            "error"
-        );
-
-    }
-
-}
 
 
 function showMessage(text, type) {
