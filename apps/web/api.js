@@ -12,7 +12,7 @@
      * const API_BASE_URL = "https://melodexs-connect-api.onrender.com"\;
      */
 
-    const API_BASE_URL = "";
+    const API_BASE_URL = "https://melodexs-connect-api.onrender.com";
 
     const originalFetch = window.fetch.bind(window);
 
