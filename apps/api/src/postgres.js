@@ -13,7 +13,7 @@ const pool = new Pool({
     },
     max: 10,
     idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 10000
+    connectionTimeoutMillis: 30000
 });
 
 pool.on("error", (error) => {
