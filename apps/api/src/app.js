@@ -417,9 +417,18 @@ app.use(
 
         cookie: {
             httpOnly: true,
-            sameSite: "lax",
+
+            // The frontend and API are different origins.
+            // Allow the session cookie to be sent with
+            // cross-origin frontend requests in production.
+            sameSite:
+                process.env.NODE_ENV === "production"
+                    ? "none"
+                    : "lax",
+
             secure:
                 process.env.NODE_ENV === "production",
+
             maxAge:
                 1000 * 60 * 60 * 24
         }
