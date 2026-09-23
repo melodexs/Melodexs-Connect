@@ -2481,6 +2481,9 @@ try {
                     {
                         service_type: "airtime",
 
+                        reference:
+                            localReference,
+
                         provider_code:
                             providerCode,
 
