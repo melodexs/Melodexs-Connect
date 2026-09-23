@@ -667,9 +667,19 @@ app.get("/api/session", async (req, res) => {
 // =========================
 
 function generateReference(prefix) {
-    return `${prefix}-${Date.now()}-${Math.floor(
-        Math.random() * 10000
-    )}`;
+    const now = new Date();
+
+    const lagosDate = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Africa/Lagos",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit"
+    }).format(now).replace(/-/g, "");
+
+    const timestamp = Date.now();
+    const random = Math.floor(Math.random() * 10000);
+
+    return `${lagosDate}-${prefix}-${timestamp}-${random}`;
 }
 
 function isValidNigerianPhone(phone) {
