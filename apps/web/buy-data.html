@@ -494,7 +494,7 @@
              * keeping the original item.plan for the purchase request.
              */
             const customerPlanName = String(item.plan || "")
-                .replace(/^N\s*[\d,]+(?:\.\d+)?\s+/i, "")
+                .replace(/\bN\s*[\d,]+(?:\.\d+)?\b\s*/gi, "")
                 .trim();
 
             const displayPlan = customerPlanName || item.plan;
