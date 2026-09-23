@@ -16,6 +16,7 @@ async function getUserById(userId) {
             virtual_bank_name,
             kyc_status,
             is_admin,
+            purchase_pin,
             created_at
         FROM users
         WHERE id = $1
