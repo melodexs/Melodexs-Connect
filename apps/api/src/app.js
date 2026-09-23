@@ -666,20 +666,28 @@ app.get("/api/session", async (req, res) => {
 // HELPER FUNCTIONS
 // =========================
 
-function generateReference(prefix) {
+function generateReference() {
     const now = new Date();
 
-    const lagosDate = new Intl.DateTimeFormat("en-CA", {
-        timeZone: "Africa/Lagos",
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit"
-    }).format(now).replace(/-/g, "");
+    const lagos = new Date(
+        now.toLocaleString("en-US", {
+            timeZone: "Africa/Lagos"
+        })
+    );
 
-    const timestamp = Date.now();
-    const random = Math.floor(Math.random() * 10000);
+    const pad = (n) => String(n).padStart(2, "0");
 
-    return `${lagosDate}-${prefix}-${timestamp}-${random}`;
+    const YYYY = lagos.getFullYear();
+    const MM = pad(lagos.getMonth() + 1);
+    const DD = pad(lagos.getDate());
+    const HH = pad(lagos.getHours());
+    const II = pad(lagos.getMinutes());
+
+    const suffix = Math.random()
+        .toString(36)
+        .substring(2, 12);
+
+    return `${YYYY}${MM}${DD}${HH}${II}${suffix}`;
 }
 
 function isValidNigerianPhone(phone) {
