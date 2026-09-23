@@ -8,7 +8,7 @@ const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
 const { WEB_PUBLIC_DIR } = require("./config");
 const { pool } = require("./postgres");
-const { requireAuth, requireAdmin, getAdmin } = require("./auth");
+const { requireAuth, requireAdmin, getAdmin, getUserById } = require("./auth");
 
 // =========================
 // BREVO EMAIL

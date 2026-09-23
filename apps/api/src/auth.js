@@ -1,5 +1,30 @@
 const { pool } = require("./postgres");
 
+async function getUserById(userId) {
+    if (!userId) {
+        return null;
+    }
+
+    const result = await pool.query(`
+        SELECT
+            id,
+            name,
+            email,
+            phone,
+            balance,
+            virtual_account_number,
+            virtual_bank_name,
+            kyc_status,
+            is_admin,
+            created_at
+        FROM users
+        WHERE id = $1
+        LIMIT 1
+    `, [userId]);
+
+    return result.rows[0] || null;
+}
+
 function requireAuth(req, res, next) {
     if (!req.session || !req.session.userId) {
         return res.status(401).json({
@@ -59,5 +84,6 @@ async function requireAdmin(req, res, next) {
 module.exports = {
     requireAuth,
     requireAdmin,
-    getAdmin
+    getAdmin,
+    getUserById
 };
