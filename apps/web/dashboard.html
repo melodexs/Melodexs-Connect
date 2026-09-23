@@ -872,8 +872,10 @@ async function loadUser() {
         }
 
 
-        const updatedUser =
-            data.user;
+ const updatedUser = {
+    ...data.user,
+    has_purchase_pin: data.has_purchase_pin
+};
 
 
         // ==================================
