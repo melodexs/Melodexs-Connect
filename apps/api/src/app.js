@@ -427,6 +427,89 @@ app.use(
 );
 
 // =========================
+// CORS
+// =========================
+
+app.use((req, res, next) => {
+    const origin = req.get("Origin");
+
+    // Requests without an Origin header do not need CORS handling.
+    if (!origin) {
+        return next();
+    }
+
+    const allowedOrigins = new Set([
+        "https://melodexs-connect.onrender.com"
+    ]);
+
+    // Also allow the configured public/frontend URL.
+    if (process.env.CHEAPDATA_PUBLIC_URL) {
+        try {
+            allowedOrigins.add(
+                new URL(
+                    process.env.CHEAPDATA_PUBLIC_URL
+                ).origin
+            );
+        } catch (error) {
+            console.error(
+                "Invalid CHEAPDATA_PUBLIC_URL:",
+                error.message
+            );
+        }
+    }
+
+    // Allow the local API origin during development.
+    if (process.env.NODE_ENV !== "production") {
+        allowedOrigins.add(
+            `${req.protocol}://${req.get("host")}`
+        );
+    }
+
+    if (!allowedOrigins.has(origin)) {
+        console.warn(
+            `CORS blocked request from origin: ${origin}`
+        );
+
+        return res.status(403).json({
+            success: false,
+            message: "CORS origin not allowed"
+        });
+    }
+
+    res.setHeader(
+        "Access-Control-Allow-Origin",
+        origin
+    );
+
+    res.setHeader(
+        "Access-Control-Allow-Credentials",
+        "true"
+    );
+
+    res.setHeader(
+        "Access-Control-Allow-Headers",
+        "Content-Type, Accept"
+    );
+
+    res.setHeader(
+        "Access-Control-Allow-Methods",
+        "GET,POST,PUT,PATCH,DELETE,OPTIONS"
+    );
+
+    res.setHeader(
+        "Vary",
+        "Origin"
+    );
+
+    // Browser preflight request.
+    if (req.method === "OPTIONS") {
+        return res.sendStatus(204);
+    }
+
+    next();
+});
+
+// =========================
 // CSRF / ORIGIN PROTECTION
 // =========================
 
