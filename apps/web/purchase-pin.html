@@ -343,7 +343,7 @@
                 JSON.stringify(freshUser)
             );
 
-            if (freshUser.purchase_pin) {
+            if (data.has_purchase_pin) {
                 document
                     .getElementById("setSection")
                     .classList.add("hidden");
