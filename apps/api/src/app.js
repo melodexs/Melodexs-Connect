@@ -1691,6 +1691,9 @@ app.post("/api/purchase-data", requireAuth, async (req, res) => {
                     {
                         service_type: "data",
 
+                        reference:
+                            localReference,
+
                         provider_code:
                             selectedPlan.provider_code,
 
