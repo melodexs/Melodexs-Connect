@@ -83,64 +83,6 @@ if (process.env.NODE_ENV === "production") {
 // =========================
 
 app.set("trust proxy", 1);
-
-// =========================
-// CORS
-// =========================
-// The frontend and API are separate Render services.
-// Credentials are enabled because authentication uses
-// an express-session cookie.
-
-app.use((req, res, next) => {
-    const origin = req.get("Origin");
-
-    if (!origin) {
-        return next();
-    }
-
-    let allowedOrigin = null;
-
-    if (process.env.CHEAPDATA_PUBLIC_URL) {
-        try {
-            allowedOrigin =
-                new URL(process.env.CHEAPDATA_PUBLIC_URL).origin;
-        } catch (error) {
-            console.error(
-                "Invalid CHEAPDATA_PUBLIC_URL:",
-                error.message
-            );
-        }
-    }
-
-    // During local development, allow the local frontend/API origin.
-    const requestOrigin =
-        `${req.protocol}://${req.get("host")}`;
-
-    const isDevelopmentOrigin =
-        process.env.NODE_ENV !== "production" &&
-        origin === requestOrigin;
-
-    if (origin === allowedOrigin || isDevelopmentOrigin) {
-        res.setHeader("Access-Control-Allow-Origin", origin);
-        res.setHeader("Access-Control-Allow-Credentials", "true");
-        res.setHeader(
-            "Access-Control-Allow-Headers",
-            "Content-Type"
-        );
-        res.setHeader(
-            "Access-Control-Allow-Methods",
-            "GET,POST,PUT,PATCH,DELETE,OPTIONS"
-        );
-        res.setHeader("Vary", "Origin");
-
-        if (req.method === "OPTIONS") {
-            return res.sendStatus(204);
-        }
-    }
-
-    next();
-});
-
 // =========================
 // RATE LIMITING
 // =========================
@@ -559,8 +501,15 @@ app.use(express.static(WEB_PUBLIC_DIR));
 // =========================
 // SESSION CHECK
 // =========================
-
 app.get("/api/session", async (req, res) => {
+    // Authentication/session responses must never be cached.
+    res.setHeader(
+        "Cache-Control",
+        "no-store, no-cache, must-revalidate, proxy-revalidate"
+    );
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+
     try {
         if (!req.session || !req.session.userId) {
             return res.json({
@@ -571,24 +520,7 @@ app.get("/api/session", async (req, res) => {
             });
         }
 
-        const result = await pool.query(`
-            SELECT
-                id,
-                name,
-                email,
-                phone,
-                balance,
-                virtual_account_number,
-                virtual_bank_name,
-                kyc_status,
-                is_admin,
-                purchase_pin,
-                created_at
-            FROM users
-            WHERE id = $1
-        `, [req.session.userId]);
-
-        const user = result.rows[0];
+        const user = await getUserById(req.session.userId);
 
         if (!user) {
             req.session.destroy(() => {});
@@ -601,105 +533,39 @@ app.get("/api/session", async (req, res) => {
             });
         }
 
-        const hasPurchasePin = Boolean(
-            user.purchase_pin
-        );
-
-        delete user.purchase_pin;
-
         return res.json({
             success: true,
             loggedIn: true,
-            user,
-            has_purchase_pin: hasPurchasePin
+            user: {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+                phone: user.phone,
+                balance: user.balance,
+                virtual_account_number:
+                    user.virtual_account_number,
+                virtual_bank_name:
+                    user.virtual_bank_name,
+                kyc_status:
+                    user.kyc_status,
+                is_admin:
+                    user.is_admin,
+                has_purchase_pin:
+                    Boolean(user.purchase_pin),
+                created_at:
+                    user.created_at
+            },
+            has_purchase_pin:
+                Boolean(user.purchase_pin)
         });
-
     } catch (error) {
-        console.error(
-            "Session check error:",
-            error
-        );
+        console.error("Session check error:", error);
 
         return res.status(500).json({
             success: false,
             loggedIn: false,
-            message: "Could not check session"
-        });
-    }
-});
-
-// =========================
-// GET USER
-// =========================
-
-app.get("/api/user/:id", requireAuth, async (req, res) => {
-    try {
-        const requestedUserId = Number(req.params.id);
-        const sessionUserId = Number(req.session.userId);
-
-        if (
-            !Number.isInteger(requestedUserId) ||
-            requestedUserId <= 0
-        ) {
-            return res.status(400).json({
-                success: false,
-                message: "Invalid user ID"
-            });
-        }
-
-        // A logged-in user may only request their own account.
-        if (requestedUserId !== sessionUserId) {
-            return res.status(403).json({
-                success: false,
-                message: "Access denied"
-            });
-        }
-
-        const result = await pool.query(`
-            SELECT
-                id,
-                name,
-                email,
-                phone,
-                balance,
-                virtual_account_number,
-                virtual_bank_name,
-                kyc_status,
-                is_admin,
-                purchase_pin,
-                created_at
-            FROM users
-            WHERE id = $1
-            LIMIT 1
-        `, [sessionUserId]);
-
-        const user = result.rows[0];
-
-        if (!user) {
-            req.session.destroy(() => {});
-
-            return res.status(404).json({
-                success: false,
-                message: "User not found"
-            });
-        }
-
-        const hasPurchasePin = Boolean(user.purchase_pin);
-
-        delete user.purchase_pin;
-
-        return res.json({
-            success: true,
-            user,
-            has_purchase_pin: hasPurchasePin
-        });
-
-    } catch (error) {
-        console.error("Get user error:", error);
-
-        return res.status(500).json({
-            success: false,
-            message: "Could not retrieve user"
+            user: null,
+            message: "Unable to check session"
         });
     }
 });
@@ -1005,20 +871,7 @@ app.post("/api/login", loginLimiter, async (req, res) => {
 
             req.session.userId = user.id;
 
-            req.session.save((saveError) => {
-                if (saveError) {
-                    console.error(
-                        "Session save error:",
-                        saveError
-                    );
-
-                    return res.status(500).json({
-                        success: false,
-                        message: "Login session could not be saved"
-                    });
-                }
-
-                return res.json({
+            return res.json({
                 success: true,
                 message: "Login successful",
                 user: {
@@ -1040,7 +893,6 @@ app.post("/api/login", loginLimiter, async (req, res) => {
                     created_at:
                         user.created_at
                 }
-                });
             });
         });
 
