@@ -1917,6 +1917,19 @@ app.post("/api/purchase-data", requireAuth, async (req, res) => {
         // CHECK WISESUB RESULT
         // =========================
 
+        console.log("========== WISESUB DATA TEST RESULT ==========");
+        console.log("WiseSub environment:", environment);
+        console.log("WiseSub endpoint:", `${baseUrl}/purchase`);
+        console.log("WiseSub data request:", JSON.stringify({
+            service_type: "data",
+            reference: localReference,
+            provider_code: selectedPlan.provider_code,
+            package_code: selectedPlan.provider_package_code,
+            recipient: providerRecipient
+        }));
+        console.log("WiseSub data response:", JSON.stringify(wiseSubResponse.data));
+        console.log("========== END WISESUB DATA TEST RESULT ==========");
+
         const providerData =
             wiseSubResponse.data;
 
@@ -2670,6 +2683,19 @@ try {
         // =========================
         // CHECK WISESUB RESPONSE
         // =========================
+
+        console.log("========== WISESUB AIRTIME TEST RESULT ==========");
+        console.log("WiseSub environment:", environment);
+        console.log("WiseSub endpoint:", `${baseUrl}/purchase`);
+        console.log("WiseSub airtime request:", JSON.stringify({
+            service_type: "airtime",
+            reference: localReference,
+            provider_code: providerCode,
+            recipient: providerRecipient,
+            amount: airtimeAmount
+        }));
+        console.log("WiseSub airtime response:", JSON.stringify(wiseSubResponse.data));
+        console.log("========== END WISESUB AIRTIME TEST RESULT ==========");
 
         const providerData =
             wiseSubResponse.data;
