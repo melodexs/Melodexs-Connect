@@ -2,7 +2,8 @@ const { pool } = require("../postgres");
 const bcrypt = require("bcryptjs");
 const { generateReference } = require("../utils/references");
 const { isValidNigerianPhone } = require("../utils/validation");
-const { purchaseWithWiseSub } = require("../services/wisesub.service");
+const wisesubService = require("../services/wisesub.service");
+const { reserveDebitAndCreateTransaction } = require("../services/wallet.service");
 
 async function purchaseData(req, res) {
     try {
@@ -78,21 +79,7 @@ async function purchaseData(req, res) {
         const localReference = generateReference("DATA");
 
         try {
-            const client = await pool.connect();
-            try {
-                await client.query("BEGIN");
-
-                const debitResult = await client.query(`UPDATE users SET balance = balance - $1 WHERE id = $2 AND balance >= $1 RETURNING id, balance`, [sellingPrice, userId]);
-
-                if (debitResult.rowCount !== 1) throw new Error("INSUFFICIENT_BALANCE");
-
-                await client.query(`INSERT INTO transactions (user_id, type, amount, status, reference, description) VALUES ($1,$2,$3,$4,$5,$6)`, [userId, "debit", sellingPrice, "pending", localReference, `${network} ${plan} data purchase for ${phone} | Pending WiseSub confirmation`]);
-
-                await client.query("COMMIT");
-            } catch (transactionError) {
-                try { await client.query("ROLLBACK"); } catch (rollbackError) { console.error("Data purchase reservation rollback error:", rollbackError); }
-                throw transactionError;
-            } finally { client.release(); }
+            await reserveDebitAndCreateTransaction(userId, sellingPrice, localReference, `${network} ${plan} data purchase for ${phone} | Pending WiseSub confirmation`);
         } catch (reserveError) {
             if (reserveError.message === "INSUFFICIENT_BALANCE") return res.status(400).json({ success: false, message: "Insufficient wallet balance" });
             console.error("Could not reserve wallet for data purchase:", reserveError);
@@ -104,18 +91,11 @@ async function purchaseData(req, res) {
         let wiseSubResponse;
 
         try {
-            wiseSubResponse = await purchaseWithWiseSub({
-                baseUrl,
-                apiKey,
-                apiSecret,
-                environment,
-                body: {
-                    service_type: "data",
-                    reference: localReference,
-                    provider_code: selectedPlan.provider_code,
-                    package_code: selectedPlan.provider_package_code,
-                    recipient: providerRecipient
-                }
+            wiseSubResponse = await wisesubService.purchaseData({
+                reference: localReference,
+                provider_code: selectedPlan.provider_code,
+                package_code: selectedPlan.provider_package_code,
+                recipient: providerRecipient
             });
         } catch (providerError) {
             console.error("WiseSub data purchase request failed.");
@@ -259,17 +239,7 @@ async function purchaseAirtime(req, res) {
         const localReference = generateReference("AIRTIME");
 
         try {
-            const client = await pool.connect();
-            try {
-                await client.query("BEGIN");
-                const debitResult = await client.query(`UPDATE users SET balance = balance - $1 WHERE id = $2 AND balance >= $1 RETURNING id, balance`, [airtimeAmount, userId]);
-                if (debitResult.rowCount !== 1) throw new Error("INSUFFICIENT_BALANCE");
-                await client.query(`INSERT INTO transactions (user_id, type, amount, status, reference, description) VALUES ($1,$2,$3,$4,$5,$6)`, [userId, "debit", airtimeAmount, "pending", localReference, `${network} airtime purchase for ${phone} | Pending WiseSub confirmation`]);
-                await client.query("COMMIT");
-            } catch (transactionError) {
-                try { await client.query("ROLLBACK"); } catch (rollbackError) { console.error("Airtime wallet reservation rollback error:", rollbackError); }
-                throw transactionError;
-            } finally { client.release(); }
+            await reserveDebitAndCreateTransaction(userId, airtimeAmount, localReference, `${network} airtime purchase for ${phone} | Pending WiseSub confirmation`);
         } catch (reserveError) {
             if (reserveError.message === "INSUFFICIENT_BALANCE") return res.status(400).json({ success: false, message: "Insufficient wallet balance" });
             console.error("Could not reserve wallet for airtime purchase:", reserveError);
@@ -281,7 +251,7 @@ async function purchaseAirtime(req, res) {
         let wiseSubResponse;
 
         try {
-            wiseSubResponse = await purchaseWithWiseSub({ baseUrl, apiKey, apiSecret, environment, body: { service_type: "airtime", reference: localReference, provider_code: providerCode, recipient: providerRecipient, amount: airtimeAmount } });
+            wiseSubResponse = await wisesubService.purchaseAirtime({ reference: localReference, provider_code: providerCode, recipient: providerRecipient, amount: airtimeAmount });
         } catch (providerError) {
             console.error("WiseSub airtime purchase request failed.");
             if (providerError.response) {
