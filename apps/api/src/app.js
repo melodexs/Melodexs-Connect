@@ -1917,53 +1917,6 @@ app.post("/api/purchase-data", requireAuth, async (req, res) => {
         // CHECK WISESUB RESULT
         // =========================
 
-        console.log("========== WISESUB DATA TEST RESULT ==========");
-        console.log("WiseSub environment:", environment);
-        console.log("WiseSub endpoint:", `${baseUrl}/purchase`);
-        console.log("WiseSub data request:", JSON.stringify({
-            service_type: "data",
-            reference: localReference,
-            provider_code: selectedPlan.provider_code,
-            package_code: selectedPlan.provider_package_code,
-            recipient: providerRecipient
-        }));
-        console.log("WiseSub data response:", JSON.stringify(wiseSubResponse.data));
-        console.log("========== END WISESUB DATA TEST RESULT ==========");
-
-        console.log("========== WISESUB STATUS TEST ==========");
-
-        try {
-            const statusResponse = await axios.get(
-                `${baseUrl}/status`,
-                {
-                    params: {
-                        reference: localReference
-                    },
-                    headers: {
-                        Authorization: `Bearer ${apiKey}`,
-                        "X-API-Secret": apiSecret,
-                        "X-Environment": environment,
-                        Accept: "application/json"
-                    },
-                    timeout: 30000
-                }
-            );
-
-            console.log(
-                "WiseSub status response:",
-                JSON.stringify(statusResponse.data)
-            );
-        } catch (statusError) {
-            console.error(
-                "WiseSub status test error:",
-                statusError.response
-                    ? JSON.stringify(statusError.response.data)
-                    : statusError.message
-            );
-        }
-
-        console.log("========== END WISESUB STATUS TEST ==========");
-
         const providerData =
             wiseSubResponse.data;
 
@@ -2717,19 +2670,6 @@ try {
         // =========================
         // CHECK WISESUB RESPONSE
         // =========================
-
-        console.log("========== WISESUB AIRTIME TEST RESULT ==========");
-        console.log("WiseSub environment:", environment);
-        console.log("WiseSub endpoint:", `${baseUrl}/purchase`);
-        console.log("WiseSub airtime request:", JSON.stringify({
-            service_type: "airtime",
-            reference: localReference,
-            provider_code: providerCode,
-            recipient: providerRecipient,
-            amount: airtimeAmount
-        }));
-        console.log("WiseSub airtime response:", JSON.stringify(wiseSubResponse.data));
-        console.log("========== END WISESUB AIRTIME TEST RESULT ==========");
 
         const providerData =
             wiseSubResponse.data;
