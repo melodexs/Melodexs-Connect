@@ -117,3 +117,110 @@ frontend code, documentation, logs, or commits.
 ### Wallet funding verification
 
 Wallet funding uses a two-step flow. `/api/fund-wallet` initializes Paystack and records a pending transaction. After checkout, the frontend sends the returned reference to `/api/fund-wallet/verify`; the server verifies the payment with Paystack before crediting the wallet.
+
+## Backend Architecture
+
+MELODEXS CONNECT uses a modular Express/PostgreSQL backend.
+
+The API is organized into:
+
+```text
+apps/api/src/
+├── app.js
+├── server.js
+├── config/
+├── routes/
+├── controllers/
+├── services/
+├── middleware/
+├── utils/
+└── database/session modules
+```
+
+### Responsibilities
+
+* `app.js` — Express application setup, global middleware, session configuration, webhook registration, route mounting, and centralized application setup.
+* `routes/` — Defines API endpoints, HTTP methods, and middleware.
+* `controllers/` — Handles HTTP requests/responses and coordinates application services.
+* `services/` — Contains reusable business logic such as wallet operations, Paystack integration, and WiseSub integration.
+* `middleware/` — Authentication, authorization, and other request middleware.
+* `utils/` — Small reusable helpers such as reference generation, pricing, and validation.
+* PostgreSQL/session modules — Database access and persistent session storage.
+
+The backend is intentionally separated into modules so that payment, wallet, authentication, and telecom-service logic does not become concentrated in `app.js`.
+
+## Payment Integrations
+
+### Paystack
+
+Paystack is used for wallet funding.
+
+The production flow is:
+
+```text
+Customer
+	↓
+MELODEXS CONNECT wallet funding
+	↓
+Paystack checkout
+	↓
+Paystack callback
+	↓
+Server-side transaction verification
+	↓
+Paystack webhook
+	↓
+Wallet credited
+```
+
+Wallet crediting is performed only after server-side validation.
+
+The Paystack webhook must remain registered before `express.json()` because the webhook signature is verified against the original raw request body.
+
+The webhook validates the Paystack signature and checks the transaction reference, payment status, currency, amount, and user metadata before crediting a wallet.
+
+Wallet funding is idempotent and uses PostgreSQL transaction/row-locking logic to prevent duplicate credits.
+
+Never place a Paystack secret key in source code, frontend code, Git, or the README.
+
+### WiseSub
+
+WiseSub provides the telecom services used by MELODEXS CONNECT, including:
+
+* Data purchases
+* Airtime purchases
+
+The environment is controlled through:
+
+```text
+WISESUB_ENVIRONMENT
+```
+
+Use `test` for sandbox testing and `live` for production.
+
+WiseSub production requests use the configured partner API base URL and the appropriate production credentials stored in the deployment environment.
+
+Never place WiseSub API keys or API secrets in source code, frontend code, Git, or the README.
+
+## Environment Variables
+
+The repository contains `.env.example` as a template.
+
+Real secrets must never be committed to Git.
+
+Typical variables include:
+
+```text
+NODE_ENV
+PORT
+DATABASE_URL
+SESSION_SECRET
+PAYSTACK_SECRET_KEY
+CHEAPDATA_PUBLIC_URL
+WISESUB_BASE_URL
+WISESUB_API_KEY
+WISESUB_API_SECRET
+WISESUB_ENVIRONMENT
+CHEAPDATA_MARKUP_PE
+```
+
