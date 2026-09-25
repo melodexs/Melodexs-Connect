@@ -1930,6 +1930,40 @@ app.post("/api/purchase-data", requireAuth, async (req, res) => {
         console.log("WiseSub data response:", JSON.stringify(wiseSubResponse.data));
         console.log("========== END WISESUB DATA TEST RESULT ==========");
 
+        console.log("========== WISESUB STATUS TEST ==========");
+
+        try {
+            const statusResponse = await axios.get(
+                `${baseUrl}/status`,
+                {
+                    params: {
+                        reference: localReference
+                    },
+                    headers: {
+                        Authorization: `Bearer ${apiKey}`,
+                        "X-API-Secret": apiSecret,
+                        "X-Environment": environment,
+                        Accept: "application/json"
+                    },
+                    timeout: 30000
+                }
+            );
+
+            console.log(
+                "WiseSub status response:",
+                JSON.stringify(statusResponse.data)
+            );
+        } catch (statusError) {
+            console.error(
+                "WiseSub status test error:",
+                statusError.response
+                    ? JSON.stringify(statusError.response.data)
+                    : statusError.message
+            );
+        }
+
+        console.log("========== END WISESUB STATUS TEST ==========");
+
         const providerData =
             wiseSubResponse.data;
 
