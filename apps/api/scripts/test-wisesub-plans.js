@@ -1,11 +1,12 @@
 const path = require("path");
-const axios = require("axios");
 const dotenv = require("dotenv");
 
 // Always load the .env file from the MELODEXS CONNECT project root.
 dotenv.config({
     path: path.resolve(__dirname, "../../../.env")
 });
+
+const { getDataPackages } = require("../src/services/wisesub.service");
 
 const BASE_URL = process.env.WISESUB_BASE_URL;
 const API_KEY = process.env.WISESUB_API_KEY;
@@ -24,17 +25,8 @@ if (!API_KEY || !API_SECRET) {
 
 async function getPlans(network) {
     try {
-        const response = await axios.get(`${BASE_URL}/packages`, {
-            params: {
-                service_type: "data",
-                provider_code: network
-            },
-            headers: {
-                Authorization: `Bearer ${API_KEY}`,
-                "X-API-Secret": API_SECRET,
-                "X-Environment": ENVIRONMENT,
-                Accept: "application/json"
-            },
+        const response = await getDataPackages(network, {
+            baseUrl: BASE_URL,
             timeout: 15000
         });
 

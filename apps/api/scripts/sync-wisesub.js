@@ -1,10 +1,9 @@
-const axios = require("axios");
+const {
+    getWiseSubBaseUrl,
+    getDataPackages
+} = require("../src/services/wisesub.service");
 const { pool } = require("../src/postgres");
 require("dotenv").config();
-
-const BASE_URL =
-    process.env.WISESUB_BASE_URL ||
-    "https://app.wisesub.com.ng/api/partner/v1";
 
 const NETWORKS = [
     { name: "MTN", code: "mtn" },
@@ -12,16 +11,6 @@ const NETWORKS = [
     { name: "Glo", code: "glo" },
     { name: "9mobile", code: "9mobile" }
 ];
-
-function getHeaders() {
-    return {
-        Authorization: `Bearer ${process.env.WISESUB_API_KEY || ""}`,
-        "X-API-Secret": process.env.WISESUB_API_SECRET || "",
-        "X-Environment":
-            process.env.WISESUB_ENVIRONMENT || "test",
-        Accept: "application/json"
-    };
-}
 
 /*
  * MELODEXS CONNECT pricing:
@@ -174,17 +163,7 @@ async function syncNetwork(network) {
     );
 
     try {
-        const response = await axios.get(
-            `${BASE_URL}/packages`,
-            {
-                params: {
-                    service_type: "data",
-                    provider_code: network.code
-                },
-                headers: getHeaders(),
-                timeout: 15000
-            }
-        );
+        const response = await getDataPackages(network.code);
 
         const packages =
             response.data?.data?.packages || [];
@@ -541,7 +520,7 @@ async function main() {
 
     console.log(
         "Base URL:",
-        BASE_URL
+        getWiseSubBaseUrl()
     );
 
     console.log(

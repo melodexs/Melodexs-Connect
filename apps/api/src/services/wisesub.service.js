@@ -1,5 +1,70 @@
 const axios = require("axios");
 
+function getWiseSubBaseUrl() {
+    return process.env.WISESUB_BASE_URL ||
+        "https://app.wisesub.com.ng/api/partner/v1";
+}
+
+function getWiseSubHeaders({
+    defaultEnvironment = true,
+    emptyMissingCredentials = true
+} = {}) {
+    const environment = defaultEnvironment
+        ? process.env.WISESUB_ENVIRONMENT || "test"
+        : process.env.WISESUB_ENVIRONMENT;
+
+    const apiKey = emptyMissingCredentials
+        ? process.env.WISESUB_API_KEY || ""
+        : process.env.WISESUB_API_KEY;
+    const apiSecret = emptyMissingCredentials
+        ? process.env.WISESUB_API_SECRET || ""
+        : process.env.WISESUB_API_SECRET;
+
+    return {
+        Authorization: `Bearer ${apiKey}`,
+        "X-API-Secret": apiSecret,
+        "X-Environment": environment,
+        Accept: "application/json"
+    };
+}
+
+function getRequestBaseUrl(options) {
+    return Object.prototype.hasOwnProperty.call(options, "baseUrl")
+        ? options.baseUrl
+        : getWiseSubBaseUrl();
+}
+
+async function getServices(options = {}) {
+    return axios.get(
+        `${getRequestBaseUrl(options)}/services`,
+        {
+            headers: getWiseSubHeaders(options)
+        }
+    );
+}
+
+async function getDataPackages(providerCode, options = {}) {
+    const requestOptions = {
+        params: {
+            service_type: "data",
+            provider_code: providerCode
+        },
+        headers: getWiseSubHeaders(options)
+    };
+    const timeout = Object.prototype.hasOwnProperty.call(options, "timeout")
+        ? options.timeout
+        : 15000;
+
+    if (timeout !== null) {
+        requestOptions.timeout = timeout;
+    }
+
+    return axios.get(
+        `${getRequestBaseUrl(options)}/packages`,
+        requestOptions
+    );
+}
+
 function getWiseSubConfig() {
     const baseUrl = process.env.WISESUB_BASE_URL;
     const apiKey = process.env.WISESUB_API_KEY;
@@ -89,6 +154,9 @@ async function purchaseAirtime({
 }
 
 module.exports = {
+    getWiseSubBaseUrl,
+    getServices,
+    getDataPackages,
     purchaseData,
     purchaseAirtime
 };
