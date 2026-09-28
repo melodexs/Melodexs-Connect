@@ -1,19 +1,13 @@
 require("dotenv").config();
-const axios = require("axios");
+const { getServices } = require("../src/services/wisesub.service");
 
 async function testWiseSub() {
     try {
-        const response = await axios.get(
-            `${process.env.WISESUB_BASE_URL}/services`,
-            {
-                headers: {
-                    Authorization: `Bearer ${process.env.WISESUB_API_KEY}`,
-                    "X-API-Secret": process.env.WISESUB_API_SECRET,
-                    "X-Environment": process.env.WISESUB_ENVIRONMENT,
-                    Accept: "application/json"
-                }
-            }
-        );
+        const response = await getServices({
+            baseUrl: process.env.WISESUB_BASE_URL,
+            defaultEnvironment: false,
+            emptyMissingCredentials: false
+        });
 
         console.log("✅ WiseSub connection successful!");
         console.log(JSON.stringify(response.data, null, 2));

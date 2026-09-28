@@ -1,11 +1,12 @@
 const path = require("path");
-const axios = require("axios");
 const dotenv = require("dotenv");
 
 // Always load the .env file from the MELODEXS CONNECT project root.
 dotenv.config({
     path: path.resolve(__dirname, "../../../.env")
 });
+
+const { purchaseData } = require("../src/services/wisesub.service");
 
 const BASE_URL = process.env.WISESUB_BASE_URL;
 const API_KEY = process.env.WISESUB_API_KEY;
@@ -30,25 +31,11 @@ async function testPurchase() {
     }
 
     try {
-        const response = await axios.post(
-            `${BASE_URL}/purchase`,
-            {
-                service_type: "data",
-                provider_code: "mtn",
-                package_code: "mtn-10mb-100",
-                recipient: "08011111111"
-            },
-            {
-                headers: {
-                    Authorization: `Bearer ${API_KEY}`,
-                    "X-API-Secret": API_SECRET,
-                    "X-Environment": ENVIRONMENT,
-                    Accept: "application/json",
-                    "Content-Type": "application/json"
-                },
-                timeout: 30000
-            }
-        );
+        const response = await purchaseData({
+            providerCode: "mtn",
+            packageCode: "mtn-10mb-100",
+            recipient: "08011111111"
+        });
 
         console.log("✅ WiseSub purchase request completed");
         console.log("HTTP status:", response.status);

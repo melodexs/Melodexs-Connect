@@ -1,25 +1,16 @@
 require("dotenv").config();
-const axios = require("axios");
+const { getDataPackages } = require("../src/services/wisesub.service");
 
 async function testMTN() {
     try {
         console.log("🚀 Requesting MTN plans from WiseSub...\n");
 
-        const response = await axios.get(
-            `${process.env.WISESUB_BASE_URL}/packages`,
-            {
-                params: {
-                    service_type: "data",
-                    provider_code: "mtn"
-                },
-                headers: {
-                    Authorization: `Bearer ${process.env.WISESUB_API_KEY}`,
-                    "X-API-Secret": process.env.WISESUB_API_SECRET,
-                    "X-Environment": process.env.WISESUB_ENVIRONMENT,
-                    Accept: "application/json"
-                }
-            }
-        );
+        const response = await getDataPackages("mtn", {
+            baseUrl: process.env.WISESUB_BASE_URL,
+            defaultEnvironment: false,
+            emptyMissingCredentials: false,
+            timeout: null
+        });
 
         console.log("✅ MTN request successful!\n");
 

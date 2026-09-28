@@ -1,5 +1,5 @@
 require("dotenv").config();
-const axios = require("axios");
+const { getDataPackages } = require("../src/services/wisesub.service");
 
 const networks = [
     {
@@ -22,27 +22,12 @@ const networks = [
 
 async function getPackages(network) {
     try {
-        const response = await axios.get(
-            `${process.env.WISESUB_BASE_URL}/packages`,
-            {
-                params: {
-                    service_type: "data",
-                    provider_code: network.code
-                },
-                headers: {
-                    Authorization:
-                        `Bearer ${process.env.WISESUB_API_KEY}`,
-
-                    "X-API-Secret":
-                        process.env.WISESUB_API_SECRET,
-
-                    "X-Environment":
-                        process.env.WISESUB_ENVIRONMENT,
-
-                    Accept: "application/json"
-                }
-            }
-        );
+        const response = await getDataPackages(network.code, {
+            baseUrl: process.env.WISESUB_BASE_URL,
+            defaultEnvironment: false,
+            emptyMissingCredentials: false,
+            timeout: null
+        });
 
         return response.data?.data?.packages || [];
     } catch (error) {

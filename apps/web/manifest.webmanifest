@@ -1,0 +1,30 @@
+{
+  "name": "MELODEXS CONNECT",
+  "short_name": "MELODEXS",
+  "description": "Fund your wallet and buy mobile data, airtime, and digital services.",
+  "start_url": "/index.html",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#0251B0",
+  "background_color": "#C7D1DD",
+  "icons": [
+    {
+      "src": "/icons/melodexs-connect-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/melodexs-connect-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/melodexs-connect-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
