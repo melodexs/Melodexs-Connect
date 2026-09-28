@@ -272,52 +272,6 @@ app.use("/api", purchasePinRoutes);
 app.use("/api", adminRoutes);
 app.use("/api", paystackRoutes.router);
 
-// =========================
-// PURCHASE PIN
-// =========================
-
-
-// =========================
-
-// SET PURCHASE PIN
-
-
-
-// CHANGE PURCHASE PIN
-
-
-
-// VERIFY PURCHASE PIN
-
-
-
-
-
-// =========================
-// ADMIN STATS
-// =========================
-
-
-
-// =========================
-// ADMIN USERS
-// =========================
-
-
-
-// =========================
-// ADMIN TRANSACTIONS
-// =========================
-
-
-
-// =========================
-// SERVER
-
-
-// =========================
-
-
 module.exports = {
     app,
     sessionStore
