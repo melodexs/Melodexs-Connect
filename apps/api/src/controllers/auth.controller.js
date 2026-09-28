@@ -1,48 +1,10 @@
 const crypto = require("crypto");
-const axios = require("axios");
 const bcrypt = require("bcryptjs");
 const { pool } = require("../postgres");
 const { getUserById } = require("../auth");
 
-async function sendBrevoEmail({ to, subject, htmlContent }) {
-    if (
-        !process.env.BREVO_API_KEY ||
-        !process.env.BREVO_FROM_EMAIL
-    ) {
-        throw new Error("Brevo email configuration is missing.");
-    }
-
-    const response = await axios.post(
-        "https://api.brevo.com/v3/smtp/email",
-        {
-            sender: {
-                name: process.env.BREVO_FROM_NAME || "MELODEXS CONNECT",
-                email: process.env.BREVO_FROM_EMAIL
-            },
-            to: [
-                {
-                    email: to
-                }
-            ],
-            subject,
-            htmlContent
-        },
-        {
-            headers: {
-                "api-key": process.env.BREVO_API_KEY,
-                "Content-Type": "application/json",
-                Accept: "application/json"
-            },
-            timeout: 10000
-        }
-    );
-
-    return response.data;
-}
-
-function isValidNigerianPhone(phone) {
-    return /^0[7-9][0-1][0-9]{8}$/.test(phone);
-}
+const { sendBrevoEmail } = require("../services/email.service");
+const { isValidNigerianPhone } = require("../utils/phone");
 
 async function getSession(req, res) {
     // Authentication/session responses must never be cached.
@@ -620,6 +582,5 @@ module.exports = {
     register,
     login,
     forgotPassword,
-    resetPassword,
-    sendBrevoEmail
+    resetPassword
 };

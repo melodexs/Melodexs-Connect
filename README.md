@@ -17,24 +17,61 @@ browser JavaScript pages served by the Express API.
 - PostgreSQL persistence and deployment support for Render
 - Installable progressive web app (PWA)
 
-## Backend architecture
+## MELODEXS CONNECT architecture
 
-The API is in `apps/api/src`:
+The project is a Node.js/Express API and a static browser app. The API is in
+`apps/api/src`; `app.js` composes middleware and routers, and `server.js` starts
+the HTTP listener. The API serves the web files in `apps/web`.
 
-- `app.js` creates the Express app, configures global middleware, registers the
-  raw Paystack webhook before JSON parsing, and mounts routers.
-- `routes/` declares endpoint paths and middleware. Routers are mounted under
-  `/api`.
-- `controllers/` handles Express requests and responses and coordinates
-  application behavior.
-- `services/` contains reusable wallet, Paystack, and WiseSub operations.
-- `auth.js` provides authentication and admin authorization middleware.
-- `postgres.js` creates the PostgreSQL connection pool.
-- `postgres-session-store.js` persists Express sessions in PostgreSQL.
-- `scripts/` contains database maintenance, data plan sync, and provider
-  utility scripts.
+### Backend structure
 
-The browser app is in `apps/web`. Its pages call the API through `api.js`.
+- `routes/` maps HTTP methods and paths to authentication middleware and
+  controllers. All API routers are mounted under `/api`.
+- `controllers/` validates request input, coordinates application operations,
+  and returns HTTP responses.
+- `services/` owns provider communication and reusable wallet transactions.
+- `utils/` contains shared pure helpers, currently Nigerian phone validation.
+- `auth.js` provides authentication and admin authorization; `postgres.js`
+  creates the PostgreSQL pool; `postgres-session-store.js` persists sessions.
+- `scripts/` contains database maintenance and provider utility scripts.
+
+### Routes
+
+The route modules expose authentication and password reset, user status/profile,
+transaction history, public and admin data plans, data and airtime purchases,
+purchase PIN operations, admin reporting, and Paystack wallet funding. The
+Paystack endpoints are `POST /api/fund-wallet`,
+`POST /api/fund-wallet/verify`, and `POST /api/paystack/webhook`.
+
+### Controllers
+
+`auth.controller.js`, `user.controller.js`, `transaction.controller.js`,
+`data-plan.controller.js`, `purchase.controller.js`,
+`purchase-pin.controller.js`, `admin.controller.js`, and
+`paystack.controller.js` handle their respective HTTP flows. Protected routes
+retain authentication, admin checks, and user ownership checks.
+
+### Services and utilities
+
+- `paystack.service.js` performs Paystack requests and validates webhook
+  signatures; `paystack.controller.js` handles funding records and wallet
+  credits.
+- `wisesub.service.js` sends WiseSub purchase requests.
+- `wallet.service.js` reserves purchase funds and handles refunds and
+  transaction finalization.
+- `email.service.js` sends Brevo email for password reset.
+- `utils/phone.js` centralizes the phone validation shared by registration and
+  purchases.
+
+The browser app is in `apps/web`; its pages use the shared API configuration in
+`api.js`.
+
+### PostgreSQL and database requirements
+
+The running API and session store require PostgreSQL through `DATABASE_URL`.
+There is no automatic SQLite fallback in the production API. `DB_PATH` is a
+legacy SQLite setting for maintenance scripts only. Use a separate PostgreSQL
+database for local testing; never use production data for tests.
 
 ## Paystack wallet funding
 
@@ -60,6 +97,20 @@ The API uses the WiseSub reseller API for mobile data and airtime. Set the
 WiseSub base URL and credentials on the server. `WISESUB_ENVIRONMENT` selects
 the configured `test` or `live` behavior; test mode uses a test recipient for
 purchases. Live purchases must only be made with deliberate operator approval.
+
+## Brevo email integration
+
+Brevo HTTP communication is isolated in `email.service.js`. The auth controller
+uses it to send password reset messages; registration does not send an email.
+Configure the sender and API key on the server.
+
+## PWA
+
+The web app includes `manifest.webmanifest`, `pwa.js`, a service worker, and
+192px, 512px, maskable, and Apple touch icons. The install prompt supports
+browser installation and provides Add to Home Screen guidance on Apple mobile
+devices. The service worker caches same-origin static assets only; it skips API
+requests and non-GET requests, including payment and authentication operations.
 
 ## Environment variables
 
@@ -95,7 +146,7 @@ npm run dev
 ```
 
 The API defaults to port 3000. Open `http://localhost:3000` to use the web app.
-For a production-style local start, run `npm start`.
+For a production-style local start, run `npm run start` (or `npm start`).
 
 ## Testing and linting
 
@@ -120,6 +171,10 @@ it does not perform Paystack or WiseSub purchases.
 - Production sessions use secure, HTTP-only cookies and HTTPS.
 - The service worker caches only same-origin static assets. It does not cache
   API requests, account pages, wallet data, transactions, or admin responses.
+
+Historical backup archives may contain legacy project material. They are not
+active application source and must not be used as production configuration or
+source.
 
 ## Deployment
 

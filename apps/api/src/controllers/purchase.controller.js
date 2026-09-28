@@ -9,6 +9,7 @@ const {
     purchaseData: purchaseDataViaWiseSub,
     purchaseAirtime: purchaseAirtimeViaWiseSub
 } = require("../services/wisesub.service");
+const { isValidNigerianPhone } = require("../utils/phone");
 
 function generateReference() {
     const now = new Date();
@@ -32,10 +33,6 @@ function generateReference() {
         .substring(2, 12);
 
     return `${YYYY}${MM}${DD}${HH}${II}${suffix}`;
-}
-
-function isValidNigerianPhone(phone) {
-    return /^0[7-9][0-1][0-9]{8}$/.test(phone);
 }
 
 async function purchaseData(req, res) {
