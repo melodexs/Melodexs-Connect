@@ -262,7 +262,16 @@ app.use((req, res, next) => {
     next();
 });
 
-app.use(express.static(WEB_PUBLIC_DIR));
+app.use(express.static(WEB_PUBLIC_DIR, {
+    setHeaders: (res, filePath) => {
+        if (filePath.endsWith(".webmanifest")) {
+            res.setHeader(
+                "Content-Type",
+                "application/manifest+json"
+            );
+        }
+    }
+}));
 app.use("/api", authRoutes);
 app.use("/api", userRoutes);
 app.use("/api", transactionRoutes);
