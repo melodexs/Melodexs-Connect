@@ -2,6 +2,7 @@ const express = require("express");
 const { rateLimit } = require("express-rate-limit");
 const {
     getSession,
+    logout,
     register,
     login,
     forgotPassword,
@@ -55,6 +56,7 @@ const resetPasswordLimiter = rateLimit({
 });
 
 router.get("/session", getSession);
+router.post("/logout", logout);
 router.post("/register", registerLimiter, register);
 router.post("/login", loginLimiter, login);
 router.post("/forgot-password", forgotPasswordLimiter, forgotPassword);

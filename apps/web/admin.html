@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="api-base-url" content="">
 
     <title>MELODEXS CONNECT Admin</title>
 
@@ -319,7 +320,12 @@
     <!-- DATA PRICING -->
     <div class="section">
         <h2>Data Pricing</h2>
-        <p style="color:#6b7280;margin-bottom:18px;">Provider cost is what MELODEXS CONNECT pays. Selling price is what the customer pays. The server uses selling price from this database.</p>
+        <p style="color:#6b7280;margin-bottom:18px;">Provider cost is what MELODEXS CONNECT pays. Selling price is the customer price. A manually set selling price stays fixed through synchronization; clear it with the API value <code>null</code> to return to the 2% round-up rule. Unclassified plans stay hidden from customers.</p>
+        <div id="pythonCatalogControls">
+            <button class="save-btn" type="button" onclick="synchronizePlans()">Synchronize WiseSub plans</button>
+            <button class="toggle-btn" type="button" onclick="reconcilePurchases()">Check pending purchases</button>
+            <p id="planSyncStatus" style="color:#6b7280;margin:12px 0 18px;">Loading synchronization status…</p>
+        </div>
 
         <form id="planForm" class="plan-form" onsubmit="savePlan(event)">
             <select id="planNetwork" required>
@@ -337,11 +343,17 @@
         <div class="table-container">
             <table class="plans-table">
                 <thead>
-                    <tr><th>Network</th><th>Plan</th><th>Provider Cost</th><th>Selling Price</th><th>Margin</th><th>Status</th><th>Action</th></tr>
+                    <tr><th>Network</th><th>Plan</th><th>Provider Cost</th><th>Selling Price</th><th>Category</th><th>Availability</th><th>Validity</th><th>Margin</th><th>Status</th><th>Action</th></tr>
                 </thead>
-                <tbody id="plansTable"><tr><td colspan="7" class="empty">Loading data plans...</td></tr></tbody>
+                <tbody id="plansTable"><tr><td colspan="10" class="empty">Loading data plans...</td></tr></tbody>
             </table>
         </div>
+    </div>
+
+    <div class="section" id="pendingPurchaseSection">
+        <h2>Pending purchases</h2>
+        <p style="color:#6b7280;margin-bottom:14px;">Unresolved purchases keep their debit in place until provider status is confirmed. Resolve manually only after checking provider evidence.</p>
+        <div class="table-container"><table><thead><tr><th>Reference</th><th>Customer</th><th>Amount</th><th>Description</th><th>Action</th></tr></thead><tbody id="pendingPurchases"><tr><td colspan="5" class="empty">Loading pending purchases…</td></tr></tbody></table></div>
     </div>
 
     <!-- USERS -->
@@ -428,6 +440,12 @@
 
 <script>
 
+    const categorizedCatalogEnabled = Boolean(window.MELODEXS_CATEGORIZED_CATALOG);
+    if (!categorizedCatalogEnabled) {
+        document.getElementById("pythonCatalogControls").hidden = true;
+        document.getElementById("pendingPurchaseSection").hidden = true;
+    }
+
     // =========================
     // HELPERS
     // =========================
@@ -477,7 +495,9 @@
     // LOGOUT
     // =========================
 
-    function logout() {
+    async function logout() {
+
+        try { await fetch("/api/logout", { method: "POST" }); } catch (_) { }
 
         localStorage.removeItem("cheapdataUser");
 
@@ -491,22 +511,37 @@
     // =========================
 
     async function loadPlans() {
+        if (categorizedCatalogEnabled) await loadPlanSyncStatus();
         const response = await fetch("/api/admin/data-plans");
         const data = await response.json();
         if (!response.ok || !data.success) throw new Error(data.message || "Could not load data plans.");
 
         const table = document.getElementById("plansTable");
         if (!data.plans.length) {
-            table.innerHTML = `<tr><td colspan="7" class="empty">No data plans found.</td></tr>`;
+            table.innerHTML = `<tr><td colspan="10" class="empty">No data plans found.</td></tr>`;
             return;
         }
 
-        table.innerHTML = data.plans.map(plan => `
+        table.innerHTML = data.plans.map(plan => categorizedCatalogEnabled ? `
             <tr>
                 <td>${escapeHtml(plan.network)}</td>
                 <td><strong>${escapeHtml(plan.plan)}</strong></td>
                 <td><input id="cost-${plan.id}" type="number" min="0" step="0.01" value="${Number(plan.provider_cost)}"></td>
+                <td><input id="price-${plan.id}" type="number" min="1" step="0.01" value="${Number(plan.selling_price)}"><label style="display:block;font-size:12px"><input id="fixed-${plan.id}" type="checkbox" ${plan.selling_price_override !== null ? "checked" : ""}> Fixed override</label></td>
+                <td><input id="category-${plan.id}" maxlength="80" placeholder="Unclassified" value="${escapeHtml(plan.category || "")}"></td>
+                <td>${!Number(plan.provider_available) ? "Unavailable" : Number(plan.selling_price) < Number(plan.provider_cost) ? "Review price" : "Provider available"}</td>
+                <td>${escapeHtml(plan.validity || "—")}</td>
+                <td class="margin">${formatMoney(plan.margin)}</td>
+                <td><span class="badge ${Number(plan.active) ? "badge-success" : "badge-inactive"}">${Number(plan.active) ? "Active" : "Inactive"}</span></td>
+                <td><button class="toggle-btn" onclick="updatePlan(${plan.id}, ${Number(plan.active) ? 0 : 1})">${Number(plan.active) ? "Disable" : "Enable"}</button> <button class="save-btn" onclick="saveExistingPlan(${plan.id})">Save</button></td>
+            </tr>
+        ` : `
+            <tr>
+                <td>${escapeHtml(plan.network)}</td><td><strong>${escapeHtml(plan.plan)}</strong></td>
+                <td><input id="cost-${plan.id}" type="number" min="0" step="0.01" value="${Number(plan.provider_cost)}"></td>
                 <td><input id="price-${plan.id}" type="number" min="1" step="0.01" value="${Number(plan.selling_price)}"></td>
+                <td>Managed by Python catalog</td><td>Managed by Node API</td>
+                <td>—</td>
                 <td class="margin">${formatMoney(plan.margin)}</td>
                 <td><span class="badge ${Number(plan.active) ? "badge-success" : "badge-inactive"}">${Number(plan.active) ? "Active" : "Inactive"}</span></td>
                 <td><button class="toggle-btn" onclick="updatePlan(${plan.id}, ${Number(plan.active) ? 0 : 1})">${Number(plan.active) ? "Disable" : "Enable"}</button> <button class="save-btn" onclick="saveExistingPlan(${plan.id})">Save</button></td>
@@ -553,12 +588,65 @@
         const sellingPrice = Number(document.getElementById(`price-${id}`).value);
         try {
             const response = await fetch(`/api/admin/data-plans/${id}`, {
-                method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider_cost: providerCost, selling_price: sellingPrice })
+                method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(categorizedCatalogEnabled ? { provider_cost: providerCost, selling_price: document.getElementById(`fixed-${id}`).checked ? sellingPrice : null, category: document.getElementById(`category-${id}`).value.trim() || null } : { provider_cost: providerCost, selling_price: sellingPrice })
             });
             const data = await response.json();
             if (!response.ok || !data.success) throw new Error(data.message || "Could not save pricing.");
             showMessage(data.message, "success");
             await loadPlans();
+        } catch (error) { showMessage(error.message, "error"); }
+    }
+
+    async function loadPlanSyncStatus() {
+        try {
+            const response = await fetch("/api/admin/data-plans/synchronization");
+            const data = await response.json();
+            const sync = data.sync;
+            document.getElementById("planSyncStatus").textContent = !sync ? "No synchronization has run yet." : `Last sync: ${sync.finished_at || sync.started_at} · ${sync.outcome} · added ${sync.added}, updated ${sync.updated}, unavailable ${sync.unavailable}${sync.errors ? " · errors: " + sync.errors : ""}`;
+        } catch (_) { document.getElementById("planSyncStatus").textContent = "Could not load synchronization status."; }
+    }
+
+    async function synchronizePlans() {
+        showMessage("Synchronizing provider catalog…", "success");
+        try {
+            const response = await fetch("/api/admin/data-plans/synchronize", { method: "POST" });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.message || "Synchronization failed.");
+            showMessage(`Sync ${data.outcome}: ${data.added} added, ${data.updated} updated, ${data.unavailable} unavailable.`, data.success ? "success" : "error");
+            await loadPlans();
+        } catch (error) { showMessage(error.message, "error"); await loadPlanSyncStatus(); }
+    }
+
+    async function reconcilePurchases() {
+        try {
+            const response = await fetch("/api/admin/purchases/reconcile", { method: "POST" });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.message || "Could not check pending purchases.");
+            const unresolved = (data.results || []).filter(item => item.status === "unresolved").length;
+            showMessage(`Checked ${data.checked} pending purchases. ${unresolved} need follow-up.`, unresolved ? "error" : "success");
+            if (categorizedCatalogEnabled) await loadPendingPurchases();
+        } catch (error) { showMessage(error.message, "error"); }
+    }
+
+    async function loadPendingPurchases() {
+        const table = document.getElementById("pendingPurchases");
+        try {
+            const response = await fetch("/api/admin/purchases/pending");
+            const data = await response.json();
+            if (!response.ok || !data.success) throw new Error(data.message || "Could not load pending purchases.");
+            table.innerHTML = data.transactions.length ? data.transactions.map(tx => `<tr><td>${escapeHtml(tx.reference)}</td><td>${escapeHtml(tx.email)}</td><td>${formatMoney(tx.amount)}</td><td>${escapeHtml(tx.description)}</td><td><button class="save-btn" onclick="resolvePending(${Number(tx.id)}, 'successful')">Confirm success</button> <button class="toggle-btn" onclick="resolvePending(${Number(tx.id)}, 'failed')">Confirm failure and refund</button></td></tr>`).join("") : `<tr><td colspan="5" class="empty">No pending purchases.</td></tr>`;
+        } catch (error) { table.innerHTML = `<tr><td colspan="5" class="empty">${escapeHtml(error.message)}</td></tr>`; }
+    }
+
+    async function resolvePending(id, status) {
+        const wording = status === "failed" ? "confirm failure and refund this customer" : "confirm this purchase succeeded";
+        if (!confirm(`Have you checked the provider evidence and want to ${wording}?`)) return;
+        try {
+            const response = await fetch(`/api/admin/purchases/${id}/resolve`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) });
+            const data = await response.json();
+            if (!response.ok || !data.success) throw new Error(data.message || "Could not resolve purchase.");
+            showMessage(data.message, "success");
+            if (categorizedCatalogEnabled) await loadPendingPurchases();
         } catch (error) { showMessage(error.message, "error"); }
     }
 
@@ -645,6 +733,8 @@
                 "adminName"
             ).textContent =
                 user.name;
+
+            if (categorizedCatalogEnabled) await loadPendingPurchases();
 
 
             // Load everything

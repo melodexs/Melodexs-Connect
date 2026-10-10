@@ -151,6 +151,14 @@ async function purchaseData(req, res) {
             });
         }
 
+        const expectedPrice = Number(req.body.expectedPrice ?? req.body.amount ?? sellingPrice);
+        if (!Number.isFinite(expectedPrice) || Math.abs(expectedPrice - sellingPrice) >= 0.005) {
+            return res.status(409).json({
+                success: false,
+                message: "The plan price changed. Review the current price and confirm again."
+            });
+        }
+
         const userResult = await pool.query(`
             SELECT
                 id,
