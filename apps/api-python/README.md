@@ -124,11 +124,12 @@ pending.
 ## Current verification and blockers
 
 Last local run: `.venv/bin/python -m pytest -q apps/api-python/tests` passed
-**32 tests; one PostgreSQL race test is skipped unless explicitly enabled**.
+**35 tests; one PostgreSQL race test is skipped unless explicitly enabled**.
 The default suite mocks Paystack, WiseSub, and Brevo and uses SQLite. It does
 not verify PostgreSQL row locking or provider behavior against staging.
-`npm test` could not run in the current environment because Node.js/npm are not
-installed. See [COMPATIBILITY-REPORT.md](COMPATIBILITY-REPORT.md) for the
+`npm test` was not run because the Node smoke test connects to the configured
+PostgreSQL database and no dedicated test database was confirmed as a safe
+target. See [COMPATIBILITY-REPORT.md](COMPATIBILITY-REPORT.md) for the
 source-level endpoint/schema review and remaining cutover blockers.
 
 After applying the reviewed migrations to a dedicated PostgreSQL database whose

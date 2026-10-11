@@ -192,7 +192,7 @@ and configure Paystack's webhook URL as
 reference and the frontend contract. Python has route coverage for the same
 major feature areas, but it has not been verified against the live PostgreSQL
 schema or staging providers and is not ready for production cutover. The local
-Python suite currently passes 32 mocked SQLite tests with one opt-in PostgreSQL
+Python suite currently passes 35 mocked SQLite tests with one opt-in PostgreSQL
 race test skipped; PostgreSQL locking,
 Node tests, browser staging, and provider reconciliation semantics remain
 unverified. Dynamic plans are stored in PostgreSQL after the reviewed additive

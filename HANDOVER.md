@@ -377,7 +377,7 @@ disabled until staging confirms the provider's terminal failure semantics.
 `apps/api-python/` includes database-backed WiseSub plan sync, admin-managed
 prices/categories/availability, categorized customer browsing, request
 idempotency, and pending purchase reconciliation. It is not production-ready:
-the suite passes 32 mocked SQLite tests plus a PostgreSQL-only race test that
+the suite passes 35 mocked SQLite tests plus a PostgreSQL-only race test that
 was skipped; PostgreSQL schema and concurrency, Node tests, provider failure
 semantics, and browser staging remain unverified.
 See [the Python API guide](apps/api-python/README.md) and

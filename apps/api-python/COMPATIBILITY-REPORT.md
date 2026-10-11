@@ -1,6 +1,6 @@
 # Python API compatibility and migration audit
 
-Audit updated 2026-10-10 from repository source and mocked local tests. The
+Audit updated 2026-10-11 from repository source and mocked local tests. The
 active Node runtime remains `apps/api/`; no production database, live provider,
 or production setting was accessed. WiseSub capabilities below are based on
 its [published service/package docs](https://www.wisesub.com.ng/docs/services),
@@ -15,8 +15,8 @@ transaction history, purchase PINs, public/admin plan reads and admin plan
 edits, airtime/data purchases, admin reporting, Paystack initialize/verify, and
 Paystack webhooks. This work adds `POST /api/logout` to both Python and the
 modular Node router because the frontend expects it. The Node route destroys
-its Express session and clears `connect.sid`; Node execution could not be tested
-here. Python also adds category,
+its Express session and clears `connect.sid`; Node runtime tests were not run
+because no dedicated PostgreSQL test database was confirmed. Python also adds category,
 synchronization, pending purchase, and reconciliation endpoints required by the
 new plan/purchase flow.
 
@@ -32,9 +32,10 @@ new plan/purchase flow.
 
 Node endpoint-specific auth/status/response comparisons were reviewed from
 `apps/api/src/routes`, controllers, middleware, `apps/web/api.js`, and the page
-fetch calls. A side-by-side runtime comparison was not possible because
-Node/npm are absent. The Python logout clears its own session and the old cookie
-name, but does not interpret an Express session.
+fetch calls. A side-by-side runtime comparison remains outstanding because the
+Node smoke test requires a dedicated PostgreSQL test database; none was
+configured as a safe target for this run. The Python logout clears its own
+session and the old cookie name, but does not interpret an Express session.
 
 ### Route-by-route coverage
 
@@ -130,7 +131,12 @@ Node migrations/runtime use PostgreSQL (`DATABASE_URL`) with users,
 `data_plans`, transactions and sessions. The inspected old SQLite-to-Postgres
 migration declares integer IDs without defaults even though runtime inserts
 omit IDs; the deployed schema's actual sequences/identity columns are unknown.
-No production or staging PostgreSQL was available to inspect.
+No production or staging PostgreSQL was available to inspect. The Node migration
+and runtime also define/use `is_admin` and `active`, while migration 002 adds
+`provider_available`, as integer flags compared against `0`/`1`. PostgreSQL
+`BOOLEAN` is incompatible with those query expressions. The Python schema
+checker now rejects BOOLEAN for these fields rather than accepting a schema the
+queries cannot use.
 
 Python production startup performs a read-only schema check and refuses an
 incompatible schema. It compares required index definitions as well as index
@@ -151,15 +157,22 @@ evidence.
 
 ## Verification performed
 
-- `.venv/bin/python -m pytest -q apps/api-python/tests`: **32 passed, 1
+- `.venv/bin/python -m pytest -q apps/api-python/tests`: **35 passed, 1
   PostgreSQL race test skipped**; default provider calls are mocked and tests
   use isolated SQLite.
 - `.venv/bin/python -m pip check`: passed.
 - `.venv/bin/python -m compileall -q apps/api-python/app apps/api-python/tests`:
   passed.
+- `npx cap sync android`: passed.
+- `android/gradlew --no-daemon assembleDebug`: passed; produced
+  `android/app/build/outputs/apk/debug/app-debug.apk` (8,907,479 bytes).
+  Gradle warned about `flatDir` repositories and Android SDK XML version
+  mismatch; neither prevented the build. No device/emulator test was run.
+- `npm ls --depth=0 --package-lock-only`: passed; lockfile dependencies resolve.
 - `git diff --check`: passed at final review.
 - `npm test`, Node API tests, and frontend JS runtime checks: **not run**;
-  Node/npm are not installed.
+  the Node smoke test connects to the configured PostgreSQL database, and no
+  dedicated test database was confirmed for safe use.
 - PostgreSQL schema, migrations, index definitions, locks, concurrent funding/purchase (an opt-in
   race test has been added but not run), and
   browser staging: **not verified**; no dedicated staging database exists.
@@ -179,8 +192,8 @@ evidence.
    package removal behavior, the exact status lookup reference after a timeout,
    and terminal failed status semantics. No real purchase is needed for initial
    sync/status validation; any sandbox purchase needs explicit operator setup.
-5. Install Node/npm in a safe environment, run the Node suite against a
-   dedicated test database, compare route responses and run a full customer and
+5. Run the Node suite against a dedicated test database, compare route
+   responses and run a full customer and
    admin browser walkthrough with Python staging.
 6. Review CSRF/origin protection and test Secure/SameSite cookie behavior across
    the separate frontend/API origins. Plan for user re-login and Node rollback.

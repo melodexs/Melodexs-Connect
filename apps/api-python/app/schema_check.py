@@ -20,9 +20,11 @@ EXPECTED_TYPES = {
     "provider_cost": {"double precision", "real", "numeric"},
     "selling_price": {"double precision", "real", "numeric"},
     "selling_price_override": {"double precision", "real", "numeric"},
-    "is_admin": {"integer", "smallint", "boolean"},
-    "provider_available": {"integer", "smallint", "boolean"},
-    "active": {"integer", "smallint", "boolean"},
+    # The Node PostgreSQL migration and runtime use integer flags and compare
+    # them to 0/1. PostgreSQL BOOLEAN is not interchangeable in those queries.
+    "is_admin": {"integer", "smallint"},
+    "provider_available": {"integer", "smallint"},
+    "active": {"integer", "smallint"},
     "expire": {"bigint", "integer"},
     "reset_token_expires_at": {"bigint", "integer"},
     "window_start": {"bigint", "integer"},
