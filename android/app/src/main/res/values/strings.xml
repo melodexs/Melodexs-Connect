@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">MELODEXS CONNECT</string>
+    <string name="title_activity_main">MELODEXS CONNECT</string>
+    <string name="package_name">com.melodexs.connect</string>
+    <string name="custom_url_scheme">com.melodexs.connect</string>
+</resources>

@@ -1,0 +1,9 @@
+{
+  "appId": "com.melodexs.connect",
+  "appName": "MELODEXS CONNECT",
+  "webDir": "apps/web",
+  "server": {
+    "url": "https://melodexs-connect.onrender.com",
+    "cleartext": false
+  }
+}
