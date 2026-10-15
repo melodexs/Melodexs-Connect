@@ -11,7 +11,9 @@ before opting in.
 
 1. Restore or provision the isolated database and take a disposable snapshot.
    Independently verify its host, database name, owner, and that it contains no
-   production data. Set the required variables `POSTGRES_TEST_DATABASE_URL`,
+   production data. For a fresh disposable test database (never for a copy of
+   real data), `tests/postgres_test_schema.sql` provisions the base schema that
+   the migrations and schema checker expect. Set the required variables `POSTGRES_TEST_DATABASE_URL`,
    `POSTGRES_TEST_EXPECTED_HOST`, `POSTGRES_TEST_EXPECTED_DATABASE`,
    `POSTGRES_TEST_EXPECTED_USERNAME`, and `POSTGRES_TEST_DATABASE_VERIFIED=YES`.
    Supply the URL through a protected environment or secret manager; do not put

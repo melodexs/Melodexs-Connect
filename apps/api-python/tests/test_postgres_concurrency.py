@@ -13,7 +13,7 @@ import pytest
 
 from app import main
 from app.admin_routes import resolve_pending_purchase_state
-from app.database import SessionLocal, db_session, q
+from app.database import SessionLocal, db_session, engine, q
 from fastapi import HTTPException
 from app.rate_limit import allowed
 from app.security import password_hash
@@ -236,3 +236,54 @@ def test_concurrent_paystack_credit_and_purchase_request_are_idempotent(monkeypa
     with db_session() as db:
         assert float(q(db, "SELECT balance FROM users WHERE id=:id", {"id":user_id}).scalar()) == 150
         assert q(db, "SELECT status FROM transactions WHERE id=:id", {"id":refund_tx_id}).scalar() == "failed"
+
+
+def _schema_problems(table_details):
+    keys = (
+        "missing",
+        "incompatible_types",
+        "incompatible_defaults",
+        "unexpected_nullable_columns",
+        "missing_constraints",
+        "missing_indexes",
+        "incompatible_indexes",
+        "missing_generated_id_defaults",
+    )
+    return {key: table_details[key] for key in keys if table_details.get(key)}
+
+
+def test_schema_check_passes_on_migrated_disposable_postgres():
+    """Startup already validated the schema; assert it explicitly here."""
+    from app.schema_check import inspect_schema
+
+    assert engine.dialect.name == "postgresql"
+    problems = {table: _schema_problems(details) for table, details in inspect_schema().items()}
+    assert not any(problems.values()), problems
+
+
+def test_schema_check_detects_absent_or_redefined_reset_token_index():
+    """A same-named index is not accepted without the exact definition."""
+    from app.schema_check import inspect_schema
+
+    assert engine.dialect.name == "postgresql"
+    correct = ("CREATE UNIQUE INDEX uq_users_reset_token_hash ON public.users "
+               "USING btree (reset_token_hash) WHERE (reset_token_hash IS NOT NULL)")
+    try:
+        with db_session() as db:
+            q(db, "DROP INDEX uq_users_reset_token_hash")
+        details = inspect_schema()["users"]
+        assert "uq_users_reset_token_hash" in details["missing_indexes"]
+        assert "uq_users_reset_token_hash" in details["incompatible_indexes"]
+        # Redefine the index without the reviewed partial predicate.
+        with db_session() as db:
+            q(db, "CREATE UNIQUE INDEX uq_users_reset_token_hash ON users(reset_token_hash)")
+        details = inspect_schema()["users"]
+        assert "uq_users_reset_token_hash" not in details["missing_indexes"]
+        incompatible = details["incompatible_indexes"].get("uq_users_reset_token_hash")
+        assert incompatible is not None and incompatible["predicate"] is None
+    finally:
+        with db_session() as db:
+            q(db, "DROP INDEX IF EXISTS uq_users_reset_token_hash")
+            q(db, correct)
+    details = inspect_schema()["users"]
+    assert not _schema_problems(details)

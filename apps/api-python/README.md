@@ -72,8 +72,11 @@ Migration 002 preserves every existing WiseSub selling price as a fixed
 override because the old admin UI did not distinguish edited prices from
 calculated prices. Admins can clear individual overrides after review to resume
 automatic markup pricing.
-Neither migration has been applied to a PostgreSQL database. The Node API
-remains available for rollback.
+None of the migrations has been applied to a production or staging
+database. The full migration sequence (001, 002, 003) was applied manually to
+an independently verified disposable PostgreSQL 15 test database and validated
+with the schema checker in this workspace; see "Current verification" below.
+The Node API remains available for rollback.
 
 Run the read-only schema check from the repository root:
 
@@ -82,8 +85,9 @@ PYTHONPATH=apps/api-python python -m app.schema_check
 ```
 
 The schema checker compares columns, types, nullability, keys, ID generation,
-and required index definitions. It has only been run against isolated SQLite in this
-workspace; no deployed PostgreSQL schema was queried. PostgreSQL startup is
+and required index definitions. It has been run against isolated SQLite and
+against a disposable PostgreSQL 15.19 test database in this workspace; no
+deployed (production or hosting-provider) PostgreSQL schema was queried. PostgreSQL startup is
 read-only and refuses to start when the reviewed schema is absent. `connect.sid`
 sessions are not transparently decoded by this service; customers should log in
 again after cutover. Python uses an HttpOnly `melodexs_session` cookie, Secure
@@ -150,19 +154,32 @@ pending.
 ## Current verification and blockers
 
 Latest local run used an isolated scratch SQLite database:
-`.venv/bin/python -m pytest -q -rs apps/api-python/tests` passed **102 tests;
-five PostgreSQL tests were skipped**.
-The default suite mocks Paystack, WiseSub, and Brevo and uses SQLite. It does
-not verify PostgreSQL row locking or provider behavior against staging.
+`python -m pytest -q -rs apps/api-python/tests` passed **105 tests; seven
+PostgreSQL tests were skipped** in SQLite mode (the five concurrency/race tests
+plus two schema-validation tests, all gated behind the explicit PostgreSQL
+opt-in).
+The default suite mocks Paystack, WiseSub, and Brevo and uses SQLite.
 `npm test` was not run because the Node smoke test connects to the configured
 PostgreSQL database and no dedicated test database was confirmed as a safe
 target. See [COMPATIBILITY-REPORT.md](COMPATIBILITY-REPORT.md) for the
 source-level endpoint/schema review and remaining cutover blockers.
 
-PostgreSQL concurrency tests have not been verified until a separately
-authorized run succeeds against an independently verified disposable database.
-See [the staging procedure](MIGRATION-STAGING.md) for the required allowlist,
-identity checks, and safety limitations.
+The PostgreSQL concurrency and schema-validation suite passed **7 of 7 tests**
+against an independently verified disposable PostgreSQL 15.19 database in this
+workspace: concurrent reset-token redemption consumed the token exactly once,
+concurrent duplicate reset-token hash creation was rejected by the migration
+003 index, a token expiring while waiting on a row lock was rejected without
+state changes, concurrent rate-limit boundaries held, concurrent Paystack
+credits and duplicate purchase requests stayed idempotent, the migrated
+schema passed the read-only schema checker, and the checker proved it detects
+an absent or wrongly redefined reset-token index. The disposable database was
+provisioned from `tests/postgres_test_schema.sql`, migrations 001-003 were
+applied manually after the duplicate preflights returned zero conflicting
+groups, and TLS (`sslmode=verify-full`) plus the exact host/database/username
+gate were enforced. This is sandbox evidence only: no hosting-provider staging
+database was available, so provider, deployment, and browser behavior remain
+part of staging. See [the staging procedure](MIGRATION-STAGING.md) for the
+required allowlist, identity checks, and safety limitations.
 
 ## Render staging configuration
 

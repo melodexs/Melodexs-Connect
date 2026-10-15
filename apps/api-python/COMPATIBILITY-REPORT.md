@@ -144,22 +144,54 @@ names. Additive migrations are:
 
 - `migrations/001_api_rate_limits.sql`
 - `migrations/002_dynamic_data_catalog_and_reconciliation.sql`
+- `migrations/003_unique_password_reset_tokens.sql` (run
+  `diagnostics/reset_token_unique_preflight.sql` first; it creates the partial
+  unique index `uq_users_reset_token_hash` on non-null reset-token hashes)
 
 Migration 002 adds category/availability/override/sync fields and transaction
 idempotency/provider-reference fields plus partial unique indexes. Index
 creation can fail if old data contains duplicate provider identifiers or
 transaction references; check on a staging copy first. It preserves current WiseSub
 selling prices as fixed overrides because the old admin UI had no override
-flag; admins can clear these individually after review. Neither migration was
-applied.
-The checker has only been run against isolated SQLite and is not PostgreSQL
-evidence.
+flag; admins can clear these individually after review. None of the
+migrations has been applied to a production or hosting-provider database.
+A schema-check defect found during this run was fixed: the PostgreSQL
+constraint-catalog query cross-joined `key_column_usage` with
+`constraint_column_usage`, which duplicated multi-column constraint columns
+(a genuine `UNIQUE(network,plan)` aggregated as `network,network,plan,plan`)
+and made that constraint permanently undetectable, so production startup
+would always have refused. Constraints are now collected with correlated
+subqueries. The checker has been run against isolated SQLite and against the
+disposable PostgreSQL 15.19 test database described below.
 
 ## Verification performed
 
-- `.venv/bin/python -m pytest -q apps/api-python/tests`: **35 passed, 1
-  PostgreSQL race test skipped**; default provider calls are mocked and tests
-  use isolated SQLite.
+- `python -m pytest -q apps/api-python/tests` (isolated scratch SQLite):
+  **105 passed, 7 skipped** (PostgreSQL-gated concurrency and schema tests);
+  default provider calls are mocked and tests use isolated SQLite.
+- Disposable PostgreSQL 15.19 verification (sandbox only; TLS
+  `sslmode=verify-full`, dedicated test role and database, exact
+  host/database/username gate enforced, gate proven to fail closed on
+  mismatched hostname and on a target matching the application
+  `DATABASE_URL`):
+  - Base schema provisioned from `tests/postgres_test_schema.sql` (Node
+    production DDL with the generated-id difference documented in that file),
+    migrations 001, 002, and 003 applied manually.
+  - `diagnostics/reset_token_unique_preflight.sql` returned **0 duplicate
+    hash groups / 0 rows** before migration 003; the created
+    `uq_users_reset_token_hash` matched the reviewed partial-index
+    definition.
+  - Read-only schema checker: all tables clean after migration 003; it
+    correctly reported the index as missing before 003 and reported a
+    same-named non-partial redefinition as incompatible.
+  - `RUN_POSTGRES_INTEGRATION=1 ... python -m pytest -q
+    apps/api-python/tests/test_postgres_concurrency.py`: **7 passed, 0
+    failed** — concurrent reset-token redemption consumed once, concurrent
+    duplicate hash creation rejected by the unique index, expiry during a
+    row-lock wait rejected, concurrent rate-limit boundary held, concurrent
+    Paystack credit and duplicate purchase requests idempotent, migrated
+    schema passes the checker, and the checker detects absent/redefined
+    reset-token indexes.
 - `.venv/bin/python -m pip check`: passed.
 - `.venv/bin/python -m compileall -q apps/api-python/app apps/api-python/tests`:
   passed.
@@ -173,17 +205,20 @@ evidence.
 - `npm test`, Node API tests, and frontend JS runtime checks: **not run**;
   the Node smoke test connects to the configured PostgreSQL database, and no
   dedicated test database was confirmed for safe use.
-- PostgreSQL schema, migrations, index definitions, locks, concurrent funding/purchase (an opt-in
-  race test has been added but not run), and
-  browser staging: **not verified**; no dedicated staging database exists.
+- Hosting-provider staging (Render or any deployed PostgreSQL), provider
+  behavior, and browser staging: **not verified**; no dedicated staging
+  database exists. PostgreSQL itself was verified only against the disposable
+  sandbox database described above.
 - No real Paystack, WiseSub, or Brevo calls were made.
 
 ## Remaining blockers and next steps
 
 1. Create/back up a dedicated PostgreSQL staging database and inspect actual
-   primary-key defaults, current duplicate provider identities/transaction
-   references, types,
-   constraints, indexes, and transaction/session schema.
+   primary-key defaults (the disposable test schema intentionally uses
+   generated ids, which the Python API requires; a deployed schema created by
+   the old Node DDL may declare bare `INTEGER PRIMARY KEY` without a
+   default), current duplicate provider identities/transaction references,
+   types, constraints, indexes, and transaction/session schema.
 2. Apply migrations 001 and 002 in staging; run the read-only Python schema
    checker; test migration rollback only in staging.
 3. Run PostgreSQL parallel webhook/verification workers, wallet purchases,

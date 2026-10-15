@@ -173,19 +173,25 @@ def _postgres_schema(conn) -> dict:
                 generated_id_missing.append(id_column)
 
         constraints = set()
+        # Joining key_column_usage and constraint_column_usage in one query
+        # multiplies rows for multi-column constraints (a 2-column unique
+        # constraint aggregates each column twice). Collect each side with
+        # correlated subqueries so "UNIQUE(network,plan)" stays detectable.
         constraint_rows = conn.exec_driver_sql(
             "SELECT tc.constraint_type, "
-            "string_agg(kcu.column_name, ',' ORDER BY kcu.ordinal_position) AS columns, "
-            "ccu.table_name AS foreign_table, "
-            "string_agg(ccu.column_name, ',' ORDER BY kcu.ordinal_position) AS foreign_columns "
+            "(SELECT string_agg(kcu.column_name, ',' ORDER BY kcu.ordinal_position) "
+            " FROM information_schema.key_column_usage kcu "
+            " WHERE kcu.constraint_name=tc.constraint_name AND kcu.table_schema=tc.table_schema "
+            " AND kcu.table_name=tc.table_name) AS columns, "
+            "(SELECT ccu.table_name FROM information_schema.constraint_column_usage ccu "
+            " WHERE ccu.constraint_name=tc.constraint_name AND ccu.table_schema=tc.table_schema "
+            " LIMIT 1) AS foreign_table, "
+            "(SELECT string_agg(ccu.column_name, ',' ORDER BY ccu.column_name) "
+            " FROM information_schema.constraint_column_usage ccu "
+            " WHERE ccu.constraint_name=tc.constraint_name AND ccu.table_schema=tc.table_schema) AS foreign_columns "
             "FROM information_schema.table_constraints tc "
-            "LEFT JOIN information_schema.key_column_usage kcu "
-            "ON tc.constraint_name=kcu.constraint_name AND tc.table_schema=kcu.table_schema "
-            "LEFT JOIN information_schema.constraint_column_usage ccu "
-            "ON tc.constraint_name=ccu.constraint_name AND tc.table_schema=ccu.table_schema "
             "WHERE tc.table_schema='public' AND tc.table_name=%s "
-            "AND tc.constraint_type IN ('PRIMARY KEY','UNIQUE','FOREIGN KEY') "
-            "GROUP BY tc.constraint_name,tc.constraint_type,ccu.table_name",
+            "AND tc.constraint_type IN ('PRIMARY KEY','UNIQUE','FOREIGN KEY')",
             (table,),
         ).mappings().all()
         for row in constraint_rows:

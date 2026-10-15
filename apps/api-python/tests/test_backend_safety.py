@@ -147,7 +147,7 @@ def test_unknown_reset_token_leaves_account_and_session_unchanged():
             "sid": sid, "sess": session_data, "expire": session_expiry,
         }).scalar()
     assert password_check("old-password", row["password"])
-    assert row["token_matches"] is True
+    assert bool(row["token_matches"]) is True
     assert row["reset_token_expires_at"] == original_expiry
     assert session_count == 1
 
@@ -171,7 +171,7 @@ def test_reset_token_expiry_boundary_is_rejected_without_state_changes(monkeypat
             "sid": sid, "sess": session_data, "expire": session_expiry,
         }).scalar()
     assert password_check("old-password", row["password"])
-    assert row["token_matches"] is True
+    assert bool(row["token_matches"]) is True
     assert row["reset_token_expires_at"] == fixed_now_ms
     assert session_count == 1
 
@@ -200,7 +200,7 @@ def test_password_update_failure_rolls_back_token_and_preserves_session(monkeypa
             "sid": sid, "sess": session_data, "expire": session_expiry,
         }).scalar()
     assert password_check("old-password", row["password"])
-    assert row["token_matches"] is True
+    assert bool(row["token_matches"]) is True
     assert row["reset_token_expires_at"] == original_expiry
     assert session_count == 1
 
