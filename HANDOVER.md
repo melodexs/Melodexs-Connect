@@ -5,8 +5,10 @@
 MELODEXS CONNECT is a Node.js monorepo for a data and airtime reselling platform.
 Users register, log in, manage purchase PINs, fund a wallet, and purchase mobile
 data or airtime. Administrators can access usage summaries, user records, and
-transaction data. The backend is built with Express and SQLite; the frontend is a
-static HTML/CSS interface served by the API.
+transaction data. The active Node runtime is Express with PostgreSQL through
+`DATABASE_URL`; the frontend is a static HTML/CSS interface served by the API.
+The SQLite files and `db.js` describe legacy/local maintenance paths, not the
+current production database. See the root README for current setup details.
 
 The application is intentionally structured as a monorepo:
 
@@ -22,10 +24,9 @@ The application is intentionally structured as a monorepo:
   configured by `PORT`.
 - `apps/api/src/app.js`: main application definition; configures Express, DB,
   middleware, helper functions, and all route handlers.
-- `apps/api/src/config.js`: environment validation and shared config values such
-  as `DB_PATH`, `WEB_PUBLIC_DIR`, and `PORT`.
-- `apps/api/src/db.js`: SQLite database instance, schema creation, and migration
-  helpers.
+- `apps/api/src/config.js`: environment validation and shared config values.
+- `apps/api/src/postgres.js`: production PostgreSQL pool using `DATABASE_URL`.
+- `apps/api/src/db.js`: legacy SQLite database instance and maintenance helper.
 - `apps/api/src/auth.js`: reusable authentication and admin authorization
   middleware.
 - `apps/api/scripts/`: database repair scripts, admin scripts, and WiseSub
@@ -44,7 +45,7 @@ break unrelated logic during a change.
 The current split separates responsibilities while preserving behavior:
 
 - config: env and static path management
-- database: SQLite lifecycle and schema migrations
+- database: PostgreSQL runtime access; SQLite lifecycle remains legacy
 - auth: session and admin checks
 - app: route registration and middleware flow
 - server: process startup only
@@ -131,16 +132,17 @@ Required variables include:
 - `NODE_ENV`
 - `SESSION_SECRET`
 - `PAYSTACK_SECRET_KEY`
-- `DB_PATH`
+- `DATABASE_URL` (PostgreSQL runtime and smoke-test database)
 - `WISESUB_BASE_URL`
 - `WISESUB_API_KEY`
 - `WISESUB_API_SECRET`
 - `WISESUB_ENVIRONMENT`
 - `CHEAPDATA_MARKUP_PERCENT`
+- `DB_PATH` (legacy SQLite maintenance scripts only)
 
 Do not place real secret values in docs, scripts, or commits.
 
-### Default database path
+### Legacy SQLite database path
 
 The default app database path is:
 
@@ -148,8 +150,8 @@ The default app database path is:
 ./apps/api/data/cheapdata.db
 ```
 
-This path is used by the SQLite setup and scripts unless `DB_PATH` is explicitly
-set in `.env`.
+This path is used by legacy SQLite helpers only. The active API requires
+`DATABASE_URL` and connects to PostgreSQL.
 
 ## 5. Developer commands
 
@@ -194,16 +196,18 @@ npm run wise:test-pricing
 - `POST /api/purchase-pin/verify`
 
 These routes manage account creation, password recovery, purchase PIN setup, and
-session-based access control.
+session-based access control. The current work adds `/api/logout` to the modular
+Node router and calls it from the admin, dashboard, and PIN pages. The Python
+service also supports it. Node runtime tests could not run in this environment.
 
 ### Wallet and funding
 
-- `POST /api/test-fund` — development-only funding route; disabled in production
 - `POST /api/fund-wallet` — Paystack wallet funding initialization
+- `POST /api/fund-wallet/verify` — server-side Paystack verification
+- `POST /api/paystack/webhook` — signed Paystack webhook
 
 Wallet funding uses Paystack and expects `PAYSTACK_SECRET_KEY` to be configured.
-This is the live payment path and should only be tested with real credentials in a
-proper environment.
+Automated tests must mock Paystack and must never submit real payments.
 
 ### Purchases
 
@@ -231,25 +235,24 @@ This should return a successful JSON response when the API is running.
 
 ## 7. Database and migration status
 
-The SQLite database is created in `apps/api/data/cheapdata.db` and uses SQLite
-WAL and SHM sidecar files. These are ignored by Git.
+The active Node API uses PostgreSQL through `DATABASE_URL`. SQLite files and
+`apps/api/src/db.js` are legacy/local maintenance paths, not the live API's
+database. Python uses an isolated SQLite database only for local tests;
+production startup performs a read-only PostgreSQL schema check and never
+creates or changes production tables.
 
-The database setup includes:
+Python migrations are manual and additive:
 
-- `users` table
-- `transactions` table
-- `data_plans` table with customer pricing plus WiseSub provider metadata
-- schema migration checks for missing fields such as:
-  - `purchase_pin`
-  - `virtual_account_number`
-  - `virtual_bank_name`
-  - `kyc_status`
-  - `is_admin`
-  - `reset_token_hash`
-  - `reset_token_expires_at`
+- `apps/api-python/migrations/001_api_rate_limits.sql`
+- `apps/api-python/migrations/002_dynamic_data_catalog_and_reconciliation.sql`
 
-The migration logic runs automatically when the app boots. This is important when
-restoring or upgrading from an older database state.
+Review and apply them only to a backed-up staging database first. Migration 002
+adds catalog category/availability/price override fields, sync-run records, and
+purchase idempotency/provider references. Check for duplicate provider package
+identifiers and transaction references before creating unique indexes. It treats current WiseSub selling
+prices as fixed overrides because the old admin UI had no override marker;
+admins can clear individual values after review. Neither migration has been
+applied to PostgreSQL. The Node API remains available for rollback.
 
 ## 8. Provider integration notes
 
@@ -268,8 +271,11 @@ Provider data and pricing sync tools live in `apps/api/scripts/` and are used to
 - sync data package metadata into the app database
 - validate provider pricing
 
-These scripts depend on the WiseSub env variables and should only be run in the
-intended environment.
+The Node utility sync remains available. Python adds a manual admin-only sync
+and records run outcomes. WiseSub's published catalog lists `package_code`,
+`package_name`, and `price`, with no category field; plans must be classified by
+an admin before customers see them. See `apps/api-python/README.md` for pricing
+and reconciliation rules.
 
 ## 9. Testing and linting
 
@@ -279,8 +285,8 @@ The project includes a lightweight smoke test at:
 
 - `apps/api/test/api-smoke.test.js`
 
-This test runs with `NODE_ENV=test` and uses a temporary SQLite database created
-and removed during the run. It verifies:
+This test connects to configured PostgreSQL `DATABASE_URL`. Use a dedicated
+test database, never production. It verifies:
 
 - `/api/status` responds successfully
 - static frontend assets are being served
@@ -312,23 +318,18 @@ invalid control flow, and obvious code quality problems.
 - The web frontend is static and served directly. It is not a framework-based
   app, so if richer state management or a build pipeline is needed later, the
   front-end architecture will need a separate decision.
-- Current automated coverage is smoke-level only. For production readiness, add
-  route-level tests for authentication, purchase PIN flows, wallet funding,
-  purchases, and admin authorization.
+- Python route tests cover auth, purchase PINs, mocked Paystack/WiseSub/Brevo,
+  catalog synchronization/filtering, idempotency, and reconciliation. They use
+  SQLite and do not prove PostgreSQL row-lock behavior.
 
 ## 11. Verification status
 
-This project has been validated with the following checks:
-
-- JavaScript syntax checks on project files
-- workspace install (`npm install`)
-- SQLite database read/write validation
-- API smoke test (`npm test`)
-- ESLint validation (`npm run lint`)
-- application boot through the dev command (`npm run dev`)
-
-The app starts successfully and serves the frontend at `http://localhost:3000`
-without module-resolution or database-path errors under the current setup.
+On 2026-10-10, Python tests passed 32 cases with one PostgreSQL-only race test
+skipped, Python compilation and dependency checks passed, and `git diff --check`
+passed. Node/npm and PostgreSQL client
+tools plus a dedicated staging database are unavailable in this workspace, so
+Node tests, PostgreSQL schema/concurrency checks, and browser staging have not
+been verified. No live provider was called.
 
 ## 12. Handover notes
 
@@ -365,4 +366,21 @@ The current package adds the missing server-side Paystack wallet crediting flow:
 - Request body limits were added and proxy trust is configured for hosted HTTPS environments.
 - Accidental Markdown code fences were removed from the static HTML pages.
 
-Important: data and airtime purchase endpoints still record a successful debit locally; they do not yet call WiseSub to actually deliver the purchased service. The next major production step is to introduce a provider purchase layer with pending/success/failed states, provider references, and safe refund handling.
+Data and airtime purchases call WiseSub and preserve pending status after
+uncertain responses. Request IDs and matching-pending checks prevent repeat
+debits for unresolved purchases. Admins can query provider status and manually
+resolve pending transactions. Automatic refunds on WiseSub `failed` status stay
+disabled until staging confirms the provider's terminal failure semantics.
+
+## Python backend migration status (updated 2026-10-10)
+
+`apps/api-python/` includes database-backed WiseSub plan sync, admin-managed
+prices/categories/availability, categorized customer browsing, request
+idempotency, and pending purchase reconciliation. It is not production-ready:
+the suite passes 35 mocked SQLite tests plus a PostgreSQL-only race test that
+was skipped; PostgreSQL schema and concurrency, Node tests, provider failure
+semantics, and browser staging remain unverified.
+See [the Python API guide](apps/api-python/README.md) and
+[compatibility report](apps/api-python/COMPATIBILITY-REPORT.md). Keep Node live
+until staging gates pass. No deploy, push, commit, production schema change, or
+environment change was made.

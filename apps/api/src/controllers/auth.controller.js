@@ -75,6 +75,31 @@ async function getSession(req, res) {
     }
 }
 
+function logout(req, res) {
+    const cookieOptions = {
+        httpOnly: true,
+        sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+        secure: process.env.NODE_ENV === "production"
+    };
+
+    if (!req.session) {
+        res.clearCookie("connect.sid", cookieOptions);
+        return res.json({ success: true, message: "Logged out" });
+    }
+
+    req.session.destroy(error => {
+        if (error) {
+            return res.status(500).json({
+                success: false,
+                message: "Could not log out. Please try again."
+            });
+        }
+
+        res.clearCookie("connect.sid", cookieOptions);
+        return res.json({ success: true, message: "Logged out" });
+    });
+}
+
 async function register(req, res) {
     try {
         const {
@@ -579,6 +604,7 @@ async function resetPassword(req, res) {
 
 module.exports = {
     getSession,
+    logout,
     register,
     login,
     forgotPassword,

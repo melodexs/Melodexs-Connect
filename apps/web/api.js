@@ -12,7 +12,12 @@
      * const API_BASE_URL = "https://melodexs-connect-api.onrender.com"\;
      */
 
-    const API_BASE_URL = "https://melodexs-connect-api.onrender.com";
+    // Keep web/API origins separate. Staging can set this meta value to the
+    // Python API origin without changing the current Node production target.
+    const configuredApiOrigin = document.querySelector('meta[name="api-base-url"]')?.content.trim().replace(/\/+$/, "");
+    const API_BASE_URL = configuredApiOrigin || "https://melodexs-connect-api.onrender.com";
+    window.MELODEXS_CATEGORIZED_CATALOG = Boolean(configuredApiOrigin);
+    window.MELODEXS_CATEGORIZED_CATALOG = Boolean(configuredApiOrigin);
 
     const originalFetch = window.fetch.bind(window);
 

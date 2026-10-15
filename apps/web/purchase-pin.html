@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <meta name="api-base-url" content="">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -561,7 +562,9 @@
         }
     }
 
-    function logout() {
+    async function logout() {
+
+        try { await fetch("/api/logout", { method: "POST" }); } catch (_) { }
 
         localStorage.removeItem("cheapdataUser");
 

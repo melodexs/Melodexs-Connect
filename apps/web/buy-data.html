@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="api-base-url" content="">
     <title>Buy Data - MELODEXS CONNECT</title>
 
     <style>
@@ -127,6 +128,11 @@
             border-color: #0251B0;
             background: #EEF5FF;
         }
+
+        .category-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; }
+        .category { border:1px solid #C7D1DD; border-radius:10px; background:#fff; color:#0251B0; padding:16px; font-weight:700; cursor:pointer; text-align:left; }
+        .category:hover { border-color:#0251B0; background:#EEF5FF; }
+        .step-back { border:0; background:transparent; color:#0251B0; font-weight:700; padding:0 0 12px; cursor:pointer; }
 
         .plan strong {
             display: block;
@@ -290,13 +296,21 @@
 
         </div>
 
+        <section id="categoryStep" hidden>
+            <label>Choose a bundle category</label>
+            <div id="categories" class="category-grid"></div>
+        </section>
+
         <!-- DATA PLANS -->
 
-        <label>Select Data Plan</label>
+        <section id="planStep" hidden>
+        <button type="button" class="step-back" onclick="backToCategories()">← Back to categories</button>
+        <label id="planHeading">Available plans</label>
 
         <div id="plans" class="plans">
-            <div style="grid-column:1/-1;text-align:center;color:#6b7280;padding:20px;">Loading data plans...</div>
+            <div style="grid-column:1/-1;text-align:center;color:#6b7280;padding:20px;">Select a category to view plans.</div>
         </div>
+        </section>
 
         <!-- PURCHASE PIN -->
 
@@ -402,7 +416,10 @@
     let selectedNetwork = "MTN";
     let selectedPlan = "";
     let selectedPrice = 0;
+    let selectedValidity = "";
     let availablePlans = [];
+    let selectedCategory = "";
+    let purchaseRequestId = "";
 
     // =========================
     // LOAD BALANCE
@@ -449,16 +466,31 @@
     // =========================
 
     async function loadPlans() {
-        const container = document.getElementById("plans");
+        const container = document.getElementById("categories");
         try {
-            const response = await fetch("/api/data-plans");
+            if (!window.MELODEXS_CATEGORIZED_CATALOG) {
+                const legacyResponse = await fetch("/api/data-plans");
+                const legacyData = await legacyResponse.json();
+                if (!legacyResponse.ok || !legacyData.success) throw new Error(legacyData.message || "Could not load data plans");
+                availablePlans = legacyData.plans || [];
+                document.getElementById("categoryStep").hidden = true;
+                document.getElementById("planStep").hidden = false;
+                document.getElementById("planHeading").textContent = "Select Data Plan";
+                await renderPlans();
+                return;
+            }
+            const response = await fetch(`/api/data-categories?network=${encodeURIComponent(selectedNetwork)}`);
             const data = await response.json();
-            if (!response.ok || !data.success) throw new Error(data.message || "Could not load data plans");
-            availablePlans = data.plans || [];
-            renderPlans();
+            if (!response.ok || !data.success) throw new Error(data.message || "Could not load data categories");
+            const categories = data.categories || [];
+            document.getElementById("categoryStep").hidden = false;
+            document.getElementById("planStep").hidden = true;
+            container.innerHTML = categories.length ? categories.map(item => `<button type="button" class="category" data-category="${escapeHtml(item.category)}">${escapeHtml(item.category)}<br><small>${Number(item.plan_count)} available</small></button>`).join("") : `<div style="grid-column:1/-1;color:#6b7280;padding:16px">No bundle categories are currently available for ${escapeHtml(selectedNetwork)}.</div>`;
+            container.querySelectorAll(".category").forEach(button => button.addEventListener("click", () => selectCategory(button.dataset.category)));
         } catch (error) {
             console.error("Plans error:", error);
-            container.innerHTML = `<div style="grid-column:1/-1;text-align:center;color:#991b1b;padding:20px;">${error.message}</div>`;
+            document.getElementById("categoryStep").hidden = false;
+            container.innerHTML = `<div style="grid-column:1/-1;color:#991b1b;padding:16px;">${escapeHtml(error.message)} <button type="button" onclick="loadPlans()">Retry</button></div>`;
         }
     }
 
@@ -475,18 +507,48 @@
             .replace(/'/g, "&#039;");
     }
 
-    function renderPlans() {
+    async function selectCategory(category) {
+        selectedCategory = category;
+        document.getElementById("categoryStep").hidden = true;
+        document.getElementById("planStep").hidden = false;
+        document.getElementById("planHeading").textContent = `${selectedNetwork} · ${category}`;
+        await renderPlans();
+    }
+
+    function backToCategories() {
+        selectedPlan = ""; selectedPrice = 0; selectedValidity = ""; selectedCategory = "";
+        purchaseRequestId = "";
+        document.getElementById("planStep").hidden = true;
+        document.getElementById("categoryStep").hidden = false;
+        document.getElementById("buyButton").disabled = true;
+        document.getElementById("summaryPlan").textContent = "Not selected";
+        document.getElementById("summaryAmount").textContent = "₦0";
+    }
+
+    async function renderPlans() {
         const container = document.getElementById("plans");
-        const plans = availablePlans.filter(item => item.network === selectedNetwork);
+        container.innerHTML = `<div style="grid-column:1/-1;text-align:center;color:#6b7280;padding:20px;">Loading available plans…</div>`;
+        try {
+        let plans;
+        if (window.MELODEXS_CATEGORIZED_CATALOG) {
+            const response = await fetch(`/api/data-plans?network=${encodeURIComponent(selectedNetwork)}&category=${encodeURIComponent(selectedCategory)}`);
+            const data = await response.json();
+            if (!response.ok || !data.success) throw new Error(data.message || "Could not load plans");
+            availablePlans = data.plans || [];
+            plans = availablePlans;
+        } else {
+            plans = availablePlans.filter(item => item.network === selectedNetwork);
+        }
         selectedPlan = "";
         selectedPrice = 0;
+        selectedValidity = "";
         document.getElementById("summaryPlan").textContent = "Not selected";
         document.getElementById("summaryAmount").textContent = "₦0";
         document.getElementById("buyButton").disabled = true;
         document.getElementById("buyButton").textContent = "Select a Data Plan";
 
         if (!plans.length) {
-            container.innerHTML = `<div style="grid-column:1/-1;text-align:center;color:#6b7280;padding:20px;">No plans are currently available for ${selectedNetwork}.</div>`;
+            container.innerHTML = `<div style="grid-column:1/-1;text-align:center;color:#6b7280;padding:20px;">There are currently no available plans in ${escapeHtml(selectedCategory)} for ${escapeHtml(selectedNetwork)}.</div>`;
             return;
         }
 
@@ -507,8 +569,9 @@
             const displayPlan = customerPlanName || item.plan;
 
             return `
-                <button type="button" class="plan" data-plan="${escapeHtml(item.plan)}" data-price="${Number(item.selling_price)}">
+                <button type="button" class="plan" data-plan="${escapeHtml(item.plan)}" data-price="${Number(item.selling_price)}" data-validity="${escapeHtml(item.validity || "")}">
                     <strong>${escapeHtml(displayPlan)}</strong>
+                    ${item.validity ? `<small>${escapeHtml(item.validity)}</small>` : ""}
                     <span class="price">₦${Number(item.selling_price).toLocaleString("en-NG")}</span>
                 </button>
             `;
@@ -519,10 +582,14 @@
                 selectPlan(
                     button.dataset.plan,
                     Number(button.dataset.price),
-                    button
+                    button,
+                    button.dataset.validity
                 );
             });
         });
+        } catch (error) {
+            container.innerHTML = `<div style="grid-column:1/-1;color:#991b1b;padding:16px;">${escapeHtml(error.message)} <button type="button" onclick="renderPlans()">Retry</button></div>`;
+        }
     }
 
     // =========================
@@ -532,6 +599,14 @@
     function selectNetwork(network, button) {
 
         selectedNetwork = network;
+        selectedPlan = "";
+        selectedPrice = 0;
+        selectedValidity = "";
+        selectedCategory = "";
+        purchaseRequestId = "";
+        document.getElementById("summaryPlan").textContent = "Not selected";
+        document.getElementById("summaryAmount").textContent = "₦0";
+        document.getElementById("buyButton").disabled = true;
 
         document
             .querySelectorAll(".network")
@@ -545,17 +620,26 @@
             "summaryNetwork"
         ).textContent = network;
 
-        renderPlans();
+        selectedCategory = "";
+        if (!window.MELODEXS_CATEGORIZED_CATALOG) {
+            loadPlans();
+            return;
+        }
+        document.getElementById("categoryStep").hidden = true;
+        document.getElementById("planStep").hidden = true;
+        loadPlans();
     }
 
     // =========================
     // SELECT PLAN
     // =========================
 
-    function selectPlan(plan, price, button) {
+    function selectPlan(plan, price, button, validity = "") {
 
         selectedPlan = plan;
         selectedPrice = price;
+        selectedValidity = validity;
+        purchaseRequestId = "";
 
         document
             .querySelectorAll(".plan")
@@ -567,7 +651,7 @@
 
         document.getElementById(
             "summaryPlan"
-        ).textContent = plan;
+        ).textContent = [selectedCategory, plan, validity].filter(Boolean).join(" · ");
 
         document.getElementById(
             "summaryAmount"
@@ -583,6 +667,17 @@
             `Buy ${plan} for ₦${price.toLocaleString()}`;
 
         updatePhoneSummary();
+    }
+
+    function updateSelectedPrice(item) {
+        selectedPlan = item.plan;
+        selectedPrice = Number(item.selling_price);
+        selectedValidity = item.validity || "";
+        document.getElementById("summaryPlan").textContent = [selectedCategory, item.plan, selectedValidity].filter(Boolean).join(" · ");
+        document.getElementById("summaryAmount").textContent = `₦${selectedPrice.toLocaleString("en-NG")}`;
+        const button = document.getElementById("buyButton");
+        button.disabled = false;
+        button.textContent = `Confirm updated price: ₦${selectedPrice.toLocaleString("en-NG")}`;
     }
 
     // =========================
@@ -725,12 +820,36 @@
             return;
         }
 
+        // Confirm from the latest approved catalog price, not the value from
+        // the initial plan list. The server checks the same expected price
+        // again under the plan row lock after this confirmation.
+        try {
+            const currentResponse = await fetch(window.MELODEXS_CATEGORIZED_CATALOG ? `/api/data-plans?network=${encodeURIComponent(selectedNetwork)}&category=${encodeURIComponent(selectedCategory)}` : "/api/data-plans");
+            const currentData = await currentResponse.json();
+            const currentPlan = (currentData.plans || []).find(item => item.plan === selectedPlan && item.network === selectedNetwork && (!window.MELODEXS_CATEGORIZED_CATALOG || item.category === selectedCategory));
+            if (currentResponse.ok && !currentPlan) {
+                if (window.MELODEXS_CATEGORIZED_CATALOG) backToCategories();
+                await loadPlans();
+                showMessage("This plan is no longer available. Choose another plan.", "error");
+                return;
+            }
+            if (!currentResponse.ok) throw new Error("Could not refresh current plan details.");
+            if (Math.abs(Number(currentPlan.selling_price) - selectedPrice) >= 0.005) {
+                updateSelectedPrice(currentPlan);
+                showMessage("The plan price changed. Review the updated price and confirm again.", "error");
+                return;
+            }
+        } catch (error) {
+            showMessage("Could not refresh current plan details. Please retry before purchasing.", "error");
+            return;
+        }
+
         // =========================
         // CONFIRM PURCHASE
         // =========================
 
         const confirmed = confirm(
-            `Buy ${selectedPlan} ${selectedNetwork} data for ${phone} for ₦${selectedPrice.toLocaleString()}?`
+            `Buy ${selectedPlan} ${selectedNetwork} data${selectedCategory ? ` (${selectedCategory})` : ""}${selectedValidity ? ` · ${selectedValidity}` : ""} for ${phone} for ₦${selectedPrice.toLocaleString()}?`
         );
 
         if (!confirmed) {
@@ -747,6 +866,8 @@
             "Processing...";
 
         try {
+
+            if (!purchaseRequestId) purchaseRequestId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
             const response =
                 await fetch(
@@ -773,6 +894,12 @@
                             amount:
                                 selectedPrice,
 
+                            expectedPrice:
+                                selectedPrice,
+
+                            requestId:
+                                purchaseRequestId,
+
                             pin:
                                 pin
                         })
@@ -788,6 +915,20 @@
 
             if (!response.ok || !data.success) {
 
+                if (response.status === 202) {
+                    showMessage(data.message || "Purchase is awaiting provider confirmation. Please do not retry it.", "error");
+                    buyButton.disabled = true;
+                    buyButton.textContent = "Purchase Pending";
+                    return;
+                }
+
+                if (response.status === 409 && data.message && data.message.includes("price changed")) {
+                    if (window.MELODEXS_CATEGORIZED_CATALOG) await renderPlans();
+                    else await loadPlans();
+                    showMessage("The plan price changed. Select the current plan and confirm its new price.", "error");
+                    return;
+                }
+
                 showMessage(
                     data.message ||
                     "Purchase failed.",
@@ -795,6 +936,7 @@
                 );
 
                 buyButton.disabled = false;
+                purchaseRequestId = "";
 
                 buyButton.textContent =
                     `Buy ${selectedPlan} for ₦${selectedPrice.toLocaleString()}`;
@@ -830,6 +972,7 @@
 
             buyButton.textContent =
                 "Purchase Successful";
+            purchaseRequestId = "";
 
             // Clear PIN
 
@@ -845,7 +988,7 @@
             );
 
             showMessage(
-                "Unable to connect to the server. Please try again.",
+                error.message === "Could not refresh current plan details." ? "Could not refresh current plan details. Please retry before purchasing." : "Unable to connect to the server. If the request may have reached the server, do not submit it again until its status is checked.",
                 "error"
             );
 

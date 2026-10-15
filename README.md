@@ -3,7 +3,7 @@
 MELODEXS CONNECT is a Nigerian digital services platform for wallet funding,
 mobile data, airtime, and related digital services. Customers register, fund a
 wallet, and use it to pay for services. The web app is a set of HTML, CSS, and
-browser JavaScript pages served by the Express API.
+browser JavaScript pages currently served by the Express API.
 
 ## Features
 
@@ -14,6 +14,8 @@ browser JavaScript pages served by the Express API.
 - WiseSub-powered mobile data and airtime purchases
 - Transaction history and an admin panel
 - WiseSub data plan pricing with a configurable markup
+- Admin-triggered WiseSub catalog synchronization, admin-managed price
+  overrides and categories, and customer network → category → plan browsing
 - PostgreSQL persistence and deployment support for Render
 - Installable progressive web app (PWA)
 
@@ -195,3 +197,29 @@ The project is configured for the frontend and API to run as Render services.
 Set production environment variables in the service configuration, use HTTPS,
 and configure Paystack's webhook URL as
 `https://melodexs-connect-api.onrender.com/api/paystack/webhook`.
+
+## Python backend migration status
+
+`apps/api-python/` contains the recovered FastAPI migration from the
+`python-backend-migration` branch. The Node API remains the production
+reference and the frontend contract. Python has route coverage for the same
+major feature areas, but it has not been verified against the live PostgreSQL
+schema or staging providers and is not ready for production cutover. The local
+Python suite currently passes 35 mocked SQLite tests with one opt-in PostgreSQL
+race test skipped; PostgreSQL locking,
+Node tests, browser staging, and provider reconciliation semantics remain
+unverified. Dynamic plans are stored in PostgreSQL after the reviewed additive
+migration; plans without an admin category stay hidden. Price overrides remain
+fixed across sync, while unoverridden prices use the existing 2% round-up rule.
+On migration, existing WiseSub selling prices are preserved as fixed overrides
+because the prior admin interface did not record whether a value was manually
+set; admins can clear selected overrides after review.
+The browser keeps the existing Node flow while its `api-base-url` meta tag is
+blank; a staging web copy can point the tag at Python to enable the category
+flow.
+See the migration docs for provider limitations, migrations, staging commands,
+and cutover steps:
+[apps/api-python/README.md](apps/api-python/README.md). Keep the Node service
+available until financial concurrency, database schema, and session behavior
+have passed staging validation. No production traffic, environment variables,
+database, or provider settings were changed.

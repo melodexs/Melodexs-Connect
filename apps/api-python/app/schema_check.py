@@ -1,0 +1,289 @@
+"""Read-only compatibility check for the Node API's PostgreSQL schema."""
+
+from .database import engine
+import re
+
+EXPECTED_COLUMNS = {
+    "users": {"id", "name", "email", "phone", "password", "purchase_pin", "balance", "virtual_account_number", "virtual_bank_name", "kyc_status", "is_admin", "reset_token_hash", "reset_token_expires_at", "created_at"},
+    "data_plans": {"id", "plan_name", "network", "plan", "provider_cost", "selling_price", "selling_price_override", "active", "provider_available", "category", "provider_category", "sync_error", "provider", "provider_code", "provider_package_code", "provider_package_name", "data_size", "validity", "source", "status", "last_synced_at", "created_at", "updated_at"},
+    "data_plan_sync_runs": {"id", "started_at", "finished_at", "outcome", "added", "updated", "unavailable", "errors"},
+    "transactions": {"id", "user_id", "type", "amount", "status", "reference", "description", "idempotency_key", "provider_reference", "created_at"},
+    "sessions": {"sid", "sess", "expire"},
+    "api_rate_limits": {"rate_key", "window_start", "request_count"},
+}
+
+# Types accepted by both the Node migration DDL and the existing Python SQL.
+EXPECTED_TYPES = {
+    "id": {"integer", "smallint", "bigint"},
+    "user_id": {"integer", "smallint", "bigint"},
+    "balance": {"double precision", "real", "numeric"},
+    "amount": {"double precision", "real", "numeric"},
+    "provider_cost": {"double precision", "real", "numeric"},
+    "selling_price": {"double precision", "real", "numeric"},
+    "selling_price_override": {"double precision", "real", "numeric"},
+    # The Node PostgreSQL migration and runtime use integer flags and compare
+    # them to 0/1. PostgreSQL BOOLEAN is not interchangeable in those queries.
+    "is_admin": {"integer", "smallint"},
+    "provider_available": {"integer", "smallint"},
+    "active": {"integer", "smallint"},
+    "expire": {"bigint", "integer"},
+    "reset_token_expires_at": {"bigint", "integer"},
+    "window_start": {"bigint", "integer"},
+    "request_count": {"integer", "smallint", "bigint"},
+    "added": {"integer", "smallint", "bigint"},
+    "updated": {"integer", "smallint", "bigint"},
+    "unavailable": {"integer", "smallint", "bigint"},
+    "created_at": {"timestamp without time zone", "timestamp with time zone", "text", "character varying"},
+    "updated_at": {"timestamp without time zone", "timestamp with time zone", "text", "character varying"},
+    "last_synced_at": {"timestamp without time zone", "timestamp with time zone", "text", "character varying"},
+    "started_at": {"timestamp without time zone", "timestamp with time zone", "text", "character varying"},
+    "finished_at": {"timestamp without time zone", "timestamp with time zone", "text", "character varying"},
+}
+TEXT_COLUMNS = {
+    "name", "email", "phone", "password", "purchase_pin", "virtual_account_number",
+    "virtual_bank_name", "kyc_status", "reset_token_hash", "network", "plan_name",
+    "plan", "provider", "provider_code", "provider_package_code", "provider_package_name",
+    "data_size", "validity", "source", "status", "type", "reference", "description",
+    "sid", "sess", "rate_key", "category", "provider_category", "sync_error", "idempotency_key", "provider_reference", "outcome", "errors",
+}
+EXPECTED_CONSTRAINTS = {
+    "users": {"PRIMARY KEY(id)", "UNIQUE(email)", "UNIQUE(phone)"},
+    "data_plans": {"PRIMARY KEY(id)", "UNIQUE(network,plan)"},
+    "data_plan_sync_runs": {"PRIMARY KEY(id)"},
+    "transactions": {"PRIMARY KEY(id)", "FOREIGN KEY(user_id)->users(id)"},
+    "sessions": {"PRIMARY KEY(sid)"},
+    "api_rate_limits": {"PRIMARY KEY(rate_key)"},
+}
+GENERATED_ID_COLUMNS = {"users": "id", "data_plans": "id", "data_plan_sync_runs": "id", "transactions": "id"}
+EXPECTED_NOT_NULL = {
+    "users": {"id", "name", "email", "phone", "password", "balance", "kyc_status", "is_admin", "created_at"},
+    "data_plans": {"id", "network", "plan", "provider_cost", "selling_price", "active", "provider_available", "created_at", "updated_at"},
+    "data_plan_sync_runs": {"id", "started_at", "outcome", "added", "updated", "unavailable"},
+    "transactions": {"id", "user_id", "type", "amount", "status", "created_at"},
+    "sessions": {"sid", "sess", "expire"},
+    "api_rate_limits": {"rate_key", "window_start", "request_count"},
+}
+EXPECTED_INDEXES = {"users": {"uq_users_reset_token_hash"}, "sessions": {"idx_sessions_expire"}, "data_plans": {"uq_data_plans_provider_package"}, "transactions": {"uq_transactions_reference", "uq_transactions_user_idempotency"}}
+EXPECTED_INDEX_DEFINITIONS = {
+    "uq_users_reset_token_hash": (True, ("reset_token_hash",), "reset_token_hashisnotnull"),
+    "idx_sessions_expire": (False, ("expire",), None),
+    "uq_data_plans_provider_package": (True, ("source", "provider_code", "provider_package_code"), "sourceisnotnullandprovider_codeisnotnullandprovider_package_codeisnotnull"),
+    "uq_transactions_user_idempotency": (True, ("user_id", "idempotency_key"), "idempotency_keyisnotnull"),
+    "uq_transactions_reference": (True, ("reference",), "referenceisnotnull"),
+}
+EXPECTED_DEFAULTS = {
+    "users": {"balance": {"0"}, "kyc_status": {"'pending'::text", "'pending'::character varying", "'pending'"}, "is_admin": {"0"}, "created_at": {"current_timestamp", "now()"}},
+    "data_plans": {"provider_cost": {"0"}, "active": {"1"}, "provider_available": {"1"}, "created_at": {"current_timestamp", "now()"}, "updated_at": {"current_timestamp", "now()"}},
+    "data_plan_sync_runs": {"started_at": {"current_timestamp", "now()"}, "added": {"0"}, "updated": {"0"}, "unavailable": {"0"}},
+    "transactions": {"created_at": {"current_timestamp", "now()"}},
+}
+
+
+def _type_ok(table: str, column: str, data_type: str) -> bool:
+    accepted = EXPECTED_TYPES.get(column)
+    if accepted:
+        return data_type in accepted
+    if column in TEXT_COLUMNS:
+        return data_type in {"text", "character varying", "character"}
+    return True
+
+
+def _compact_sql(value: str) -> str:
+    return re.sub(r'[\s()"`]', "", value.lower())
+
+
+_DEFAULT_CAST = re.compile(
+    r"::\s*(?:double\s+precision|real|numeric|smallint|integer|bigint|"
+    r"text|character\s+varying|character|timestamp\s+without\s+time\s+zone|"
+    r"timestamp\s+with\s+time\s+zone)\s*$",
+    re.IGNORECASE,
+)
+
+
+def _default_key(value: str) -> str:
+    """Normalize harmless display parentheses and built-in type casts."""
+    result = value.strip().lower()
+    while result.startswith("(") and result.endswith(")"):
+        result = result[1:-1].strip()
+    while match := _DEFAULT_CAST.search(result):
+        result = result[:match.start()].strip()
+        while result.startswith("(") and result.endswith(")"):
+            result = result[1:-1].strip()
+    return result
+
+
+def _default_matches(actual: str | None, allowed: set[str]) -> bool:
+    actual_key = _default_key(actual or "")
+    return actual_key in {_default_key(value) for value in allowed}
+
+
+def _generated_id_missing(column_row) -> bool:
+    """SERIAL uses nextval; SQL-standard identity columns expose is_identity."""
+    default = column_row["column_default"] or ""
+    return "nextval(" not in default.lower() and column_row["is_identity"] != "YES"
+
+
+def _index_issue(row, wanted) -> dict | None:
+    wanted_unique, wanted_columns, wanted_predicate = wanted
+    actual_columns = tuple(_compact_sql(str(column)) for column in (row["columns"] or [])) if row else ()
+    actual_predicate = _compact_sql(str(row["predicate"])) if row and row["predicate"] else None
+    if (not row or not row["indisvalid"] or not row["indisready"]
+            or bool(row["indisunique"]) != wanted_unique
+            or actual_columns != wanted_columns
+            or actual_predicate != wanted_predicate):
+        return {
+            "unique": bool(row["indisunique"]) if row else None,
+            "columns": list(actual_columns),
+            "predicate": actual_predicate,
+            "valid": bool(row["indisvalid"]) if row else False,
+            "ready": bool(row["indisready"]) if row else False,
+        }
+    return None
+
+
+def _postgres_schema(conn) -> dict:
+    result = {}
+    for table, expected in EXPECTED_COLUMNS.items():
+        rows = conn.exec_driver_sql(
+            "SELECT column_name,data_type,column_default,is_nullable,is_identity "
+            "FROM information_schema.columns WHERE table_schema='public' AND table_name=%s",
+            (table,),
+        ).mappings().all()
+        actual = {row["column_name"] for row in rows}
+        types = {
+            row["column_name"]: row["data_type"]
+            for row in rows
+            if not _type_ok(table, row["column_name"], row["data_type"])
+        }
+        nullable = sorted(
+            row["column_name"]
+            for row in rows
+            if row["column_name"] in EXPECTED_NOT_NULL[table] and row["is_nullable"] != "NO"
+        )
+        incompatible_defaults = {}
+        for row in rows:
+            allowed = EXPECTED_DEFAULTS.get(table, {}).get(row["column_name"])
+            if allowed and not _default_matches(row["column_default"], allowed):
+                incompatible_defaults[row["column_name"]] = row["column_default"]
+        generated_id_missing = []
+        id_column = GENERATED_ID_COLUMNS.get(table)
+        if id_column and id_column in actual:
+            id_row = next(row for row in rows if row["column_name"] == id_column)
+            if _generated_id_missing(id_row):
+                generated_id_missing.append(id_column)
+
+        constraints = set()
+        # Joining key_column_usage and constraint_column_usage in one query
+        # multiplies rows for multi-column constraints (a 2-column unique
+        # constraint aggregates each column twice). Collect each side with
+        # correlated subqueries so "UNIQUE(network,plan)" stays detectable.
+        constraint_rows = conn.exec_driver_sql(
+            "SELECT tc.constraint_type, "
+            "(SELECT string_agg(kcu.column_name, ',' ORDER BY kcu.ordinal_position) "
+            " FROM information_schema.key_column_usage kcu "
+            " WHERE kcu.constraint_name=tc.constraint_name AND kcu.table_schema=tc.table_schema "
+            " AND kcu.table_name=tc.table_name) AS columns, "
+            "(SELECT ccu.table_name FROM information_schema.constraint_column_usage ccu "
+            " WHERE ccu.constraint_name=tc.constraint_name AND ccu.table_schema=tc.table_schema "
+            " LIMIT 1) AS foreign_table, "
+            "(SELECT string_agg(ccu.column_name, ',' ORDER BY ccu.column_name) "
+            " FROM information_schema.constraint_column_usage ccu "
+            " WHERE ccu.constraint_name=tc.constraint_name AND ccu.table_schema=tc.table_schema) AS foreign_columns "
+            "FROM information_schema.table_constraints tc "
+            "WHERE tc.table_schema='public' AND tc.table_name=%s "
+            "AND tc.constraint_type IN ('PRIMARY KEY','UNIQUE','FOREIGN KEY')",
+            (table,),
+        ).mappings().all()
+        for row in constraint_rows:
+            cols = row["columns"] or ""
+            kind = row["constraint_type"]
+            if kind == "FOREIGN KEY":
+                constraints.add(f"FOREIGN KEY({cols})->{row['foreign_table']}({row['foreign_columns'] or ''})")
+            else:
+                constraints.add(f"{kind}({cols})")
+        index_rows = conn.exec_driver_sql(
+            "SELECT ic.relname AS indexname, ix.indisunique, ix.indisvalid, ix.indisready, "
+            "ARRAY(SELECT pg_get_indexdef(ix.indexrelid, n, true) "
+            "FROM generate_series(1, ix.indnkeyatts) AS n ORDER BY n) AS columns, "
+            "pg_get_expr(ix.indpred, ix.indrelid) AS predicate "
+            "FROM pg_index ix JOIN pg_class tc ON tc.oid=ix.indrelid "
+            "JOIN pg_namespace ns ON ns.oid=tc.relnamespace "
+            "JOIN pg_class ic ON ic.oid=ix.indexrelid "
+            "WHERE ns.nspname='public' AND tc.relname=%s",
+            (table,),
+        ).mappings().all()
+        indexes = {row["indexname"] for row in index_rows}
+        index_by_name = {row["indexname"]: row for row in index_rows}
+        invalid_indexes = {}
+        for name in EXPECTED_INDEXES.get(table, set()):
+            row = index_by_name.get(name)
+            issue = _index_issue(row, EXPECTED_INDEX_DEFINITIONS[name])
+            if issue:
+                invalid_indexes[name] = issue
+        result[table] = {
+            "present": sorted(actual),
+            "missing": sorted(expected - actual),
+            "extra": sorted(actual - expected),
+            "incompatible_types": types,
+            "incompatible_defaults": incompatible_defaults,
+            "unexpected_nullable_columns": nullable,
+            "constraints": sorted(constraints),
+            "missing_constraints": sorted(EXPECTED_CONSTRAINTS[table] - constraints),
+            "indexes": sorted(indexes),
+            "missing_indexes": sorted(EXPECTED_INDEXES.get(table, set()) - indexes),
+            "incompatible_indexes": invalid_indexes,
+            "missing_generated_id_defaults": generated_id_missing,
+        }
+    return result
+
+
+def _sqlite_schema(conn) -> dict:
+    result = {}
+    for table, expected in EXPECTED_COLUMNS.items():
+        rows = conn.exec_driver_sql(f"PRAGMA table_info({table})").mappings().all()
+        actual = {row["name"] for row in rows}
+        constraints = set()
+        indexes = set()
+        if rows:
+            primary = sorted((row["pk"], row["name"]) for row in rows if row["pk"])
+            if primary:
+                constraints.add("PRIMARY KEY(" + ",".join(name for _, name in primary) + ")")
+            for index in conn.exec_driver_sql(f"PRAGMA index_list({table})").mappings():
+                indexes.add(index["name"])
+                if index["unique"]:
+                    columns = [r["name"] for r in conn.exec_driver_sql(f"PRAGMA index_info({index['name']})").mappings()]
+                    constraints.add("UNIQUE(" + ",".join(columns) + ")")
+            for fk in conn.exec_driver_sql(f"PRAGMA foreign_key_list({table})").mappings():
+                constraints.add(f"FOREIGN KEY({fk['from']})->{fk['table']}({fk['to']})")
+        result[table] = {
+            "present": sorted(actual),
+            "missing": sorted(expected - actual),
+            "extra": sorted(actual - expected),
+            "incompatible_types": {},
+            "incompatible_defaults": {},
+            "unexpected_nullable_columns": [],
+            "constraints": sorted(constraints),
+            "missing_constraints": sorted(EXPECTED_CONSTRAINTS[table] - constraints),
+            "indexes": sorted(indexes),
+            "missing_indexes": sorted(EXPECTED_INDEXES.get(table, set()) - indexes),
+            "incompatible_indexes": {},
+            "missing_generated_id_defaults": [],
+        }
+    return result
+
+
+def inspect_schema() -> dict:
+    """Inspect columns, types, keys, and ID generation without writing."""
+    with engine.connect() as conn:
+        if engine.dialect.name == "postgresql":
+            return _postgres_schema(conn)
+        return _sqlite_schema(conn)
+
+
+if __name__ == "__main__":
+    import json
+    print(json.dumps({
+        "database_dialect": engine.dialect.name,
+        "postgresql_verified": engine.dialect.name == "postgresql",
+        "tables": inspect_schema(),
+    }, indent=2))
