@@ -2,22 +2,33 @@
     /*
      * MELODEXS CONNECT API configuration
      *
-     * LOCAL DEVELOPMENT:
-     * Leave API_BASE_URL empty to use the same origin.
+     * The API origin is resolved in one place, in this order:
+     *   1. The per-page <meta name="api-base-url"> tag (staging/preview).
+     *   2. The production API URL below (the deployed backend service).
+     *   3. The page origin, for local development where the static site and
+     *      the API are served from the same host.
      *
-     * RENDER:
-     * Replace the empty string with your Render API URL.
-     *
-     * Example:
-     * const API_BASE_URL = "https://melodexs-connect-api.onrender.com"\;
+     * After the Python API passes staging verification and release approval,
+     * flip API_TARGET_IS_PYTHON to true so the frontend enables the
+     * categorized catalog and purchase/reconciliation UI that only the
+     * Python API provides. Leave it false while Node is the production
+     * backend. See apps/api-python/CUTOVER-CHECKLIST.md.
      */
 
-    // Keep web/API origins separate. Staging can set this meta value to the
-    // Python API origin without changing the current Node production target.
+    // Cutover switch: false = Node backend (current production), true = Python.
+    const API_TARGET_IS_PYTHON = false;
+    const PRODUCTION_API_URL = "https://melodexs-connect-api.onrender.com";
+
+    // Staging/preview can set this meta value to a specific API origin.
     const configuredApiOrigin = document.querySelector('meta[name="api-base-url"]')?.content.trim().replace(/\/+$/, "");
-    const API_BASE_URL = configuredApiOrigin || "https://melodexs-connect-api.onrender.com";
-    window.MELODEXS_CATEGORIZED_CATALOG = Boolean(configuredApiOrigin);
-    window.MELODEXS_CATEGORIZED_CATALOG = Boolean(configuredApiOrigin);
+
+    // Never let a hosted page talk to a developer machine.
+    const pageIsLocal = ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname);
+    const originIsLocal = configuredApiOrigin && /^(https?:\/\/)?(localhost|127\.0\.0\.1)(:|\/|$)/.test(configuredApiOrigin);
+    const safeConfiguredOrigin = pageIsLocal || !originIsLocal ? configuredApiOrigin : "";
+
+    const API_BASE_URL = safeConfiguredOrigin || (pageIsLocal ? "" : PRODUCTION_API_URL);
+    window.MELODEXS_CATEGORIZED_CATALOG = Boolean(safeConfiguredOrigin) || API_TARGET_IS_PYTHON;
 
     const originalFetch = window.fetch.bind(window);
 

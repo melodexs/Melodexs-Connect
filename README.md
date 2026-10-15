@@ -139,16 +139,23 @@ in the deployment environment.
 
 ## Install and run
 
-Requires Node.js 18 or newer and npm. From the repository root:
+The Python API requires Python 3.11+ with the `apps/api-python/requirements.txt`
+packages (`pip install -r apps/api-python/requirements.txt`). Node.js 18+ is
+still used for the frontend tooling, the ESLint config, and the retained Node
+rollback service. From the repository root:
 
 ```bash
-npm install
-cp .env.example .env
-npm run dev
+npm install                      # frontend tooling
+pip install -r apps/api-python/requirements.txt
+cp apps/api-python/env.example .env   # then set NODE_ENV, SESSION_SECRET, ...
+npm run dev                      # Python API on http://localhost:3000
 ```
 
-The API defaults to port 3000. Open `http://localhost:3000` to use the web app.
-For a production-style local start, run `npm run start` (or `npm start`).
+`npm start` runs the Python API with production-style binding
+(`0.0.0.0:${PORT:-3000}`); `npm run start:node` / `npm run dev:node` run the
+retained Node backend instead. Environment variables are documented in
+[apps/api-python/env.example](apps/api-python/env.example); startup fails
+fast when required production configuration is missing or invalid.
 
 ### Database and admin utility scripts
 
@@ -166,14 +173,19 @@ production database without a backup.
 ## Testing and linting
 
 ```bash
-npm test
-npm run lint
+npm run test:api-python   # Python suite against a fresh external scratch SQLite database
+npm test                   # Node smoke test (dedicated PostgreSQL test DB required)
+npm run lint               # ESLint across the workspace
 ```
 
-The API smoke test connects to PostgreSQL, so it requires a dedicated test
-PostgreSQL database configured in `DATABASE_URL`. Never point local tests at the
-production database. The test checks API status and delivery of the home page;
-it does not perform Paystack or WiseSub purchases.
+The Python suite creates its own throwaway SQLite database outside the
+repository and never contacts PostgreSQL, providers, or production. The
+PostgreSQL integration tests behind the opt-in gate are covered in
+[apps/api-python/MIGRATION-STAGING.md](apps/api-python/MIGRATION-STAGING.md).
+The Node smoke test connects to the configured `DATABASE_URL`, so it requires a
+dedicated disposable test database. Never point any test at production. The
+smoke test checks API status and delivery of the home page; it does not perform
+Paystack or WiseSub purchases.
 
 ## Security
 
@@ -200,26 +212,51 @@ and configure Paystack's webhook URL as
 
 ## Python backend migration status
 
-`apps/api-python/` contains the recovered FastAPI migration from the
-`python-backend-migration` branch. The Node API remains the production
-reference and the frontend contract. Python has route coverage for the same
-major feature areas, but it has not been verified against the live PostgreSQL
-schema or staging providers and is not ready for production cutover. The local
-Python suite currently passes 35 mocked SQLite tests with one opt-in PostgreSQL
-race test skipped; PostgreSQL locking,
-Node tests, browser staging, and provider reconciliation semantics remain
-unverified. Dynamic plans are stored in PostgreSQL after the reviewed additive
-migration; plans without an admin category stay hidden. Price overrides remain
-fixed across sync, while unoverridden prices use the existing 2% round-up rule.
-On migration, existing WiseSub selling prices are preserved as fixed overrides
-because the prior admin interface did not record whether a value was manually
-set; admins can clear selected overrides after review.
-The browser keeps the existing Node flow while its `api-base-url` meta tag is
-blank; a staging web copy can point the tag at Python to enable the category
-flow.
-See the migration docs for provider limitations, migrations, staging commands,
-and cutover steps:
-[apps/api-python/README.md](apps/api-python/README.md). Keep the Node service
-available until financial concurrency, database schema, and session behavior
-have passed staging validation. No production traffic, environment variables,
-database, or provider settings were changed.
+The Python backend (`apps/api-python/`, FastAPI) is the intended production
+API after staging verification and release approval. It covers every route
+the frontend calls (30 routes: the Node contract plus the category,
+synchronization, pending-purchase, and reconciliation endpoints), and an
+automated frontend-contract test fails the suite if the frontend and the
+Python routes ever drift apart. The full audit, route-by-route matrix, and
+evidence categories are in
+[apps/api-python/COMPATIBILITY-REPORT.md](apps/api-python/COMPATIBILITY-REPORT.md);
+verified test evidence is in
+[apps/api-python/STAGING-TEST-EVIDENCE.md](apps/api-python/STAGING-TEST-EVIDENCE.md);
+the step-by-step cutover and rollback plan is in
+[apps/api-python/CUTOVER-CHECKLIST.md](apps/api-python/CUTOVER-CHECKLIST.md).
+
+Current verified state (2026-10-15): Python suite 112 passed / 7
+PostgreSQL-gated skips on external scratch SQLite; 7/7 PostgreSQL integration
+tests on the disposable sandbox PostgreSQL 15.19; Node smoke test passed
+against the same disposable database; all migrations verified idempotent with
+migration 003 proven to fail safely on duplicates. Sessions do not transfer:
+every user re-logs in once at cutover.
+
+### Node dependency classification (Phase 7 audit)
+
+| Reference | Class | Disposition |
+|---|---|---|
+| `apps/api/` Express service | A — production backend | Migrated to Python; **retained as a rollback artifact** until the Python deployment passes its observation period. Do not serve production traffic with it after cutover. |
+| Root `npm start` / `npm run dev` | A — backend entry points | Now start the Python API. Node variants kept as `start:node` / `dev:node` / `api:node`. |
+| `apps/web/` static frontend, Capacitor/Android, PWA | B — frontend/build | Unchanged; served by the API as static files and by the hosting provider. |
+| ESLint config, Node tooling | B — build tooling | Retained. |
+| `npm test` Node smoke test | C — regression testing | Retained; run only against a dedicated disposable test database. |
+| `db:fix`, `db:reset-fields`, `db:purchase-pin`, `make-admin` scripts | C — maintenance | Retained as Node utilities; superseded for the Python path by the reviewed migrations, the schema checker, and admin flags. Ad-hoc DDL — never run against production without a backup. |
+| `apps/api/scripts/wise:*` provider scripts | C — manual testing | Retained untouched; require live credentials and are not part of CI. |
+| `HANDOVER.md`, `UPGRADE-NOTES.md`, `REBRAND-CHANGES.md` | D — historical documentation | Retained as history. |
+| Nothing identified | E — unused | No removals were made; rollback capability is preserved. |
+
+### Frontend API configuration
+
+`apps/web/api.js` resolves the API origin in one place: the per-page
+`api-base-url` meta tag (staging/preview), then the production API URL
+constant, then the page origin for local development (a hosted page can never
+resolve to localhost). The single cutover switch
+`API_TARGET_IS_PYTHON` enables the category and reconciliation UI that only
+the Python API provides; it stays `false` (Node behavior) until staging
+verification and release approval. Flip it together with the production API
+switch per the cutover checklist.
+
+No production traffic, environment variables, database, or provider settings
+were changed. Production still runs the Node backend until the cutover
+checklist is fully PASS and a cutover is explicitly authorized.

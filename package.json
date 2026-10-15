@@ -7,11 +7,15 @@
     "apps/web"
   ],
   "scripts": {
-    "start": "npm run start --workspace=@cheapdata/api",
-    "dev": "npm run dev --workspace=@cheapdata/api",
+    "start": "python3 -m uvicorn app.main:app --app-dir apps/api-python --host 0.0.0.0 --port ${PORT:-3000}",
+    "start:node": "npm run start --workspace=@cheapdata/api",
+    "dev": "NODE_ENV=development python3 -m uvicorn app.main:app --app-dir apps/api-python --host 127.0.0.1 --port ${PORT:-3000} --reload",
+    "dev:node": "npm run dev --workspace=@cheapdata/api",
     "test": "npm test --workspace=@cheapdata/api",
+    "test:api-python": "bash scripts/test-api-python.sh",
     "lint": "eslint .",
-    "api": "npm run start --workspace=@cheapdata/api",
+    "api": "npm run start",
+    "api:node": "npm run start --workspace=@cheapdata/api",
     "db:fix": "npm run db:fix --workspace=@cheapdata/api",
     "db:reset-fields": "npm run db:reset-fields --workspace=@cheapdata/api",
     "db:purchase-pin": "npm run db:purchase-pin --workspace=@cheapdata/api",

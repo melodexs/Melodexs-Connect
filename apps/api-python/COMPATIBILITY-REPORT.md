@@ -95,10 +95,19 @@ by an explicit regression test), so every user must re-login at cutover.
 | `GET /api/admin/purchases/pending`, `POST /api/admin/purchases/reconcile`, `POST /api/admin/purchases/:id/resolve` | Admin | Inspect pending, query provider status, or explicitly record a human resolution; Python additions. |
 
 The modular Node API does not yet expose the Python category/sync/reconciliation
-routes. `api.js` retains the Node origin by default and supports a staging API
-origin through the HTML `api-base-url` meta tag. Keep the meta value blank for
-the current Node target; point a separate staging frontend copy to Python only
-after applying the staging migrations.
+routes. `api.js` resolves the API origin in one place — the HTML
+`api-base-url` meta tag, then the `PRODUCTION_API_URL` constant, then the page
+origin for local development — and a hosted page can never resolve to
+localhost. The single `API_TARGET_IS_PYTHON` switch (false while Node serves
+production) enables the Python-only category and reconciliation UI and is
+flipped only at the approved cutover; see CUTOVER-CHECKLIST.md step 7. A new
+automated frontend-contract test (`tests/test_frontend_contract.py`) scans
+every `apps/web` page for `/api/` literals and fails if any frontend call has
+no matching Python route (or any Python route is neither used by the frontend
+nor on the explicit server-only allow-list: `/api/status`,
+`/api/purchase-pin/verify`, `/api/paystack/webhook`). Route parity as of
+2026-10-15: 30 registered Python routes (22 core + 8 admin) covering all 26
+distinct frontend calls; Node exposes 24.
 
 ## WiseSub catalog facts and sync design
 

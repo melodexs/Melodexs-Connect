@@ -127,6 +127,32 @@ contains no other automated test; `apps/api/scripts/*` are manual provider
 scripts and were not run. This is a smoke test, not a Node/Python contract
 comparison (category 5, not run).
 
+## 2026-10-15 (later run, total-replacement branch)
+
+Re-run on branch `completion/python-backend-total-replacement` (master now
+contains the merged PR #4):
+
+- `bash scripts/test-api-python.sh` (fresh external scratch SQLite, default
+  suite): **112 passed, 7 skipped, 0 failed** — the 3 added tests are the
+  frontend-contract tests below.
+- New `tests/test_frontend_contract.py`: every `/api/` literal in `apps/web`
+  matches a registered Python route (30 routes total; FastAPI's included
+  routers resolve lazily, so the test traverses the `_IncludedRouter`
+  wrapper's `original_router`); Python routes unused by the frontend are
+  exactly the server-only allow-list; `apps/web/api.js` keeps exactly one
+  cutover switch and one production URL constant, never localhost.
+- `apps/web/api.js`: removed a duplicated `window.MELODEXS_CATEGORIZED_CATALOG`
+  assignment (verified by a regression assertion), centralized the API origin
+  resolution, added the localhost guard, and added the documented
+  `API_TARGET_IS_PYTHON` cutover switch (default false — Node behavior
+  unchanged).
+- Root `package.json`: `start`/`dev`/`api` now start the Python API;
+  `start:node`/`dev:node`/`api:node` keep the Node rollback entry points;
+  `test:api-python` runs the suite via `scripts/test-api-python.sh` (external
+  scratch SQLite only).
+- New `apps/api-python/env.example` (no real values) documenting every
+  Python API environment variable with startup-validation notes.
+
 ## Not performed on 2026-10-15
 
 - Side-by-side Node/Python runtime comparison (category 5) — **not run**.
