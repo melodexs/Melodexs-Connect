@@ -70,9 +70,20 @@ read-only schema check passing; no startup DDL occurred.
 ### 7. Frontend-to-API compatibility checks — BLOCKED (staging)
 
 Point a **separate staging copy** of the frontend at the staging Python API
-via the `api-base-url` meta tag. The production frontend stays on Node. Run
-the route-by-route matrix in COMPATIBILITY-REPORT.md against both backends
+via the `api-base-url` meta tag (this also enables the categorized catalog UI
+on the staging copy). The production frontend stays on Node. Run the
+route-by-route matrix in COMPATIBILITY-REPORT.md against both backends
 (side-by-side runtime comparison, category 5).
+
+**Production frontend API switch (release-approval step):** `apps/web/api.js`
+holds exactly two cutover controls — the `PRODUCTION_API_URL` constant and
+`API_TARGET_IS_PYTHON`. At the approved production cutover: keep
+`PRODUCTION_API_URL` as the (now Python-serving) API origin and flip
+`API_TARGET_IS_PYTHON` to `true` so the category and reconciliation UI goes
+live. To roll back the frontend, flip it back to `false`; nothing else in the
+frontend encodes an API target. An automated frontend-contract test
+(`tests/test_frontend_contract.py`) fails the Python suite if frontend calls
+and Python routes ever drift apart.
 
 ### 8. Login/session behavior and user re-login — PARTIALLY PASS (automated) / BLOCKED (browser)
 
@@ -174,7 +185,7 @@ different operations; both differ from **data recovery**:
 
 ## Verdict
 
-**READY FOR STAGING VALIDATION.** All locally verifiable criteria pass with
+**READY FOR STAGING DEPLOYMENT.** All locally verifiable criteria pass with
 recorded evidence; the remaining criteria are blocked on staging access, not
 on code. Do not treat the merged `master` as deployed or production-ready;
 production traffic remains on Node until this checklist is fully PASS and a

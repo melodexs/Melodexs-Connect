@@ -22,7 +22,7 @@ match production. For isolated development, SQLite is used when no URL is
 configured. The pytest setup selects its own SQLite file, test provider
 endpoint, and `NODE_ENV=test`, even if shell or `.env` values point elsewhere.
 Never use production data for tests. Required credentials remain
-server-side; use the root `.env.example` for variable names.
+server-side; use [env.example](env.example) (a template without real values) for the full variable list and safety notes. The root `.env.example` documents the Node rollback service's variables.
 To leave an older local test database untouched, select a new SQLite file
 with `PYTHON_TEST_DATABASE_URL=sqlite:////tmp/unique-test-name.db`. PostgreSQL
 integration is disabled by default. Enabling it requires a separately
