@@ -154,15 +154,21 @@ pending.
 ## Current verification and blockers
 
 Latest local run used an isolated scratch SQLite database:
-`python -m pytest -q -rs apps/api-python/tests` passed **105 tests; seven
-PostgreSQL tests were skipped** in SQLite mode (the five concurrency/race tests
-plus two schema-validation tests, all gated behind the explicit PostgreSQL
-opt-in).
-The default suite mocks Paystack, WiseSub, and Brevo and uses SQLite.
-`npm test` was not run because the Node smoke test connects to the configured
-PostgreSQL database and no dedicated test database was confirmed as a safe
-target. See [COMPATIBILITY-REPORT.md](COMPATIBILITY-REPORT.md) for the
-source-level endpoint/schema review and remaining cutover blockers.
+`PYTHON_TEST_DATABASE_URL=<fresh scratch db> python -m pytest -q -rs
+apps/api-python/tests` passed **109 tests; seven PostgreSQL tests were
+skipped** in SQLite mode (the concurrency/race tests and schema-validation
+tests, all gated behind the explicit PostgreSQL opt-in). Tests configure the
+database only through `PYTHON_TEST_DATABASE_URL` via conftest; test modules no
+longer override `DATABASE_URL` themselves. The default suite mocks Paystack,
+WiseSub, and Brevo and uses SQLite.
+The Node smoke test (`npm test`; it is also the repository's entire Node test
+suite) was run on 2026-10-15 against the disposable PostgreSQL test database
+with a scratch SQLite `DB_PATH` and **passed**. It is a startup/health smoke
+test only — not a Node/Python contract comparison, which still requires
+staging. See [COMPATIBILITY-REPORT.md](COMPATIBILITY-REPORT.md) for the
+source-level endpoint/schema review, evidence categories, and remaining
+cutover blockers, and [CUTOVER-CHECKLIST.md](CUTOVER-CHECKLIST.md) for the
+step-by-step cutover and rollback plan.
 
 The PostgreSQL concurrency and schema-validation suite passed **7 of 7 tests**
 against an independently verified disposable PostgreSQL 15.19 database in this

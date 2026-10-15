@@ -34,7 +34,15 @@ before opting in.
    The SQL does not alter data.
 4. Apply the reviewed migrations manually to staging, in order. Do not run
    them via application startup. Keep a record of the exact database and
-   migration versions used.
+   migration versions used. All three migrations are idempotent re-runs
+   (`IF NOT EXISTS` no-ops; verified on the disposable database and recorded
+   in [STAGING-TEST-EVIDENCE.md](STAGING-TEST-EVIDENCE.md)). Migration 003
+   **fails safely when preflight duplicates exist**: the unique index is not
+   created, no data is changed, and the duplicate rows remain untouched
+   (proven on a throwaway duplicate-seeded database). Note that PostgreSQL's
+   resulting error message prints the offending key value, so resolve
+   duplicates in a private operator session rather than a shared log.
+   Never delete duplicate rows automatically to make the migration pass.
 5. Run the read-only schema checker using the staging-only configuration:
 
    ```sh
@@ -42,9 +50,12 @@ before opting in.
    ```
 
    Confirm `database_dialect` is `postgresql`, `postgresql_verified` is true,
-   and each table has no missing columns, constraints, indexes, incompatible
-   types/defaults, unexpected nullable columns, incompatible indexes, or
-   missing generated-ID defaults.
+   `"compatible": true`, exit code 0, and each table has no missing columns,
+   constraints, indexes, incompatible types/defaults, unexpected nullable
+   columns, incompatible indexes, or missing generated-ID defaults. The
+   checker exits with code 1 and prints table/level summaries (names only,
+   never row contents or credentials) when anything is incompatible — treat
+   a nonzero exit as a hard stop for startup.
 6. Only after schema validation, and after independently rechecking that the
    configured target is disposable, a separately authorized operator may run
    the PostgreSQL concurrency suite. The gate compares parsed URL host,
@@ -70,3 +81,12 @@ before opting in.
    integration commands are not run as part of ordinary local verification.
    PostgreSQL behavior remains unverified until this separately authorized run
    completes successfully.
+
+## Related documents
+
+- [STAGING-TEST-EVIDENCE.md](STAGING-TEST-EVIDENCE.md) — exact commands,
+  environments, and results from the disposable-database verification runs.
+- [CUTOVER-CHECKLIST.md](CUTOVER-CHECKLIST.md) — the step-by-step staging
+  cutover and rollback plan with PASS/FAIL/BLOCKED acceptance statuses.
+- [COMPATIBILITY-REPORT.md](COMPATIBILITY-REPORT.md) — the route-by-route
+  Node/Python comparison, evidence categories, and remaining blockers.

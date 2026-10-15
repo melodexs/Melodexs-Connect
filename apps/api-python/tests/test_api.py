@@ -2,11 +2,11 @@ import os
 import secrets
 from types import SimpleNamespace
 import pytest
-from pathlib import Path
 
-os.environ["DATABASE_URL"] = "sqlite:///" + str(Path(__file__).parent / "test.db")
-os.environ["NODE_ENV"] = "test"
-os.environ["SESSION_SECRET"] = "test-session-secret-for-python-api"
+# conftest.py configures DATABASE_URL (a scratch database selected via
+# PYTHON_TEST_DATABASE_URL), NODE_ENV, and SESSION_SECRET before test modules
+# are imported. Do not override them here: a module-level override would
+# silently point the shared engine at an in-repo database file.
 
 from fastapi.testclient import TestClient
 from app.main import app

@@ -1,4 +1,13 @@
+import os
+import subprocess
+import sys
+from pathlib import Path
+
 import pytest
+
+_APP_DIR = Path(__file__).resolve().parents[1]
+if str(_APP_DIR) not in sys.path:
+    sys.path.insert(0, str(_APP_DIR))
 
 from app.schema_check import (
     EXPECTED_INDEX_DEFINITIONS,
@@ -99,3 +108,55 @@ def test_generated_id_check_accepts_serial_and_identity_but_requires_generation(
     assert _generated_id_missing(
         {"column_default": default, "is_identity": identity}
     ) is missing
+
+
+def test_schema_incompatibilities_returns_only_violating_tables():
+    from app.schema_check import schema_incompatibilities
+
+    schema = {
+        "users": {"missing": [], "missing_indexes": [], "incompatible_types": {}},
+        "sessions": {"missing": ["sessions"], "missing_indexes": [], "incompatible_types": {}},
+    }
+    incompatible = schema_incompatibilities(schema)
+    assert set(incompatible) == {"sessions"}
+    assert incompatible["sessions"] == {"missing": ["sessions"]}
+
+
+def test_schema_check_cli_exits_zero_and_reports_compatible_when_schema_is_current():
+    import subprocess
+    import sys
+
+    from app.database import init_schema
+
+    init_schema()
+    result = subprocess.run(
+        [sys.executable, "-m", "app.schema_check"],
+        capture_output=True, text=True, cwd=_APP_DIR, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert '"compatible": true' in result.stdout
+    assert result.stderr == ""
+
+
+def test_schema_check_cli_exits_nonzero_with_non_sensitive_diagnostics_on_missing_schema():
+    import subprocess
+    import sys
+
+    from app.database import db_session, init_schema, q
+
+    init_schema()
+    with db_session() as db:
+        q(db, "DROP TABLE sessions")
+
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "app.schema_check"],
+            capture_output=True, text=True, cwd=_APP_DIR, check=False,
+        )
+        assert result.returncode == 1
+        assert '"compatible": false' in result.stdout
+        assert "sessions" in result.stderr
+        # Diagnostics name columns/indexes/tables only; no row contents.
+        assert "@" not in result.stderr and "hash" not in result.stderr.lower().replace("reset_token_hash", "")
+    finally:
+        init_schema()
