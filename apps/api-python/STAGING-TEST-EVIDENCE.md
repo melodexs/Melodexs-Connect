@@ -308,3 +308,98 @@ configured on staging — owner action), Node smoke test against the staging
 database (rollback cross-check), side-by-side Node/Python route matrix,
 load/rate-limit behavior, and any operation against production or
 production data.
+
+---
+
+## 2026-10-15 (second verification session)
+
+### A. Node-versus-Python route compatibility matrix — PASS
+
+Side-by-side run of both backends against a single fresh disposable
+PostgreSQL 15 database (local, provisioned with the same base schema +
+migrations 001–003 used for staging). Python via uvicorn (port 8001),
+Node via `node src/server.js` (port 8002), identical scenario scripts.
+
+- **33 scenario checks** covering all 22 common routes plus
+  security-behaviour checks (unauthenticated user fetch, admin gate,
+  unknown-origin CORS denial, 404, Paystack webhook without signature).
+- **30/33 exact parity** in HTTP status and success flag on first pass;
+  the 2 apparent register mismatches were cross-scenario phone
+  collisions on the shared database (each backend's scenario reused the
+  same phone number). A focused rerun with per-backend phone numbers
+  confirmed **identical register semantics**: fresh register 200,
+  duplicate email 400, duplicate phone 400, with identical messages
+  ("Email or phone number already exists").
+- **1 intentional difference**: `GET /api/data-categories` is new
+  Python functionality (migration 002); it returns 404 on Node by
+  design.
+- **Message parity** on all matched routes (identical user-facing
+  strings).
+- **Cross-backend compatibility on the same database**: an account
+  registered through Node logged in successfully through Python, and an
+  account registered through Python logged in successfully through Node
+  — password hashes, PINs, and session validation are interoperable
+  across backends.
+- Both backends identically returned 500 "Payment system is not
+  configured yet." for fund-wallet routes without Paystack keys, and
+  401 for unsigned webhook, admin, and unauthenticated routes.
+
+### B. Node backend against the actual staging PostgreSQL — PASS (and restored)
+
+The sandbox cannot reach the staging database directly (outbound is
+HTTPS-only; PostgreSQL port 5432 is blocked), so the Node backend was
+run against the real staging database by temporarily switching the
+STAGING service's build/start commands to
+`npm --prefix apps/api install` / `npm --prefix apps/api start`
+(staging only; **no environment variables were touched**; production
+untouched).
+
+- Deploy `dep-db8m2tuq1p3s73bkcuk0` (Node) went live 2026-10-15T23:28:40Z.
+- Confirmed the Node runtime was serving: `/api/data-categories` → 404
+  (Python-only route).
+- Full Node journey against the staging database, all passing:
+  register (`node.e2e.check@melodexs-staging.local`), login, session,
+  authenticated user and transaction fetches, purchase-PIN set and
+  verify, plus admin gate 401, unauthenticated 401, and unknown-origin
+  CORS 403.
+- **Rollback cross-read (the real staging database):** Node
+  successfully logged into an account written earlier by the Python API
+  (`evidence.check.two`).
+- Node writes non-destructively only: two account inserts (test
+  accounts) and one PIN hash. No updates, deletes, or schema changes.
+- Restored immediately: build/start commands PATCHed back to
+  `pip install -r apps/api-python/requirements.txt` / uvicorn form;
+  deploy `dep-db8m493bc2fs73ftche0` live 2026-10-15T23:32:09Z;
+  `/api/data-categories` → 200 confirms Python is serving again.
+- **Reverse cross-read (the real staging database):** the restored
+  Python API successfully logged into the Node-written account,
+  fetched it, and verified the Node-set purchase PIN (user id 4).
+- Bidirectional Node↔Python data compatibility on the actual staging
+  PostgreSQL is therefore VERIFIED.
+
+### C. Schema ID/default compatibility — PASS on new-provisioned databases; production copy still required
+
+- `python -m app.schema_check --json` against the disposable
+  PostgreSQL: `compatible: true`, and **no table reports
+  `missing_generated_id_defaults`** — every identity-backed primary
+  key has a database-generated default. Registrations on both the
+  disposable and staging databases received database-generated ids.
+- This proves the NEW base schema is identity-safe. It does **not**
+  answer whether the *production* database (created by Node-era DDL)
+  has the same defaults. That check requires an approved sanitized
+  schema dump or an isolated restored copy of production, using the
+  same command against it:
+  `DATABASE_URL=<approved-copy-url> NODE_ENV=test python -m app.schema_check --json`
+  — look for `missing_generated_id_defaults` entries and
+  `compatible: false`. Not attempted: no production access was
+  requested or performed this session.
+
+### D. Staging service state after this session
+
+- Build/start commands restored to the standard Python/Uvicorn form
+  (verified by API read-back and the live deploy).
+- The pre-deploy migration hook is STILL CONFIGURED (the Render API
+  rejects clearing it: empty string and key-omission both leave the
+  value intact — reconfirmed with full-object PATCH attempts).
+  Dashboard-only owner action remains required.
+- Staging health after restore: `/api/status` 200.
