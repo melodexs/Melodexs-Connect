@@ -152,7 +152,7 @@ For a production-style local start, run `npm run start` (or `npm start`).
 
 ```bash
 npm test
-npx eslint apps/api/src
+npm run lint
 ```
 
 The API smoke test connects to PostgreSQL, so it requires a dedicated test
