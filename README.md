@@ -148,6 +148,19 @@ npm run dev
 The API defaults to port 3000. Open `http://localhost:3000` to use the web app.
 For a production-style local start, run `npm run start` (or `npm start`).
 
+### Database and admin utility scripts
+
+These root `package.json` scripts exist for maintenance and are not part
+of the normal install/run flow:
+
+- `npm run db:fix` - repair/normalise database state after a failed purchase
+- `npm run db:reset-fields` - reset wallet/transaction fields to a clean state
+- `npm run db:purchase-pin` - manage purchase PIN records
+- `npm run make-admin` - grant the admin role to a registered account
+
+They talk to PostgreSQL through `DATABASE_URL`, so never point them at the
+production database without a backup.
+
 ## Testing and linting
 
 ```bash
