@@ -153,6 +153,33 @@ contains the merged PR #4):
 - New `apps/api-python/env.example` (no real values) documenting every
   Python API environment variable with startup-validation notes.
 
+## 2026-10-15 — local Render-style deployment simulation (NOT staging)
+
+Performed in the workspace against a fresh disposable PostgreSQL 15.19
+database (`mcx_render_sim`, TLS verify-full, sandbox-only; isolated from
+production by hostname/database/user checks). This is deployment-simulation
+evidence only — no real staging environment exists yet, and none of this
+constitutes a staging walkthrough.
+
+- Base schema + migrations 001/002/003 applied cleanly to a fresh database.
+- Startup safety: `NODE_ENV=production` with missing `DATABASE_URL`, missing
+  or short `SESSION_SECRET`, or non-live `WISESUB_ENVIRONMENT` each refuse
+  to start (fail-fast, no server, no DB write).
+- `npm start` (root startup script, production config) boots the API;
+  `/api/status` returns 200 OK; the static home page and `/api/data-plans`
+  serve correctly; registration writes via identity-generated ids.
+- Login sets `melodexs_session` with `HttpOnly; Secure; SameSite=none` in
+  production mode; the cookie authenticates `/api/user/{id}`; a disallowed
+  Origin receives 403 (cross-origin check verified).
+- Startup + access logs contain no secrets (0 matches for the session
+  secret, provider keys, Paystack key, and test password in the log).
+- Rollback cross-read: the Node `pg` driver reads a Python-written user row
+  and sees all migration-002 columns — application rollback to Node does not
+  require schema rollback (additive columns only).
+- Found and fixed: the `npm start` command lacked `--proxy-headers`, so behind
+  Render's proxy rate limiting would bucket all users as one client. Fix in
+  PR #6 (`fix/staging-proxy-headers`) with a `FORWARDED_ALLOW_IPS` knob.
+
 ## Not performed on 2026-10-15
 
 - Side-by-side Node/Python runtime comparison (category 5) — **not run**.
