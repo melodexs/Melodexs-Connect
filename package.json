@@ -7,7 +7,7 @@
     "apps/web"
   ],
   "scripts": {
-    "start": "python3 -m uvicorn app.main:app --app-dir apps/api-python --host 0.0.0.0 --port ${PORT:-3000}",
+    "start": "python3 -m uvicorn app.main:app --app-dir apps/api-python --host 0.0.0.0 --port ${PORT:-3000} --proxy-headers --forwarded-allow-ips ${FORWARDED_ALLOW_IPS:-127.0.0.1}",
     "start:node": "npm run start --workspace=@cheapdata/api",
     "dev": "NODE_ENV=development python3 -m uvicorn app.main:app --app-dir apps/api-python --host 127.0.0.1 --port ${PORT:-3000} --reload",
     "dev:node": "npm run dev --workspace=@cheapdata/api",

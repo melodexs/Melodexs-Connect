@@ -168,7 +168,10 @@ test only — not a Node/Python contract comparison, which still requires
 staging. See [COMPATIBILITY-REPORT.md](COMPATIBILITY-REPORT.md) for the
 source-level endpoint/schema review, evidence categories, and remaining
 cutover blockers, and [CUTOVER-CHECKLIST.md](CUTOVER-CHECKLIST.md) for the
-step-by-step cutover and rollback plan.
+step-by-step cutover and rollback plan. For Render hosting, the exact
+staging service setup (build/start commands, environment variables,
+dashboard steps) is in
+[STAGING-DEPLOYMENT-RENDER.md](STAGING-DEPLOYMENT-RENDER.md).
 
 The PostgreSQL concurrency and schema-validation suite passed **7 of 7 tests**
 against an independently verified disposable PostgreSQL 15.19 database in this
