@@ -5,18 +5,22 @@ guide was prepared from the repository's actual structure on 2026-10-15.
 The production Node.js API service and the production frontend service are
 NOT touched by anything here.
 
-## Existing services (from repository configuration)
+## Current services (verified via the Render API on 2026-10-15)
 
 | Service | URL | Runtime | Status |
 |---|---|---|---|
-| Production API | `https://melodexs-connect-api.onrender.com` | Node.js (`apps/api/`) | UNCHANGED — keep running |
-| Production frontend | `https://melodexs-connect.onrender.com` | Render static site | UNCHANGED — keep running |
-| Python staging API | (to be created below) | Python 3.11 | TO CREATE |
-| Staging frontend | (to be created below) | Render static site | TO CREATE |
-| Staging PostgreSQL | (to be created below) | Render PostgreSQL | TO CREATE |
+| Production API | `https://melodexs-connect-api.onrender.com` | Node.js (`rootDir: apps/api`) | LIVE, unchanged |
+| Production frontend | `https://melodexs-connect.onrender.com` | Render static site | LIVE, unchanged |
+| Python staging API | `https://melodexs-connect-api-staging.onrender.com` | Python (Uvicorn) | LIVE (deployed 2026-10-15) |
+| Staging frontend | `https://melodexs-connect-staging.onrender.com` | Render static site | LIVE (deployed 2026-10-15) |
+| Staging PostgreSQL | internal (Render private network) | Render PostgreSQL, free tier | LIVE; fresh empty DB; expires 2026-11-14 |
 
-Verify these in the Render dashboard before starting; the URLs above come
-from the repository's configuration constants and may have been renamed.
+The staging API was deployed from branch `fix/staging-proxy-headers` at
+commit `f556180` (content identical to master `87c1327` after PR #6). The
+base schema and migrations 001–003 were applied as a one-shot before first
+boot (see STAGING-TEST-EVIDENCE.md for the full record). The steps below are
+retained as the reproducible procedure and the reference for any
+re-provisioning.
 
 ## Facts established from the code (not guesses)
 
@@ -152,3 +156,56 @@ Creating the services, linking the database, and providing sandbox
 credentials all require Render-dashboard and provider-dashboard access
 that this workspace does not have. Everything else above is verified from
 the repository itself. Production Node.js service: untouched, keep it.
+
+## Deployed staging configuration (actual, 2026-10-15)
+
+- **Build command:** `pip install -r apps/api-python/requirements.txt`
+- **Start command (working form):**
+  `python3 -m uvicorn app.main:app --app-dir apps/api-python --host 0.0.0.0 --port $PORT --proxy-headers`
+- **Environment variables (staging):** `NODE_ENV=production`,
+  `DATABASE_URL` (Render **internal** connection string of the staging
+  database), `SESSION_SECRET`, `WISESUB_ENVIRONMENT=live`,
+  `CHEAPDATA_PUBLIC_URL` (staging frontend URL),
+  `FORWARDED_ALLOW_IPS=*` (Uvicorn reads this natively; see below).
+- **Free-tier facts established by deploy logs:**
+  - Pre-deploy commands and one-off jobs cannot run (paid instance types
+    only). Migrations were applied via a temporary start command and the
+    normal command restored afterwards.
+  - Shell default expansion (`${VAR:-default}`) in the start command is not
+    usable — it broke a deploy. Pass knobs as environment variables
+    instead; Uvicorn picks up `FORWARDED_ALLOW_IPS` on its own.
+  - The Render API env-var `PUT` endpoint **replaces the whole variable
+    set** — always submit the complete list, never a single key.
+  - The external (public) database hostname failed SSL from the web
+    service; the **internal** connection string is the correct value for
+    `DATABASE_URL`.
+  - Log retention is minutes on the free tier; capture evidence promptly.
+  - `FORWARDED_ALLOW_IPS=*` trusts Render's managed proxy (whose IPs are
+    not enumerated in the documentation relied on). The staging service
+    port is only reachable through Render's edge, so this is acceptable
+    for staging; tighten to Render's published proxy ranges before any
+    production use.
+
+## Remaining owner actions (staging)
+
+1. **Remove the Pre-Deploy Command** in the staging service dashboard
+   (Settings → Build & Deploy). A one-shot migration script from the
+   initial provisioning is still configured; the Render API cannot clear it.
+   It never runs on the free tier, but a plan upgrade would run migrations
+   automatically on every deploy, which MIGRATION-STAGING.md forbids.
+2. Configure provider **sandbox/test credentials** (WiseSub, Paystack
+   test keys, Brevo test) on the staging service to unblock provider-flow
+   verification and catalog sync.
+3. Note the staging PostgreSQL **expires 2026-11-14** (free tier);
+   re-provision or upgrade before then if staging must persist.
+
+## Latent production risk recorded (no action taken)
+
+Master's root `package.json` `start` now launches the Python API (PR #5/#6).
+Production is unaffected because its service uses `rootDir: apps/api` and
+boots Node from the workspace `apps/api/package.json`. But if the production
+service's root directory were ever changed to the repo root, the next deploy
+would attempt Python, whose startup schema check hard-fails against the
+unmigrated production database (crash-loop, not silent divergence). Do not
+change the production root directory or start command until the cutover
+checklist is fully PASS.

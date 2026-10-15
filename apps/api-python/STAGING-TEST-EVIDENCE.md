@@ -180,12 +180,131 @@ constitutes a staging walkthrough.
   Render's proxy rate limiting would bucket all users as one client. Fix in
   PR #6 (`fix/staging-proxy-headers`) with a `FORWARDED_ALLOW_IPS` knob.
 
-## Not performed on 2026-10-15
+## Not performed on 2026-10-15 (as of the local runs above)
 
 - Side-by-side Node/Python runtime comparison (category 5) — **not run**.
 - Staging browser walkthrough, hosting-provider staging, provider sandbox
-  validation, live-config checks (category 6) — **not run; blocked on staging
-  access** (see [CUTOVER-CHECKLIST.md](CUTOVER-CHECKLIST.md)).
+  validation, live-config checks (category 6) — **not run at that point;
+  blocked on staging access** (see [CUTOVER-CHECKLIST.md](CUTOVER-CHECKLIST.md)).
 - Production deployment, production database contact, live purchases, real
   customer emails (category 7 and live actions) — **not performed and not
   authorized**.
+
+The staging items were subsequently unblocked and performed later on
+2026-10-15 — see "Render staging deployment, walkthrough, and
+re-verification (category 6)" below. Categories 5 and 7 remain not run.
+
+## 2026-10-15 (late run) — Render staging deployment, walkthrough, and re-verification (category 6)
+
+A real hosting-provider staging environment now exists on Render (free tier,
+Oregon region), API-provisioned. **Production was not touched by any of this.**
+
+Environment:
+
+- **Python staging API**: `https://melodexs-connect-api-staging.onrender.com`
+  (Render service `melodexs-connect-api-staging`), branch
+  `fix/staging-proxy-headers` at commit `f556180`, whose content is identical
+  to master at merge commit `87c1327` (PR #6, merged). Start command is the
+  plain Uvicorn form (see findings below); health check path `/api/status`.
+- **Staging frontend**: `https://melodexs-connect-staging.onrender.com`
+  (Render static site, branch `staging/frontend-config`), with every
+  `api-base-url` meta tag pointing at the staging API.
+- **Staging PostgreSQL**: `melodexs-connect-staging-db` (free tier, expires
+  2026-11-14), reached over Render's internal network. It is a fresh,
+  empty database provisioned for staging — **not** a copy of production
+  data. Base schema and migrations 001/002/003 were applied before first
+  boot.
+- **Production (verified untouched, category 7 read-only check):** the
+  production service still runs Node (`rootDir: apps/api`,
+  `npm start` → `node src/server.js`); the Python-only route
+  `/api/data-categories` returns an Express 404 on production; production
+  env keys and settings are unchanged; no production deploy, env change, or
+  database contact was made by the staging work. Production auto-deployed
+  twice on 2026-10-15 **because the owner merged PRs #5 and #6 to master**
+  (autoDeploy on commit), not because of any staging action. That merge
+  changed the *root* `package.json` `start` to the Python command, but the
+  production service has `rootDir: apps/api`, so production still boots
+  Node from the workspace `apps/api/package.json`. This is a latent risk to
+  record, not a change: if the production service's root directory were
+  ever set to the repo root, `npm start` would try to boot Python, whose
+  startup schema check would hard-fail against the unmigrated production
+  database (crash-loop, not silent divergence). Do not change the
+  production root directory or start command until the cutover checklist is
+  fully PASS.
+
+Deployment findings (Render free tier), each evidenced by deploy logs:
+
+- **Pre-deploy commands and one-off jobs cannot run on the free tier**
+  (log line: "Predeploy command not run. Commands can only run on paid
+  instance types"). The base schema and migrations 001/002/003 were
+  therefore applied as an idempotent one-shot via a **temporary** start
+  command, after which the normal Uvicorn start command was restored.
+  Migrations were never wired into application startup.
+- **Shell default expansion in the start command fails on Render**:
+  `--forwarded-allow-ips ${FORWARDED_ALLOW_IPS:-127.0.0.1}` broke the
+  deploy (Uvicorn received a glob of the repo root). The working start
+  command is the plain form `python3 -m uvicorn app.main:app --app-dir
+  apps/api-python --host 0.0.0.0 --port $PORT --proxy-headers`; the
+  `FORWARDED_ALLOW_IPS` knob is set as a Render environment variable
+  instead, which Uvicorn reads natively.
+- **`FORWARDED_ALLOW_IPS` is set to `*` on staging** (trust Render's
+  managed proxy, whose IPs are not enumerable in the docs we may rely on).
+  The service port is only reachable through Render's edge, so this is
+  acceptable for staging rate-limit attribution; the owner can tighten it
+  to Render's published proxy ranges before any production use.
+- **The Render API's env-var `PUT` endpoint replaces the full variable
+  set**, not a partial update: an unintended wipe of the staging service's
+  variables caused two failed deploys (caught by startup validation —
+  missing `WISESUB_ENVIRONMENT` refused to boot; an external database URL
+  failed SSL). All variables were restored from the API's own
+  connection-info endpoint. A fresh staging `SESSION_SECRET` was issued, so
+  **all staging sessions created before 2026-10-15 23:15 UTC are
+  invalidated**; users must log in again. No other data was affected.
+- **A pre-deploy migration hook remains configured on the staging service**
+  (a one-shot migration script set while working around the free-tier
+  limitation). It never executes on the free tier, but the Render API
+  cannot clear it; **owner action: remove the Pre-Deploy Command in the
+  staging service dashboard**, since a plan upgrade would make it run
+  migrations automatically on every deploy, which MIGRATION-STAGING.md
+  forbids.
+- **Log retention on the free tier is very short** (minutes under the
+  health-check ping volume), so the original migration-run log lines are no
+  longer retrievable. Idempotency evidence therefore rests on: the
+  recorded double-run on the disposable PostgreSQL database (below), the
+  `IF NOT EXISTS` construction of all three migrations, and the fact that
+  every staging boot runs the startup schema check, which hard-fails if any
+  migration 001/002/003 object is missing — and staging boots.
+
+### Staging verification actually performed (2026-10-15)
+
+API-level (curl), against the final live deploy
+(`dep-db8lrnm89jmc73btpas0`):
+
+- `GET /api/status` → 200 `{"success":true,...}`.
+- Registration → success; the new user received a **database-generated
+  id** (identity-backed primary keys confirmed on staging PostgreSQL).
+  A malformed Nigerian phone number was correctly rejected first
+  (validation active).
+- Login → success, `melodexs_session` cookie set; authenticated
+  `GET /api/user/{id}` → 200 with the account's fields.
+- CORS preflight from the staging frontend origin → 204 allowed; from an
+  unknown origin → 403 denied.
+- `GET /api/admin/stats` unauthenticated → 401 (admin gate intact).
+- `GET /api/data-plans?network=mtn` and
+  `GET /api/data-categories?network=mtn` → success with **empty lists**:
+  the staging database has no plans because the catalog is populated by a
+  WiseSub sync, which requires provider credentials not configured on
+  staging (see blockers). Empty is the correct fresh-database behavior.
+
+Browser walkthrough (earlier on 2026-10-15, against the same environment
+before the session-secret rotation): register → purchase-PIN creation →
+logout → login → dashboard loads (name, email, phone, balance, PIN state)
+from the staging database. After the secret rotation these accounts must
+re-login; the flows themselves were re-verified at the API level above.
+
+Not performed (staging): Paystack sandbox funding/webhook, WiseSub
+sync/purchase flows, Brevo test email (no provider test credentials are
+configured on staging — owner action), Node smoke test against the staging
+database (rollback cross-check), side-by-side Node/Python route matrix,
+load/rate-limit behavior, and any operation against production or
+production data.

@@ -90,3 +90,31 @@ before opting in.
   cutover and rollback plan with PASS/FAIL/BLOCKED acceptance statuses.
 - [COMPATIBILITY-REPORT.md](COMPATIBILITY-REPORT.md) — the route-by-route
   Node/Python comparison, evidence categories, and remaining blockers.
+
+## Render free-tier constraint and the staging procedure actually used (2026-10-15)
+
+On Render's free instance type, **pre-deploy commands and one-off jobs
+cannot run** (deploy log: "Predeploy command not run. Commands can only run
+on paid instance types"). To provision the fresh staging PostgreSQL
+database with the base schema and migrations 001–003:
+
+1. The standard Uvicorn start command was temporarily replaced by a
+   one-shot command that applied `tests/postgres_test_schema.sql`
+   (only when the `users` table was absent) and then migrations
+   001/002/003, each guarded by `IF NOT EXISTS` (idempotent).
+2. The deploy was allowed to run that command once, then the standard
+   start command was **restored immediately**. Migrations are not wired
+   into application startup and do not run on normal boots.
+3. Idempotency rests on the `IF NOT EXISTS` construction of all three
+   migrations, the recorded double-run on the disposable PostgreSQL
+   database (STAGING-TEST-EVIDENCE.md), and the startup schema check,
+   which hard-fails if any migration object is missing — staging boots
+   on every deploy.
+
+**Owner action:** a pre-deploy migration hook from this provisioning
+remains configured on the staging service (the Render API cannot clear
+it). Remove it in the dashboard: on a paid instance type it would run
+migrations automatically on every deploy, which this procedure forbids.
+Migrations are always applied manually by an operator, in order, after
+the preflight diagnostics, and never by application startup or deploy
+hooks.
