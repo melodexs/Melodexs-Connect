@@ -29,12 +29,19 @@ def allowed(path: str, key: str) -> tuple[bool, str]:
         return True, ""
     now = int(time.time())
     with db_session() as db:
-        row = q(db, "SELECT window_start,request_count FROM api_rate_limits WHERE rate_key=:key", {"key": key}).mappings().first()
-        if not row or now - int(row["window_start"]) >= window:
-            q(db, "INSERT INTO api_rate_limits(rate_key,window_start,request_count) VALUES(:key,:start,1) ON CONFLICT(rate_key) DO UPDATE SET window_start=:start,request_count=1", {"key": key, "start": now})
-            return True, ""
-        if int(row["request_count"]) >= limit:
-            return False, "Too many login attempts. Please try again later." if path == "/api/login" else "Too many requests. Please try again later."
-        q(db, "UPDATE api_rate_limits SET request_count=request_count+1 WHERE rate_key=:key", {"key": key})
+        # One upsert serializes initialization, window rollover, and increment
+        # on the rate_key in both supported dialects. A missing RETURNING row
+        # means the existing, unexpired counter has already reached its limit.
+        row = q(db, """
+            INSERT INTO api_rate_limits(rate_key,window_start,request_count)
+            VALUES(:key,:now,1)
+            ON CONFLICT(rate_key) DO UPDATE SET
+                window_start=CASE WHEN api_rate_limits.window_start <= :cutoff THEN :now ELSE api_rate_limits.window_start END,
+                request_count=CASE WHEN api_rate_limits.window_start <= :cutoff THEN 1 ELSE api_rate_limits.request_count+1 END
+            WHERE api_rate_limits.window_start <= :cutoff OR api_rate_limits.request_count < :limit
+            RETURNING request_count
+        """, {"key": key, "now": now, "cutoff": now - window, "limit": limit}).first()
+    if row is None:
+        return False, "Too many login attempts. Please try again later." if path == "/api/login" else "Too many requests. Please try again later."
     return True, ""
 

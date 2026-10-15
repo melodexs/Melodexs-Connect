@@ -1,5 +1,6 @@
 import hashlib
 import json
+import logging
 import math
 import re
 import secrets
@@ -16,12 +17,14 @@ from fastapi.responses import JSONResponse, FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from .config import settings, ROOT
+from .config import settings, ROOT, validate_wisesub_configuration, wisesub_recipient
 from .database import db_session, engine, init_schema, q
 from .providers import paystack, send_brevo, wise_purchase
 from .security import (clear_session, current_user_id, new_session, password_check,
                         password_hash, require_admin, require_user,
                         valid_paystack_signature)
+
+logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(application):
@@ -51,6 +54,23 @@ class SecurityMiddleware(BaseHTTPMiddleware):
             allowed_origins.update({"http://localhost:3000", "http://127.0.0.1:3000", str(request.base_url).rstrip("/")})
         if origin and origin.rstrip("/") not in allowed_origins:
             return JSONResponse({"success": False, "message": "CORS origin not allowed"}, status_code=403)
+        if request.method == "POST":
+            rate_ok, rate_message = allowed(
+                request.url.path,
+                (request.client.host if request.client else "unknown") + ":" + request.url.path,
+            )
+            if not rate_ok:
+                rejected = JSONResponse({"success": False, "message": rate_message}, status_code=429)
+                if origin:
+                    rejected.headers["Access-Control-Allow-Origin"] = origin
+                    rejected.headers["Access-Control-Allow-Credentials"] = "true"
+                    rejected.headers["Access-Control-Allow-Headers"] = "Content-Type, Accept"
+                    rejected.headers["Access-Control-Allow-Methods"] = "GET,POST,PUT,PATCH,DELETE,OPTIONS"
+                    rejected.headers["Vary"] = "Origin"
+                rejected.headers["X-Content-Type-Options"] = "nosniff"
+                rejected.headers["X-Frame-Options"] = "DENY"
+                rejected.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+                return rejected
         if origin:
             if request.method == "OPTIONS":
                 response = Response(status_code=204)
@@ -70,9 +90,6 @@ class SecurityMiddleware(BaseHTTPMiddleware):
             configured = settings.cheapdata_public_url.rstrip("/") if settings.production else origin.rstrip("/")
             if origin.rstrip("/") != configured and origin.rstrip("/") != "https://melodexs-connect.onrender.com":
                 return JSONResponse({"success": False, "message": "Cross-origin request blocked."}, status_code=403)
-        rate_ok, rate_message = allowed(request.url.path, (request.client.host if request.client else "unknown") + ":" + request.url.path)
-        if not rate_ok:
-            return JSONResponse({"success": False, "message": rate_message}, status_code=429)
         return response
 
 
@@ -82,23 +99,27 @@ app.include_router(admin_router)
 
 
 def startup():
-    if settings.production:
-        # Never create or alter tables automatically against production data.
-        # Require an operator to review/apply migrations before starting Python.
+    validate_wisesub_configuration(settings)
+    if engine.dialect.name == "postgresql":
+        # PostgreSQL always requires explicit, reviewed migrations. This guard
+        # must not depend on NODE_ENV: a missing/mis-set environment value must
+        # never cause startup DDL against a configured PostgreSQL database.
         from .schema_check import inspect_schema
         schema = inspect_schema()
         incompatible = {
             table: {
                 key: details[key]
-                for key in ("missing", "incompatible_types", "unexpected_nullable_columns", "missing_constraints", "missing_indexes", "incompatible_indexes", "missing_generated_id_defaults")
+                for key in ("missing", "incompatible_types", "incompatible_defaults", "unexpected_nullable_columns", "missing_constraints", "missing_indexes", "incompatible_indexes", "missing_generated_id_defaults")
                 if details.get(key)
             }
             for table, details in schema.items()
-            if any(details.get(key) for key in ("missing", "incompatible_types", "unexpected_nullable_columns", "missing_constraints", "missing_indexes", "incompatible_indexes", "missing_generated_id_defaults"))
+            if any(details.get(key) for key in ("missing", "incompatible_types", "incompatible_defaults", "unexpected_nullable_columns", "missing_constraints", "missing_indexes", "incompatible_indexes", "missing_generated_id_defaults"))
         }
         if incompatible:
-            raise RuntimeError("Production database schema does not match the reviewed API requirements; inspect it read-only and apply an explicit migration before startup.")
+            raise RuntimeError("PostgreSQL schema does not match the reviewed API requirements; inspect it read-only and apply an explicit migration before startup.")
     else:
+        if settings.production:
+            raise RuntimeError("Production startup requires PostgreSQL.")
         init_schema()
         from .database import apply_catalog_test_schema
         apply_catalog_test_schema()
@@ -193,13 +214,45 @@ async def forgot_password(request: Request, body: dict):
         if user:
             token = secrets.token_hex(32)
             hashed = hashlib.sha256(token.encode()).hexdigest()
-            q(db, "UPDATE users SET reset_token_hash=:hash, reset_token_expires_at=:expires WHERE id=:id", {"hash": hashed, "expires": int(time.time()*1000)+900000, "id": user["id"]})
+            now_sql = _database_epoch_millis_sql()
+            q(db, f"UPDATE users SET reset_token_hash=:hash, reset_token_expires_at={now_sql} + 900000 WHERE id=:id", {"hash": hashed, "id": user["id"]})
         else:
             token = None
     if user and settings.production:
         url = f"{settings.cheapdata_public_url}/reset-password.html?token={quote(token)}"
-        await send_brevo(user["email"], "MELODEXS CONNECT Password Reset", f"<p>Reset your password: <a href=\"{url}\">Reset Password</a></p><p>This link expires in 15 minutes.</p>")
+        try:
+            await send_brevo(user["email"], "MELODEXS CONNECT Password Reset", f"<p>Reset your password: <a href=\"{url}\">Reset Password</a></p><p>This link expires in 15 minutes.</p>")
+        except Exception:
+            # Avoid logging exception details: provider errors can echo message
+            # contents, including the one-time reset link.
+            logger.warning("Password reset email delivery failed")
+            with db_session() as db:
+                q(db, "UPDATE users SET reset_token_hash=NULL,reset_token_expires_at=NULL WHERE id=:id", {"id": user["id"]})
+            return {"success": True, "message": "If an account exists with that email, password reset instructions will be provided."}
     return {"success": True, "message": "If an account exists with that email, password reset instructions will be provided."}
+
+
+def _revoke_user_sessions(db, user_id: int) -> None:
+    """Delete only sessions whose stored JSON identifies this exact user."""
+    sessions = q(db, "SELECT sid,sess FROM sessions").mappings().all()
+    for session in sessions:
+        try:
+            data = json.loads(session["sess"])
+        except (TypeError, ValueError):
+            continue
+        if isinstance(data, dict) and type(data.get("userId")) is int and data["userId"] == user_id:
+            q(db, "DELETE FROM sessions WHERE sid=:sid", {"sid": session["sid"]})
+
+
+def _database_epoch_millis_sql() -> str:
+    """Return current wall-clock milliseconds in the configured SQL dialect."""
+    if engine.dialect.name == "postgresql":
+        # clock_timestamp() advances during a transaction and after lock waits;
+        # CURRENT_TIMESTAMP is fixed at transaction start in PostgreSQL.
+        return "(EXTRACT(EPOCH FROM clock_timestamp()) * 1000)::BIGINT"
+    if engine.dialect.name == "sqlite":
+        return "CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)"
+    raise RuntimeError("Password reset requires PostgreSQL or SQLite")
 
 
 @app.post("/api/reset-password")
@@ -210,14 +263,27 @@ def reset_password(body: dict):
     if len(new_password) < 8:
         raise HTTPException(400, "Password must be at least 8 characters.")
     hashed = hashlib.sha256(str(token).encode()).hexdigest()
+    new_password_hash = password_hash(new_password)
     with db_session() as db:
-        user = q(db, "SELECT id,reset_token_expires_at FROM users WHERE reset_token_hash=:hash", {"hash": hashed}).mappings().first()
-        if not user:
+        lock_clause = " FOR UPDATE" if engine.dialect.name == "postgresql" else ""
+        matches = q(db, "SELECT id,reset_token_expires_at FROM users WHERE reset_token_hash=:hash" + lock_clause, {"hash": hashed}).mappings().all()
+        if len(matches) > 1:
             raise HTTPException(400, "This password reset link is invalid or has already been used.")
-        if not user["reset_token_expires_at"] or int(time.time()*1000) > int(user["reset_token_expires_at"]):
-            raise HTTPException(400, "This password reset link has expired. Please request a new one.")
-        q(db, "UPDATE users SET password=:password,reset_token_hash=NULL,reset_token_expires_at=NULL WHERE id=:id", {"password": password_hash(new_password), "id": user["id"]})
-        q(db, "DELETE FROM sessions WHERE sess LIKE :needle", {"needle": f'%"userId": {user["id"]}%'} )
+        if not matches:
+            raise HTTPException(400, "This password reset link is invalid or has already been used.")
+        user = matches[0]
+        now_sql = _database_epoch_millis_sql()
+        # The unique partial index is the database-level invariant against
+        # concurrent token issuance. The UPDATE still targets one locked ID,
+        # consumes the token once, and evaluates wall-clock time in the DB so
+        # a PostgreSQL row-lock wait cannot reuse a stale request timestamp.
+        consumed = q(db, f"UPDATE users SET password=:password,reset_token_hash=NULL,reset_token_expires_at=NULL WHERE id=:id AND reset_token_hash=:hash AND reset_token_expires_at > {now_sql} RETURNING id", {"password": new_password_hash, "id": user["id"], "hash": hashed}).mappings().first()
+        if not consumed:
+            expired = q(db, f"SELECT 1 FROM users WHERE id=:id AND reset_token_hash=:hash AND (reset_token_expires_at IS NULL OR reset_token_expires_at <= {now_sql})", {"id": user["id"], "hash": hashed}).first()
+            if expired:
+                raise HTTPException(400, "This password reset link has expired. Please request a new one.")
+            raise HTTPException(400, "This password reset link is invalid or has already been used.")
+        _revoke_user_sessions(db, int(consumed["id"]))
     return {"success": True, "message": "Password reset successfully. You can now log in."}
 
 
@@ -387,14 +453,14 @@ async def purchase(request: Request, body: dict, service: str):
             except (TypeError, ValueError): expected_price = float("nan")
             if not math.isfinite(expected_price) or abs(expected_price - amount) >= 0.005:
                 raise HTTPException(409, "The plan price changed. Review the current price and confirm again.")
-            payload = {"service_type":"data","reference":ref(),"provider_code":selected["provider_code"],"package_code":selected["provider_package_code"],"recipient":"08011111111" if settings.wisesub_environment == "test" else phone}
+            payload = {"service_type":"data","reference":ref(),"provider_code":selected["provider_code"],"package_code":selected["provider_package_code"],"recipient":wisesub_recipient(phone)}
             description = f"{network} {plan} data purchase for {phone} | Category: {selected['category']} | Price: {amount:.2f}"
         if not user["purchase_pin"]:
             action = "buying data" if service == "data" else "buying airtime"
             raise HTTPException(400, f"Please create a Purchase PIN before {action}")
         if not password_check(pin, user["purchase_pin"]): raise HTTPException(401, "Incorrect Purchase PIN")
         if service == "data":
-            payload = {"service_type":"data","reference":ref(),"provider_code":selected["provider_code"],"package_code":selected["provider_package_code"],"recipient":"08011111111" if settings.wisesub_environment == "test" else phone}
+            payload = {"service_type":"data","reference":ref(),"provider_code":selected["provider_code"],"package_code":selected["provider_package_code"],"recipient":wisesub_recipient(phone)}
             description = f"{network} {plan} data purchase for {phone}"
         else:
             try:
@@ -404,7 +470,7 @@ async def purchase(request: Request, body: dict, service: str):
             if not amount.is_integer() or amount < 50 or amount > 50000: raise HTTPException(400, "Airtime amount must be between ₦50 and ₦50,000")
             amount = int(amount)
             if amount <= 0: raise HTTPException(400, "A valid airtime amount is required")
-            payload = {"service_type":"airtime","reference":ref(),"provider_code":{"MTN":"mtn","Airtel":"airtel","Glo":"glo","9mobile":"9mobile"}[network],"recipient":"08011111111" if settings.wisesub_environment == "test" else phone,"amount":amount}; description = f"{network} airtime purchase for {phone}"
+            payload = {"service_type":"airtime","reference":ref(),"provider_code":{"MTN":"mtn","Airtel":"airtel","Glo":"glo","9mobile":"9mobile"}[network],"recipient":wisesub_recipient(phone),"amount":amount}; description = f"{network} airtime purchase for {phone}"
         pending_prefix = description.split(" | Category:", 1)[0]
         pending_purchase = q(db, "SELECT reference FROM transactions WHERE user_id=:uid AND type='debit' AND status='pending' AND SUBSTR(description,1,LENGTH(:prefix))=:prefix ORDER BY id DESC LIMIT 1", {"uid": user_id, "prefix": pending_prefix}).mappings().first()
         if pending_purchase:

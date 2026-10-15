@@ -1,7 +1,11 @@
 """Explicit PostgreSQL-only race tests; never run against production."""
 import asyncio
+import hashlib
 import os
+import queue
 import secrets
+import time
+import threading
 from concurrent.futures import ThreadPoolExecutor
 
 import httpx
@@ -9,13 +13,152 @@ import pytest
 
 from app import main
 from app.admin_routes import resolve_pending_purchase_state
-from app.database import db_session, q
+from app.database import SessionLocal, db_session, q
 from fastapi import HTTPException
+from app.rate_limit import allowed
+from app.security import password_hash
+from sqlalchemy.exc import IntegrityError
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("RUN_POSTGRES_INTEGRATION") != "1",
     reason="requires an explicitly configured dedicated PostgreSQL test/stage database",
 )
+
+
+def test_concurrent_password_reset_token_is_consumed_once_on_postgresql():
+    marker = secrets.token_hex(8)
+    token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    with db_session() as db:
+        user_id = q(db, "INSERT INTO users(name,email,phone,password,balance,kyc_status,is_admin,reset_token_hash,reset_token_expires_at) VALUES('PG reset test',:email,:phone,'old-hash',0,'pending',0,:hash,:expires) RETURNING id", {
+            "email": f"pg-reset-{marker}@example.test",
+            "phone": f"080{int(marker[:8], 16) % 10**8:08d}", "hash": token_hash,
+            "expires": int(time.time() * 1000) + 300_000,
+        }).scalar()
+
+    def consume(_):
+        try:
+            main.reset_password({"token": token, "newPassword": "concurrent-password"})
+            return "success"
+        except HTTPException as exc:
+            assert exc.status_code == 400
+            return "rejected"
+
+    with ThreadPoolExecutor(max_workers=2) as workers:
+        outcomes = list(workers.map(consume, range(2)))
+    assert outcomes.count("success") == 1
+    assert outcomes.count("rejected") == 1
+    with db_session() as db:
+        assert q(db, "SELECT reset_token_hash FROM users WHERE id=:id", {"id": user_id}).scalar() is None
+        q(db, "DELETE FROM users WHERE id=:id", {"id": user_id})
+
+
+def test_concurrent_reset_token_hash_creation_is_rejected_by_unique_index():
+    marker = secrets.token_hex(8)
+    token_hash = hashlib.sha256(secrets.token_urlsafe(32).encode()).hexdigest()
+    with db_session() as db:
+        ids = [q(db, "INSERT INTO users(name,email,phone,password,balance,kyc_status,is_admin) VALUES(:name,:email,:phone,'old-hash',0,'pending',0) RETURNING id", {
+            "name": "PG reset uniqueness test", "email": f"pg-reset-unique-{marker}-{n}@example.test",
+            "phone": f"080{(int(marker[:8], 16) + n) % 10**8:08d}",
+        }).scalar() for n in range(2)]
+    barrier = threading.Barrier(2)
+
+    def assign_hash(user_id):
+        try:
+            barrier.wait(timeout=5)
+            with db_session() as db:
+                q(db, "UPDATE users SET reset_token_hash=:hash,reset_token_expires_at=:expiry WHERE id=:id", {
+                    "hash": token_hash, "expiry": int(time.time() * 1000) + 300_000, "id": user_id,
+                })
+            return "created"
+        except IntegrityError:
+            return "rejected"
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as workers:
+            outcomes = list(workers.map(assign_hash, ids))
+        assert sorted(outcomes) == ["created", "rejected"]
+        with db_session() as db:
+            assert q(db, "SELECT COUNT(*) FROM users WHERE reset_token_hash=:hash", {"hash": token_hash}).scalar() == 1
+    finally:
+        with db_session() as db:
+            q(db, "DELETE FROM users WHERE id IN (:first,:second)", {"first": ids[0], "second": ids[1]})
+
+
+def test_reset_token_expiring_while_waiting_for_row_lock_is_rejected(monkeypatch):
+    """Hold the row, prove the request is waiting, then expire it before release."""
+    marker = secrets.token_hex(8)
+    token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    with db_session() as db:
+        user_id = q(db, "INSERT INTO users(name,email,phone,password,balance,kyc_status,is_admin,reset_token_hash,reset_token_expires_at) VALUES('PG reset wait test',:email,:phone,'old-hash',0,'pending',0,:hash,:expires) RETURNING id", {
+            "email": f"pg-reset-wait-{marker}@example.test",
+            "phone": f"080{int(marker[:8], 16) % 10**8:08d}", "hash": token_hash,
+            "expires": int(time.time() * 1000) + 300_000,
+        }).scalar()
+
+    lock_owner = SessionLocal()
+    lock_owner.begin()
+    q(lock_owner, "SELECT id FROM users WHERE id=:id FOR UPDATE", {"id": user_id}).first()
+    original_q = main.q
+    waiting_pid = queue.Queue()
+
+    def signal_lock_wait(db, statement, params=None):
+        if "FOR UPDATE" in statement.upper():
+            waiting_pid.put(original_q(db, "SELECT pg_backend_pid()").scalar())
+        return original_q(db, statement, params)
+
+    monkeypatch.setattr(main, "q", signal_lock_wait)
+
+    def redeem():
+        try:
+            main.reset_password({"token": token, "newPassword": "must-not-be-set"})
+            return "success"
+        except HTTPException as exc:
+            return exc.detail
+
+    workers = ThreadPoolExecutor(max_workers=1)
+    try:
+        result = workers.submit(redeem)
+        pid = waiting_pid.get(timeout=5)
+        deadline = time.monotonic() + 10
+        is_waiting = False
+        while time.monotonic() < deadline and not result.done():
+            with db_session() as monitor:
+                wait_type = q(monitor, "SELECT wait_event_type FROM pg_stat_activity WHERE pid=:pid", {"pid": pid}).scalar()
+            if wait_type == "Lock":
+                is_waiting = True
+                break
+            time.sleep(0.01)
+        if not is_waiting:
+            lock_owner.rollback()
+            raise AssertionError("reset request did not enter a PostgreSQL lock wait")
+        q(lock_owner, "UPDATE users SET reset_token_expires_at=(EXTRACT(EPOCH FROM clock_timestamp()) * 1000)::BIGINT - 1 WHERE id=:id", {"id": user_id})
+        lock_owner.commit()
+        assert result.result(timeout=5) == "This password reset link has expired. Please request a new one."
+    finally:
+        lock_owner.rollback()
+        lock_owner.close()
+        workers.shutdown(wait=True)
+        with db_session() as db:
+            q(db, "DELETE FROM users WHERE id=:id", {"id": user_id})
+
+
+def test_concurrent_rate_limit_boundary_on_postgresql(monkeypatch):
+    from app import rate_limit
+
+    path = "/pg/concurrent-limit"
+    key = "pg-concurrent-limit-" + secrets.token_hex(8)
+    monkeypatch.setitem(rate_limit.LIMITS, path, (4, 60))
+
+    def hit(_):
+        return allowed(path, key)[0]
+
+    with ThreadPoolExecutor(max_workers=8) as workers:
+        outcomes = list(workers.map(hit, range(12)))
+    assert sum(outcomes) == 4
+    with db_session() as db:
+        q(db, "DELETE FROM api_rate_limits WHERE rate_key=:key", {"key": key})
 
 
 def test_concurrent_paystack_credit_and_purchase_request_are_idempotent(monkeypatch):

@@ -2,27 +2,45 @@ import os
 import sys
 import asyncio
 from pathlib import Path
-from urllib.parse import urlparse
+from dotenv import dotenv_values
 
 API_ROOT = Path(__file__).resolve().parents[1]
+REPOSITORY_ROOT = API_ROOT.parents[1]
+TEST_ROOT = Path(__file__).resolve().parent
 if str(API_ROOT) not in sys.path:
     sys.path.insert(0, str(API_ROOT))
+if str(TEST_ROOT) not in sys.path:
+    sys.path.insert(0, str(TEST_ROOT))
 
-# Default tests are isolated SQLite. PostgreSQL integration is an explicit
-# opt-in and accepts only a database name that identifies a test/stage DB.
-PG_INTEGRATION = os.environ.get("RUN_POSTGRES_INTEGRATION") == "1"
+from postgres_test_gate import (
+    postgres_integration_enabled,
+    validate_postgres_test_target,
+    verify_connected_postgres_identity,
+)
+
+# Default tests are isolated SQLite and ignore all PostgreSQL test variables.
+PG_INTEGRATION = postgres_integration_enabled(os.environ)
+POSTGRES_TEST_TARGET = None
 if PG_INTEGRATION:
-    target = os.environ.get("TEST_POSTGRES_URL", "")
-    parsed = urlparse(target)
-    db_name = parsed.path.lstrip("/").lower()
-    if not parsed.scheme.startswith("postgres") or not db_name or not any(token in db_name for token in ("test", "stage")) or "prod" in db_name:
-        raise RuntimeError("PostgreSQL integration requires TEST_POSTGRES_URL to name a dedicated test/stage database")
-    os.environ["DATABASE_URL"] = target
+    file_values = dotenv_values(REPOSITORY_ROOT / ".env")
+    configured_application_urls = [
+        ("DATABASE_URL environment", os.environ.get("DATABASE_URL")),
+        ("DATABASE_URL in repository .env", file_values.get("DATABASE_URL")),
+    ]
+    POSTGRES_TEST_TARGET = validate_postgres_test_target(os.environ, configured_application_urls)
+    os.environ["DATABASE_URL"] = POSTGRES_TEST_TARGET.url.render_as_string(hide_password=False)
     os.environ["NODE_ENV"] = "production"  # select read-only app startup
+    os.environ["WISESUB_ENVIRONMENT"] = "live"
+    os.environ["WISESUB_BASE_URL"] = "https://app.wisesub.com.ng/api/partner/v1"
     os.environ["SESSION_SECRET"] = "postgres-integration-test-session-secret"
 else:
-    os.environ["DATABASE_URL"] = "sqlite:///" + str(Path(__file__).parent / "test_suite.db")
+    local_test_database = os.environ.get("PYTHON_TEST_DATABASE_URL")
+    if local_test_database and (not local_test_database.startswith("sqlite:") or ":memory:" in local_test_database):
+        raise RuntimeError("PYTHON_TEST_DATABASE_URL must point to a local SQLite test database")
+    os.environ["DATABASE_URL"] = local_test_database or ("sqlite:///" + str(Path(__file__).parent / "test_suite.db"))
     os.environ["NODE_ENV"] = "test"
+    os.environ["WISESUB_ENVIRONMENT"] = "test"
+    os.environ["WISESUB_BASE_URL"] = "https://wisesub.test/api/partner/v1"
     os.environ["SESSION_SECRET"] = "test-session-secret-for-python-api"
 
 from app.database import init_schema
@@ -101,6 +119,9 @@ def pytest_sessionstart(session):
     if not PG_INTEGRATION:
         init_schema()
         init_rate_limit_table()
+    else:
+        from app.database import engine
+        verify_connected_postgres_identity(engine, POSTGRES_TEST_TARGET)
     from app.main import startup
     startup()
 import pytest

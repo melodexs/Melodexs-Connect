@@ -15,17 +15,25 @@ python3 -m venv .venv
 python -m pip install -r apps/api-python/requirements.txt
 ```
 
-The application reads the root `.env`. Set `DATABASE_URL` to a dedicated local
-or test PostgreSQL database to match production. For isolated development,
-SQLite is used when no URL is configured. The pytest setup forcibly selects its
-own SQLite file and `NODE_ENV=test`, even if shell or `.env` values point
-elsewhere. Never use production data for tests. Required credentials remain
+The application reads the root `.env`. Set `NODE_ENV` explicitly to
+`development`, `test`, or `production`; startup rejects missing or unrecognized
+values. Set `DATABASE_URL` to a dedicated local or test PostgreSQL database to
+match production. For isolated development, SQLite is used when no URL is
+configured. The pytest setup selects its own SQLite file, test provider
+endpoint, and `NODE_ENV=test`, even if shell or `.env` values point elsewhere.
+Never use production data for tests. Required credentials remain
 server-side; use the root `.env.example` for variable names.
+To leave an older local test database untouched, select a new SQLite file
+with `PYTHON_TEST_DATABASE_URL=sqlite:////tmp/unique-test-name.db`. PostgreSQL
+integration is disabled by default. Enabling it requires a separately
+verified disposable target and the explicit PostgreSQL test variables listed
+in [the staging procedure](MIGRATION-STAGING.md); the gate does not infer
+safety from a database name containing “test” or “stage”.
 
 Run locally from the repository root:
 
 ```sh
-uvicorn app.main:app --app-dir apps/api-python --host 127.0.0.1 --port 3000 --reload
+NODE_ENV=development uvicorn app.main:app --app-dir apps/api-python --host 127.0.0.1 --port 3000 --reload
 ```
 
 Run Python tests with:
@@ -40,17 +48,26 @@ the API and connects to the configured database.
 
 ## PostgreSQL and migrations
 
-Production startup requires a PostgreSQL `DATABASE_URL` and a session secret of
-at least 32 characters. It performs a read-only schema check and refuses to
-start if required columns are missing. It does not create tables or alter
-production data. `migrations/001_api_rate_limits.sql` and
-`migrations/002_dynamic_data_catalog_and_reconciliation.sql` are additive
-migrations. Review and apply them manually in a backed-up staging database
-first. Migration 002 adds provider availability, fixed price overrides,
+Production startup requires `NODE_ENV=production`, a PostgreSQL `DATABASE_URL`,
+a session secret of at least 32 characters, and an explicitly configured
+`WISESUB_ENVIRONMENT=live`. The Python service pins production WiseSub requests
+to the same endpoint used as the Node API's configured fallback. It rejects
+endpoint overrides and does not follow redirects. Startup performs a read-only
+schema check and refuses to start if required columns are missing. It does not
+create tables or alter production data.
+Migrations `001_api_rate_limits.sql`,
+`002_dynamic_data_catalog_and_reconciliation.sql`, and
+`003_unique_password_reset_tokens.sql` are additive. Review and apply them
+manually in a backed-up staging database first. Before migration 003, run
+`diagnostics/reset_token_unique_preflight.sql` and review all duplicate
+reset-token hash groups; resolve them deliberately without discarding accounts
+or tokens. Migration 002 adds provider availability, fixed price overrides,
 admin-assigned categories, sync history, and purchase idempotency fields/indexes.
 Its unique provider-package, transaction-reference, and user/idempotency
 indexes can fail if existing rows contain duplicate values; inspect and
-resolve those in staging before applying.
+resolve those in staging before applying. Use the SELECT-only
+[`unique_index_preflight.sql`](diagnostics/unique_index_preflight.sql)
+and follow [the staging procedure](MIGRATION-STAGING.md).
 Migration 002 preserves every existing WiseSub selling price as a fixed
 override because the old admin UI did not distinguish edited prices from
 calculated prices. Admins can clear individual overrides after review to resume
@@ -74,6 +91,15 @@ and SameSite=None in production HTTPS, and deletes both its cookie and old
 `connect.sid` on logout. Keep web and API origins separate, preserve the CORS
 allow-list, and test preflight/cookie behavior in staging. Mutating cross-origin
 requests are origin-checked; a full CSRF review remains part of staging.
+
+Rate limiting keys requests by `request.client.host` and does not read
+`X-Forwarded-For` or other forwarded headers. This avoids trusting headers that
+clients can supply directly, but deployments behind a reverse proxy may see
+all requests as the proxy address. Configure Uvicorn's proxy-header support
+with an explicit trusted proxy address list (for example, `--proxy-headers`
+and a narrowly scoped `--forwarded-allow-ips` value), and verify in staging
+that direct clients cannot spoof their rate-limit identity while real client
+addresses are preserved. Do not use `*` for trusted forwarded addresses.
 
 ## Dynamic data plans and categories
 
@@ -123,8 +149,9 @@ pending.
 
 ## Current verification and blockers
 
-Last local run: `.venv/bin/python -m pytest -q apps/api-python/tests` passed
-**35 tests; one PostgreSQL race test is skipped unless explicitly enabled**.
+Latest local run used an isolated scratch SQLite database:
+`.venv/bin/python -m pytest -q -rs apps/api-python/tests` passed **102 tests;
+five PostgreSQL tests were skipped**.
 The default suite mocks Paystack, WiseSub, and Brevo and uses SQLite. It does
 not verify PostgreSQL row locking or provider behavior against staging.
 `npm test` was not run because the Node smoke test connects to the configured
@@ -132,17 +159,10 @@ PostgreSQL database and no dedicated test database was confirmed as a safe
 target. See [COMPATIBILITY-REPORT.md](COMPATIBILITY-REPORT.md) for the
 source-level endpoint/schema review and remaining cutover blockers.
 
-After applying the reviewed migrations to a dedicated PostgreSQL database whose
-name contains `test` or `stage`, run the opt-in concurrent Paystack and purchase
-test with:
-
-```sh
-RUN_POSTGRES_INTEGRATION=1 TEST_POSTGRES_URL="$DEDICATED_TEST_POSTGRES_URL" \
-  .venv/bin/python -m pytest -q apps/api-python/tests/test_postgres_concurrency.py
-```
-
-This path performs read-only startup schema validation and requires an already
-migrated test/stage database. Never point it at production.
+PostgreSQL concurrency tests have not been verified until a separately
+authorized run succeeds against an independently verified disposable database.
+See [the staging procedure](MIGRATION-STAGING.md) for the required allowlist,
+identity checks, and safety limitations.
 
 ## Render staging configuration
 

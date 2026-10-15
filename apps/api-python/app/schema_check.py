@@ -1,6 +1,7 @@
 """Read-only compatibility check for the Node API's PostgreSQL schema."""
 
 from .database import engine
+import re
 
 EXPECTED_COLUMNS = {
     "users": {"id", "name", "email", "phone", "password", "purchase_pin", "balance", "virtual_account_number", "virtual_bank_name", "kyc_status", "is_admin", "reset_token_hash", "reset_token_expires_at", "created_at"},
@@ -62,12 +63,19 @@ EXPECTED_NOT_NULL = {
     "sessions": {"sid", "sess", "expire"},
     "api_rate_limits": {"rate_key", "window_start", "request_count"},
 }
-EXPECTED_INDEXES = {"sessions": {"idx_sessions_expire"}, "data_plans": {"uq_data_plans_provider_package"}, "transactions": {"uq_transactions_reference", "uq_transactions_user_idempotency"}}
-EXPECTED_INDEX_PARTS = {
-    "idx_sessions_expire": ("create index", "sessions", "expire"),
-    "uq_data_plans_provider_package": ("create unique index", "data_plans", "source", "provider_code", "provider_package_code", "where", "is not null"),
-    "uq_transactions_user_idempotency": ("create unique index", "transactions", "user_id", "idempotency_key", "where", "is not null"),
-    "uq_transactions_reference": ("create unique index", "transactions", "reference", "where", "is not null"),
+EXPECTED_INDEXES = {"users": {"uq_users_reset_token_hash"}, "sessions": {"idx_sessions_expire"}, "data_plans": {"uq_data_plans_provider_package"}, "transactions": {"uq_transactions_reference", "uq_transactions_user_idempotency"}}
+EXPECTED_INDEX_DEFINITIONS = {
+    "uq_users_reset_token_hash": (True, ("reset_token_hash",), "reset_token_hashisnotnull"),
+    "idx_sessions_expire": (False, ("expire",), None),
+    "uq_data_plans_provider_package": (True, ("source", "provider_code", "provider_package_code"), "sourceisnotnullandprovider_codeisnotnullandprovider_package_codeisnotnull"),
+    "uq_transactions_user_idempotency": (True, ("user_id", "idempotency_key"), "idempotency_keyisnotnull"),
+    "uq_transactions_reference": (True, ("reference",), "referenceisnotnull"),
+}
+EXPECTED_DEFAULTS = {
+    "users": {"balance": {"0"}, "kyc_status": {"'pending'::text", "'pending'::character varying", "'pending'"}, "is_admin": {"0"}, "created_at": {"current_timestamp", "now()"}},
+    "data_plans": {"provider_cost": {"0"}, "active": {"1"}, "provider_available": {"1"}, "created_at": {"current_timestamp", "now()"}, "updated_at": {"current_timestamp", "now()"}},
+    "data_plan_sync_runs": {"started_at": {"current_timestamp", "now()"}, "added": {"0"}, "updated": {"0"}, "unavailable": {"0"}},
+    "transactions": {"created_at": {"current_timestamp", "now()"}},
 }
 
 
@@ -78,6 +86,59 @@ def _type_ok(table: str, column: str, data_type: str) -> bool:
     if column in TEXT_COLUMNS:
         return data_type in {"text", "character varying", "character"}
     return True
+
+
+def _compact_sql(value: str) -> str:
+    return re.sub(r'[\s()"`]', "", value.lower())
+
+
+_DEFAULT_CAST = re.compile(
+    r"::\s*(?:double\s+precision|real|numeric|smallint|integer|bigint|"
+    r"text|character\s+varying|character|timestamp\s+without\s+time\s+zone|"
+    r"timestamp\s+with\s+time\s+zone)\s*$",
+    re.IGNORECASE,
+)
+
+
+def _default_key(value: str) -> str:
+    """Normalize harmless display parentheses and built-in type casts."""
+    result = value.strip().lower()
+    while result.startswith("(") and result.endswith(")"):
+        result = result[1:-1].strip()
+    while match := _DEFAULT_CAST.search(result):
+        result = result[:match.start()].strip()
+        while result.startswith("(") and result.endswith(")"):
+            result = result[1:-1].strip()
+    return result
+
+
+def _default_matches(actual: str | None, allowed: set[str]) -> bool:
+    actual_key = _default_key(actual or "")
+    return actual_key in {_default_key(value) for value in allowed}
+
+
+def _generated_id_missing(column_row) -> bool:
+    """SERIAL uses nextval; SQL-standard identity columns expose is_identity."""
+    default = column_row["column_default"] or ""
+    return "nextval(" not in default.lower() and column_row["is_identity"] != "YES"
+
+
+def _index_issue(row, wanted) -> dict | None:
+    wanted_unique, wanted_columns, wanted_predicate = wanted
+    actual_columns = tuple(_compact_sql(str(column)) for column in (row["columns"] or [])) if row else ()
+    actual_predicate = _compact_sql(str(row["predicate"])) if row and row["predicate"] else None
+    if (not row or not row["indisvalid"] or not row["indisready"]
+            or bool(row["indisunique"]) != wanted_unique
+            or actual_columns != wanted_columns
+            or actual_predicate != wanted_predicate):
+        return {
+            "unique": bool(row["indisunique"]) if row else None,
+            "columns": list(actual_columns),
+            "predicate": actual_predicate,
+            "valid": bool(row["indisvalid"]) if row else False,
+            "ready": bool(row["indisready"]) if row else False,
+        }
+    return None
 
 
 def _postgres_schema(conn) -> dict:
@@ -99,12 +160,16 @@ def _postgres_schema(conn) -> dict:
             for row in rows
             if row["column_name"] in EXPECTED_NOT_NULL[table] and row["is_nullable"] != "NO"
         )
+        incompatible_defaults = {}
+        for row in rows:
+            allowed = EXPECTED_DEFAULTS.get(table, {}).get(row["column_name"])
+            if allowed and not _default_matches(row["column_default"], allowed):
+                incompatible_defaults[row["column_name"]] = row["column_default"]
         generated_id_missing = []
         id_column = GENERATED_ID_COLUMNS.get(table)
         if id_column and id_column in actual:
             id_row = next(row for row in rows if row["column_name"] == id_column)
-            default = id_row["column_default"] or ""
-            if "nextval(" not in default.lower() and id_row["is_identity"] != "YES":
+            if _generated_id_missing(id_row):
                 generated_id_missing.append(id_column)
 
         constraints = set()
@@ -131,22 +196,30 @@ def _postgres_schema(conn) -> dict:
             else:
                 constraints.add(f"{kind}({cols})")
         index_rows = conn.exec_driver_sql(
-            "SELECT indexname,indexdef FROM pg_indexes WHERE schemaname='public' AND tablename=%s",
+            "SELECT ic.relname AS indexname, ix.indisunique, ix.indisvalid, ix.indisready, "
+            "ARRAY(SELECT pg_get_indexdef(ix.indexrelid, n, true) "
+            "FROM generate_series(1, ix.indnkeyatts) AS n ORDER BY n) AS columns, "
+            "pg_get_expr(ix.indpred, ix.indrelid) AS predicate "
+            "FROM pg_index ix JOIN pg_class tc ON tc.oid=ix.indrelid "
+            "JOIN pg_namespace ns ON ns.oid=tc.relnamespace "
+            "JOIN pg_class ic ON ic.oid=ix.indexrelid "
+            "WHERE ns.nspname='public' AND tc.relname=%s",
             (table,),
         ).mappings().all()
         indexes = {row["indexname"] for row in index_rows}
-        index_definitions = {row["indexname"]: str(row["indexdef"]).lower() for row in index_rows}
-        invalid_indexes = {
-            name: index_definitions.get(name, "")
-            for name, parts in EXPECTED_INDEX_PARTS.items()
-            if name in EXPECTED_INDEXES.get(table, set())
-            and (name not in index_definitions or not all(part in index_definitions[name] for part in parts))
-        }
+        index_by_name = {row["indexname"]: row for row in index_rows}
+        invalid_indexes = {}
+        for name in EXPECTED_INDEXES.get(table, set()):
+            row = index_by_name.get(name)
+            issue = _index_issue(row, EXPECTED_INDEX_DEFINITIONS[name])
+            if issue:
+                invalid_indexes[name] = issue
         result[table] = {
             "present": sorted(actual),
             "missing": sorted(expected - actual),
             "extra": sorted(actual - expected),
             "incompatible_types": types,
+            "incompatible_defaults": incompatible_defaults,
             "unexpected_nullable_columns": nullable,
             "constraints": sorted(constraints),
             "missing_constraints": sorted(EXPECTED_CONSTRAINTS[table] - constraints),
@@ -181,6 +254,7 @@ def _sqlite_schema(conn) -> dict:
             "missing": sorted(expected - actual),
             "extra": sorted(actual - expected),
             "incompatible_types": {},
+            "incompatible_defaults": {},
             "unexpected_nullable_columns": [],
             "constraints": sorted(constraints),
             "missing_constraints": sorted(EXPECTED_CONSTRAINTS[table] - constraints),
@@ -202,4 +276,8 @@ def inspect_schema() -> dict:
 
 if __name__ == "__main__":
     import json
-    print(json.dumps(inspect_schema(), indent=2))
+    print(json.dumps({
+        "database_dialect": engine.dialect.name,
+        "postgresql_verified": engine.dialect.name == "postgresql",
+        "tables": inspect_schema(),
+    }, indent=2))

@@ -1,19 +1,20 @@
 import httpx
-from .config import settings
+from .config import settings, validate_wisesub_configuration, wisesub_base_url
 
 
 def wise_headers():
-    return {"Authorization": f"Bearer {settings.wisesub_api_key or ''}", "X-API-Secret": settings.wisesub_api_secret or "", "X-Environment": settings.wisesub_environment, "Accept": "application/json", "Content-Type": "application/json"}
+    validate_wisesub_configuration(settings)
+    return {"Authorization": f"Bearer {settings.wisesub_api_key or ''}", "X-API-Secret": settings.wisesub_api_secret or "", "X-Environment": settings.wisesub_environment.strip().lower(), "Accept": "application/json", "Content-Type": "application/json"}
 
 
 async def wise_purchase(payload: dict):
-    async with httpx.AsyncClient(timeout=30) as client:
-        return await client.post(f"{settings.wisesub_base_url.rstrip('/')}/purchase", json=payload, headers=wise_headers())
+    async with httpx.AsyncClient(timeout=30, follow_redirects=False) as client:
+        return await client.post(f"{wisesub_base_url()}/purchase", json=payload, headers=wise_headers())
 
 
 async def wise_status(reference: str):
-    async with httpx.AsyncClient(timeout=15) as client:
-        return await client.get(f"{settings.wisesub_base_url.rstrip('/')}/status", params={"reference": reference}, headers=wise_headers())
+    async with httpx.AsyncClient(timeout=15, follow_redirects=False) as client:
+        return await client.get(f"{wisesub_base_url()}/status", params={"reference": reference}, headers=wise_headers())
 
 
 async def paystack(path: str, method: str = "GET", payload: dict | None = None):

@@ -3,15 +3,15 @@
 | Variable | Node use | Python use | Required in production |
 |---|---|---|---|
 | `PORT` | Express listen port (defaults to 3000) | Uvicorn port (defaults to 3000) | No |
-| `NODE_ENV` | Production checks/cookies/reset email | Production checks/cookies/reset email | No; defaults to development |
+| `NODE_ENV` | Production checks/cookies/reset email | Production checks/cookies/reset email | Python requires an explicit `development`, `test`, or `production` value |
 | `DATABASE_URL` | PostgreSQL pool/session store | SQLAlchemy PostgreSQL engine | Yes |
 | `SESSION_SECRET` | Express session signing | Python session signing | Yes; 32+ characters |
 | `PAYSTACK_SECRET_KEY` | Paystack API and webhook HMAC | Paystack API and webhook HMAC | Yes for wallet funding |
 | `CHEAPDATA_PUBLIC_URL` | Reset/payment callback and CORS; callback can fall back to request host | Reset/payment callback and CORS; configured frontend default exists | No |
-| `WISESUB_BASE_URL` | WiseSub base URL | WiseSub base URL | No; default exists |
+| `WISESUB_BASE_URL` | WiseSub base URL | WiseSub base URL | Python uses the repository's canonical endpoint by default and rejects production overrides |
 | `WISESUB_API_KEY` | WiseSub bearer header | WiseSub bearer header | Yes for purchases |
 | `WISESUB_API_SECRET` | WiseSub secret header | WiseSub secret header | Yes for purchases |
-| `WISESUB_ENVIRONMENT` | Test/live provider mode | Test/live provider mode | No; defaults to test |
+| `WISESUB_ENVIRONMENT` | Test/live provider mode | Test/live provider mode | Yes; Python requires an explicitly configured `live` value |
 | `CHEAPDATA_MARKUP_PERCENT` | Used by plan-sync tooling | Configured but not applied in runtime purchase logic | Yes for matching sync pricing |
 | `BREVO_API_KEY` | Brevo `api-key` header | Brevo `api-key` header | Yes for production reset email |
 | `BREVO_FROM_EMAIL` | Brevo sender | Brevo sender | Yes for production reset email |

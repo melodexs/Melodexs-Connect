@@ -105,5 +105,6 @@ def apply_catalog_test_schema():
                     conn.exec_driver_sql(f"ALTER TABLE transactions ADD COLUMN {name} TEXT")
             conn.exec_driver_sql("CREATE UNIQUE INDEX IF NOT EXISTS uq_transactions_reference ON transactions(reference) WHERE reference IS NOT NULL")
             conn.exec_driver_sql("CREATE UNIQUE INDEX IF NOT EXISTS uq_transactions_user_idempotency ON transactions(user_id,idempotency_key) WHERE idempotency_key IS NOT NULL")
+            conn.exec_driver_sql("CREATE UNIQUE INDEX IF NOT EXISTS uq_users_reset_token_hash ON users(reset_token_hash) WHERE reset_token_hash IS NOT NULL")
             conn.exec_driver_sql("CREATE TABLE IF NOT EXISTS data_plan_sync_runs (id INTEGER PRIMARY KEY AUTOINCREMENT, started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, finished_at TEXT, outcome TEXT NOT NULL, added INTEGER NOT NULL DEFAULT 0, updated INTEGER NOT NULL DEFAULT 0, unavailable INTEGER NOT NULL DEFAULT 0, errors TEXT)")
 

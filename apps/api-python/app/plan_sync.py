@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 
 import httpx
 
-from .config import settings
+from .config import settings, wisesub_base_url
 from .database import db_session, engine, q
 from .providers import wise_headers
 
@@ -52,8 +52,8 @@ def normalize_package(item: dict) -> dict:
 
 
 async def fetch_network(client: httpx.AsyncClient, name: str, code: str) -> list[dict]:
-    response = await client.get(f"{settings.wisesub_base_url.rstrip('/')}/packages",
-        params={"service_type": "data", "provider_code": code}, headers=wise_headers())
+    response = await client.get(f"{wisesub_base_url()}/packages",
+        params={"service_type": "data", "provider_code": code}, headers=wise_headers(), follow_redirects=False)
     response.raise_for_status()
     result = response.json()
     packages = (result.get("data") or {}).get("packages") if result.get("success") is True else None
@@ -73,9 +73,9 @@ async def synchronize_plans() -> dict:
     # Discover known networks from the documented provider service catalog.
     # Do not infer new network names/codes from package labels.
     errors, results = [], []
-    async with httpx.AsyncClient(timeout=15) as client:
+    async with httpx.AsyncClient(timeout=15, follow_redirects=False) as client:
         try:
-            response = await client.get(f"{settings.wisesub_base_url.rstrip('/')}/services", headers=wise_headers())
+            response = await client.get(f"{wisesub_base_url()}/services", headers=wise_headers(), follow_redirects=False)
             response.raise_for_status()
             payload = response.json()
             services = (payload.get("data") or {}).get("data_bundles") if payload.get("success") is True else None

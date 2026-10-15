@@ -14,8 +14,10 @@ class FakeResponse:
 
 class FakeClient:
     def __init__(self, **kwargs):
-        pass
+        self.options = kwargs
+        self.instances.append(self)
     calls = []
+    instances = []
 
     async def __aenter__(self):
         return self
@@ -31,12 +33,15 @@ class FakeClient:
 @pytest.mark.asyncio
 async def test_mocked_wisesub_and_brevo_requests(monkeypatch):
     FakeClient.calls = []
+    FakeClient.instances = []
     monkeypatch.setattr(providers.httpx, "AsyncClient", FakeClient)
     monkeypatch.setattr(settings, "wisesub_api_key", "test-key")
     monkeypatch.setattr(settings, "wisesub_api_secret", "test-secret")
     response = await providers.wise_purchase({"service_type": "data", "reference": "r1"})
     assert response.json()["messageId"] == "mocked"
     assert FakeClient.calls[0][0].endswith("/purchase")
+    assert "wisesub.test" in FakeClient.calls[0][0]
+    assert FakeClient.instances[0].options["follow_redirects"] is False
     assert FakeClient.calls[0][1]["headers"]["X-API-Secret"] == "test-secret"
 
     monkeypatch.setattr(settings, "brevo_api_key", "brevo-test")
@@ -130,6 +135,43 @@ def test_password_reset_email_route_uses_mocked_brevo(monkeypatch):
     with db_session() as db:
         hashed = q(db, "SELECT reset_token_hash FROM users WHERE email=:email", {"email": payload["email"]}).scalar()
     assert hashed and len(hashed) == 64
+
+
+def test_password_reset_email_failure_is_generic_logs_safely_and_clears_token(monkeypatch, caplog):
+    import secrets
+    import re
+    from fastapi.testclient import TestClient
+    from app import main
+    from app.config import settings
+    from app.database import db_session, q
+
+    suffix = secrets.token_hex(4)
+    payload = {"name": "Email Failure", "email": f"email-failure-{suffix}@example.com",
+               "phone": f"080{int(suffix, 16) % 10**8:08d}", "password": "password123"}
+    issued_tokens = []
+
+    async def failed_send(to, subject, html):
+        token = re.search(r"token=([^&\"]+)", html).group(1)
+        issued_tokens.append(token)
+        raise RuntimeError(f"mocked email failure containing reset token {token}")
+
+    monkeypatch.setattr(main, "send_brevo", failed_send)
+    monkeypatch.setattr(settings, "node_env", "production")
+    monkeypatch.setattr(settings, "cheapdata_public_url", "https://frontend.example")
+    with TestClient(main.app) as client:
+        assert client.post("/api/register", json=payload).status_code == 200
+        response = client.post("/api/forgot-password", json={"email": payload["email"]})
+        unknown_response = client.post(
+            "/api/forgot-password", json={"email": f"unknown-{suffix}@example.com"}
+        )
+    assert response.status_code == unknown_response.status_code == 200
+    assert response.json() == unknown_response.json()
+    assert "Password reset email delivery failed" in caplog.text
+    assert issued_tokens and all(token not in caplog.text for token in issued_tokens)
+    with db_session() as db:
+        row = q(db, "SELECT reset_token_hash,reset_token_expires_at FROM users WHERE email=:email", {"email": payload["email"]}).mappings().first()
+    assert row["reset_token_hash"] is None
+    assert row["reset_token_expires_at"] is None
 
 
 def test_auth_rate_limit_is_enforced():
