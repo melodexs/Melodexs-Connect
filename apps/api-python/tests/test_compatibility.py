@@ -6,9 +6,8 @@ import os
 import secrets
 import time
 import pytest
-from pathlib import Path
 
-os.environ.setdefault("DATABASE_URL", "sqlite:///" + str(Path(__file__).parent / "test.db"))
+# conftest.py sets DATABASE_URL to a scratch database before import.
 os.environ.setdefault("NODE_ENV", "test")
 os.environ.setdefault("SESSION_SECRET", "test-session-secret-for-python-api")
 
@@ -205,3 +204,29 @@ def test_wisesub_timeout_keeps_debit_pending_and_blocks_retry_message(monkeypatc
         assert balance == 150
         assert status == "pending"
 
+
+
+def test_session_transition_from_node_connect_sid_cookie():
+    """Old Express sessions never transfer; users must re-login. Logout also
+    clears the old cookie name."""
+    client = TestClient(main.app)
+    # A request presenting only the legacy connect.sid cookie is anonymous.
+    response = client.get("/api/session", cookies={"connect.sid": "legacy-express-session-value"})
+    assert response.status_code == 200
+    assert response.json()["loggedIn"] is False
+
+    # Registration (which logs in) then logout: both cookie names are cleared
+    # so a browser carrying the old Node cookie does not keep it.
+    register = client.post("/api/register", json={
+        "name": "Session Transition",
+        "email": "transition-" + secrets.token_hex(4) + "@example.com",
+        "phone": "08123456701",
+        "password": "password123",
+    })
+    assert register.status_code == 200
+    logout = client.post("/api/logout", cookies={"connect.sid": "legacy-express-session-value"})
+    assert logout.status_code == 200
+    cookie_headers = "; ".join(value for name, value in logout.headers.items() if name.lower() == "set-cookie")
+    assert "melodexs_session=" in cookie_headers and "connect.sid=" in cookie_headers
+    assert 'melodexs_session=""' in cookie_headers and 'connect.sid=""' in cookie_headers
+    assert client.get("/api/session").json()["loggedIn"] is False

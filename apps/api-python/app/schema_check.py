@@ -280,10 +280,43 @@ def inspect_schema() -> dict:
         return _sqlite_schema(conn)
 
 
+INCOMPATIBILITY_KEYS = (
+    "missing",
+    "incompatible_types",
+    "incompatible_defaults",
+    "unexpected_nullable_columns",
+    "missing_constraints",
+    "missing_indexes",
+    "incompatible_indexes",
+    "missing_generated_id_defaults",
+)
+
+
+def schema_incompatibilities(schema: dict) -> dict:
+    """Return only the tables with reviewed-requirement violations."""
+    return {
+        table: {key: details[key] for key in INCOMPATIBILITY_KEYS if details.get(key)}
+        for table, details in schema.items()
+        if any(details.get(key) for key in INCOMPATIBILITY_KEYS)
+    }
+
+
 if __name__ == "__main__":
     import json
+    import sys
+
+    schema = inspect_schema()
+    incompatible = schema_incompatibilities(schema)
     print(json.dumps({
         "database_dialect": engine.dialect.name,
         "postgresql_verified": engine.dialect.name == "postgresql",
-        "tables": inspect_schema(),
+        "compatible": not incompatible,
+        "tables": schema,
     }, indent=2))
+    if incompatible:
+        # Summaries only: diagnostics are column/index/constraint names,
+        # never row contents or credentials.
+        print("Schema does not match the reviewed API requirements:", file=sys.stderr)
+        for table, problems in incompatible.items():
+            print(f"  {table}: {', '.join(sorted(problems))}", file=sys.stderr)
+        sys.exit(1)

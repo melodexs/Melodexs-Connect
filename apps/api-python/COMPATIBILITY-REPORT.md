@@ -1,11 +1,36 @@
 # Python API compatibility and migration audit
 
-Audit updated 2026-10-11 from repository source and mocked local tests. The
-active Node runtime remains `apps/api/`; no production database, live provider,
-or production setting was accessed. WiseSub capabilities below are based on
-its [published service/package docs](https://www.wisesub.com.ng/docs/services),
+Audit updated 2026-10-15 from repository source, mocked local tests, and the
+disposable-PostgreSQL verification run recorded in [STAGING-TEST-EVIDENCE.md](STAGING-TEST-EVIDENCE.md).
+The active production runtime remains `apps/api/`; no production database, live
+provider, or production setting was accessed. WiseSub capabilities below are
+based on its [published service/package docs](https://www.wisesub.com.ng/docs/services),
 [purchase docs](https://www.wisesub.com.ng/docs/purchases), and
 [transaction status docs](https://www.wisesub.com.ng/docs/transactions).
+
+### Evidence categories used in this report
+
+These are **not** interchangeable, and each claim below names its category:
+
+1. **Local automated tests** — the Python suite on an isolated scratch
+   SQLite database (no repo or production files).
+2. **Disposable-PostgreSQL tests** — sandbox PostgreSQL 15.19 with a
+   dedicated test role, TLS `sslmode=verify-full`, and the explicit opt-in
+   gate. Evidence for PostgreSQL semantics only; not a hosting-provider
+   environment.
+3. **Node smoke test** — `apps/api/test/api-smoke.test.js`, the only
+   automated Node test in the repository. It starts the Node API against a
+   test database and checks `/api/status` and static page serving. It is a
+   smoke test, not a contract comparison.
+4. **Full Node API suite** — no additional Node tests exist beyond the
+   smoke test, so "running the Node suite" means running that smoke test.
+5. **Side-by-side runtime comparison** — exercising Node and Python
+   simultaneously against the same isolated data. **Not run.**
+6. **Staging browser verification** — walkthrough on a deployed staging
+   environment. **Not run; blocked on staging access.**
+7. **Production deployment** — **not performed** and not authorized by this
+   work. Code merged to `master` is deployed only through an explicit,
+   separate hosting action; merging is not deployment.
 
 ## API compatibility
 
@@ -15,14 +40,15 @@ transaction history, purchase PINs, public/admin plan reads and admin plan
 edits, airtime/data purchases, admin reporting, Paystack initialize/verify, and
 Paystack webhooks. This work adds `POST /api/logout` to both Python and the
 modular Node router because the frontend expects it. The Node route destroys
-its Express session and clears `connect.sid`; Node runtime tests were not run
-because no dedicated PostgreSQL test database was confirmed. Python also adds category,
+its Express session and clears `connect.sid`; the Node smoke test (category 3)
+passed against the disposable PostgreSQL on 2026-10-15, but no side-by-side
+runtime comparison (category 5) has been run. Python also adds category,
 synchronization, pending purchase, and reconciliation endpoints required by the
 new plan/purchase flow.
 
 | Area | Python behavior | Remaining comparison / limits |
 |---|---|---|
-| Session/auth | Registration logs in; login/logout, reset, cookie sessions, and ownership/admin checks implemented. | Node uses signed `connect.sid`; Python uses `melodexs_session`. Existing sessions do not transfer; all users re-login at cutover. Route error/cookie/CORS comparison needs staging. |
+| Session/auth | Registration logs in; login/logout, reset, cookie sessions, and ownership/admin checks implemented. Regression tests prove a request presenting only a legacy `connect.sid` is anonymous and that logout clears both cookie names. | Node uses signed `connect.sid`; Python uses `melodexs_session`. Existing sessions do not transfer; all users re-login at cutover. Route error/cookie/CORS comparison needs staging. |
 | User/PIN/history | Profile, history, set/change/verify PIN. | Source-level paths/fields reviewed; full response/error parity needs Node runtime. |
 | Data catalog | Admin sync/list/edit; public categories and filtered plans; only admin-enabled, provider-available, categorized rows are purchasable. | Customer frontend now uses new Python endpoints; current Node has not been extended for those endpoints. Do not publish the changed frontend against Node without staging compatibility work or the Python API. |
 | Admin catalog | Free-form category assignment, enable/disable, fixed price override or calculated price, manual sync. | Browser walkthrough not run. Category assignment is per plan; there is no separate category-definition table. |
@@ -32,10 +58,13 @@ new plan/purchase flow.
 
 Node endpoint-specific auth/status/response comparisons were reviewed from
 `apps/api/src/routes`, controllers, middleware, `apps/web/api.js`, and the page
-fetch calls. A side-by-side runtime comparison remains outstanding because the
-Node smoke test requires a dedicated PostgreSQL test database; none was
-configured as a safe target for this run. The Python logout clears its own
-session and the old cookie name, but does not interpret an Express session.
+fetch calls. A side-by-side runtime comparison (category 5) remains outstanding:
+the Node smoke test (category 3) passed against the disposable PostgreSQL test
+database on 2026-10-15, but that only proves the Node service starts and serves
+`/api/status`; it does not compare route responses with Python. The Python
+logout clears its own session and the old cookie name, but does not interpret
+an Express session: `connect.sid` values never authenticate to Python (covered
+by an explicit regression test), so every user must re-login at cutover.
 
 ### Route-by-route coverage
 
@@ -166,9 +195,14 @@ disposable PostgreSQL 15.19 test database described below.
 
 ## Verification performed
 
-- `python -m pytest -q apps/api-python/tests` (isolated scratch SQLite):
-  **105 passed, 7 skipped** (PostgreSQL-gated concurrency and schema tests);
-  default provider calls are mocked and tests use isolated SQLite.
+- Local automated tests (category 1): `PYTHON_TEST_DATABASE_URL=<fresh
+  scratch SQLite> python -m pytest tests/ -q`: **109 passed, 7 skipped**
+  (PostgreSQL-gated concurrency tests); provider calls are mocked. A
+  test-hygiene defect found during this run was fixed: `tests/test_api.py`
+  and `tests/test_compatibility.py` silently overrode `DATABASE_URL` to an
+  in-repo `tests/test.db` at module import, bypassing the conftest scratch
+  configuration; the overrides were removed so every test now genuinely runs
+  against `PYTHON_TEST_DATABASE_URL`.
 - Disposable PostgreSQL 15.19 verification (sandbox only; TLS
   `sslmode=verify-full`, dedicated test role and database, exact
   host/database/username gate enforced, gate proven to fail closed on
@@ -184,6 +218,19 @@ disposable PostgreSQL 15.19 test database described below.
   - Read-only schema checker: all tables clean after migration 003; it
     correctly reported the index as missing before 003 and reported a
     same-named non-partial redefinition as incompatible.
+  - All three migrations re-applied cleanly (idempotent `IF NOT EXISTS`
+    no-ops; no data touched). Migration 003 was additionally proven to
+    **fail safely on duplicates** on a second throwaway database seeded with
+    two synthetic duplicate hashes: the preflight reported only aggregate
+    counts (1 group / 2 rows), the migration failed with a unique-index
+    violation, and the data was unchanged afterwards. The throwaway database
+    was then dropped.
+  - `python -m app.schema_check` now **exits nonzero** when the schema does
+    not match the reviewed requirements (previously it printed diagnostics
+    but always exited 0): exit 1 with non-sensitive name-only diagnostics
+    on the unmigrated database, exit 0 with `"compatible": true` on the
+    migrated database. FastAPI startup and the CLI share one
+    `schema_incompatibilities()` helper.
   - `RUN_POSTGRES_INTEGRATION=1 ... python -m pytest -q
     apps/api-python/tests/test_postgres_concurrency.py`: **7 passed, 0
     failed** — concurrent reset-token redemption consumed once, concurrent
@@ -202,14 +249,19 @@ disposable PostgreSQL 15.19 test database described below.
   mismatch; neither prevented the build. No device/emulator test was run.
 - `npm ls --depth=0 --package-lock-only`: passed; lockfile dependencies resolve.
 - `git diff --check`: passed at final review.
-- `npm test`, Node API tests, and frontend JS runtime checks: **not run**;
-  the Node smoke test connects to the configured PostgreSQL database, and no
-  dedicated test database was confirmed for safe use.
-- Hosting-provider staging (Render or any deployed PostgreSQL), provider
-  behavior, and browser staging: **not verified**; no dedicated staging
-  database exists. PostgreSQL itself was verified only against the disposable
-  sandbox database described above.
-- No real Paystack, WiseSub, or Brevo calls were made.
+- Node smoke test (category 3; also the entire Node test suite, see category
+  4): run on 2026-10-15 with `DB_PATH=<scratch SQLite>` and the disposable
+  PostgreSQL as `DATABASE_URL` — **passed** (Node service started, session
+  store initialized, `/api/status` and `/index.html` served). Frontend JS
+  runtime checks and the side-by-side runtime comparison (category 5) were
+  **not run**.
+- Hosting-provider staging (Render or any deployed PostgreSQL), live provider
+  behavior, and staging browser verification (category 6): **not verified**;
+  no dedicated staging environment exists yet. PostgreSQL itself was verified
+  only against the disposable sandbox database described above.
+- No real Paystack, WiseSub, or Brevo calls were made. No production
+  database was contacted, and no deployment occurred: the Python backend is
+  merged on `master` but production traffic still runs on Node.
 
 ## Remaining blockers and next steps
 
@@ -227,9 +279,10 @@ disposable PostgreSQL 15.19 test database described below.
    package removal behavior, the exact status lookup reference after a timeout,
    and terminal failed status semantics. No real purchase is needed for initial
    sync/status validation; any sandbox purchase needs explicit operator setup.
-5. Run the Node suite against a dedicated test database, compare route
-   responses and run a full customer and
-   admin browser walkthrough with Python staging.
+5. Run a genuine side-by-side runtime comparison of Node and Python against
+   the same isolated staging data (the 2026-10-15 Node smoke test is not a
+   substitute), then run the full customer and admin browser walkthrough with
+   Python staging per [CUTOVER-CHECKLIST.md](CUTOVER-CHECKLIST.md).
 6. Review CSRF/origin protection and test Secure/SameSite cookie behavior across
    the separate frontend/API origins. Plan for user re-login and Node rollback.
 

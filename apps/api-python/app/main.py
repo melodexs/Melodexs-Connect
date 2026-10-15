@@ -104,17 +104,8 @@ def startup():
         # PostgreSQL always requires explicit, reviewed migrations. This guard
         # must not depend on NODE_ENV: a missing/mis-set environment value must
         # never cause startup DDL against a configured PostgreSQL database.
-        from .schema_check import inspect_schema
-        schema = inspect_schema()
-        incompatible = {
-            table: {
-                key: details[key]
-                for key in ("missing", "incompatible_types", "incompatible_defaults", "unexpected_nullable_columns", "missing_constraints", "missing_indexes", "incompatible_indexes", "missing_generated_id_defaults")
-                if details.get(key)
-            }
-            for table, details in schema.items()
-            if any(details.get(key) for key in ("missing", "incompatible_types", "incompatible_defaults", "unexpected_nullable_columns", "missing_constraints", "missing_indexes", "incompatible_indexes", "missing_generated_id_defaults"))
-        }
+        from .schema_check import inspect_schema, schema_incompatibilities
+        incompatible = schema_incompatibilities(inspect_schema())
         if incompatible:
             raise RuntimeError("PostgreSQL schema does not match the reviewed API requirements; inspect it read-only and apply an explicit migration before startup.")
     else:
