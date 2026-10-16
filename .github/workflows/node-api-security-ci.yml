@@ -1,0 +1,47 @@
+name: Node API security CI
+
+# Dependency-security regression guard for the apps/api Node backend
+# (still the production runtime until the Python cutover is approved).
+#
+# Keeps GHSA-h3mg-xc3c-68pw / CVE-2026-101911 (ip-address unbounded
+# parse diagnostic) closed: the workspace npm override pins a patched
+# ip-address, and the regression test fails the build if a vulnerable
+# version resolves again or the fix regresses.
+
+on:
+  pull_request:
+    paths:
+      - "apps/api/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/node-api-security-ci.yml"
+  push:
+    branches:
+      - master
+    paths:
+      - "apps/api/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/node-api-security-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  security-regression:
+    name: Dependency security regression (apps/api)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install workspace dependencies (respects npm overrides)
+        run: npm install
+
+      - name: ip-address advisory regression (GHSA-h3mg-xc3c-68pw)
+        run: npm run test:security --workspace apps/api

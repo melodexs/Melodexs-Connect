@@ -17,7 +17,8 @@
     "wise:test": "node scripts/test-wisesub.js",
     "wise:test-mtn": "node scripts/test-mtn.js",
     "wise:test-plans": "node scripts/test-wisesub-plans.js",
-    "wise:test-pricing": "node scripts/test-wisesub-pricing.js"
+    "wise:test-pricing": "node scripts/test-wisesub-pricing.js",
+    "test:security": "node test/ip-address-regression.test.js"
   },
   "dependencies": {
     "axios": "^1.20.0",
