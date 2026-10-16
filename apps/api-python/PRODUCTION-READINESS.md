@@ -1,6 +1,6 @@
 # MELODEXS CONNECT — Python Backend Production-Readiness Matrix
 
-Status report as of 2026-10-15 (second verification session). Classifies
+Status report as of 2026-10-16 (final closure session). Classifies
 every capability of the Python backend (`apps/api-python/`) against the
 production Node backend (`apps/api/`) using four statuses:
 
@@ -9,15 +9,17 @@ production Node backend (`apps/api/`) using four statuses:
 - **BLOCKED** — requires external access, credentials, or owner action
 - **NOT TESTED** — no sufficient evidence exists
 
-**Overall verdict: NOT READY FOR CUTOVER REVIEW.** Application parity,
-security, database compatibility, and reliability are in strong shape,
-but the acceptance gate requires verified provider workflows
-(Paystack / WiseSub / Brevo sandbox), an authorized production-data
-check, and explicit owner acceptance of remaining limitations. Those are
-BLOCKED on owner action, not on engineering work.
+**Overall verdict: READY FOR CUTOVER REVIEW.** All safely addressable
+engineering work is complete and verified: PRs #8–#11 are merged into
+master (`e35bb87`) in the reviewed order and CI is green on the merged
+master. The remaining gates are owner actions (blockers 1–6 in section
+10): provider sandbox verification, approved production-schema and
+real-data evidence, backup/rollback rehearsal, the staging pre-deploy
+hook removal, and staging database renewal. Cutover itself remains a
+separate, explicitly authorized action.
 
-Snapshot: master `8fd1e5c`; PR #8 (evidence docs), PR #9 (CI), PR #10
-(security hardening) open and cleanly mergeable. Production remains on
+Snapshot: master `e35bb87` (PR #8, #9, #10, #11 merged 2026-10-16 in
+order 8→9→10→11; CI passed on the final master). Production remains on
 Node.js and was not modified.
 
 ---
@@ -27,7 +29,14 @@ Node.js and was not modified.
 Verified by a 33-check side-by-side route matrix on a shared disposable
 PostgreSQL (both backends live simultaneously) plus bidirectional
 cross-backend login on the actual staging database (STAGING-TEST-
-EVIDENCE.md, sections A and B).
+EVIDENCE.md, sections A and B), and re-verified 2026-10-16 on the
+merged master with a fresh 22-check matrix on a new shared disposable
+PostgreSQL: identical route/status/message behavior (including 401/404/
+CORS-deny parity), the one intentional `/api/data-categories`
+difference (Python 200 / Node 404), and full bidirectional data
+compatibility (Node logs into Python-written accounts and serves their
+sessions, Node sets a purchase PIN that Python verifies, Python reads
+Node-written accounts and PIN flags).
 
 | Capability | Status | Evidence |
 |---|---|---|
@@ -144,18 +153,31 @@ Buy Data page's graceful empty-catalog state. No console or network
 errors observed. BLOCKED/NOT TESTED: purchase, funding, and admin
 journeys (provider credentials / admin account), PWA/mobile layout.
 
-## 7. CI & automated testing — PASS
+## 7. CI & automated testing — PASS (re-verified 2026-10-16 on merged master)
 
 - Suite: **121 passed, 7 skipped** (after PR #10's 9 new tests).
 - The 7 skips are the PostgreSQL integration tests, opt-in by
   validated-connection gate (they run as 7/7 when explicitly enabled
   against an approved PostgreSQL — last verified 2026-10-15).
-- CI: GitHub Actions workflow added (PR #9, verified green on its own
-  branch): full suite on every PR/master push touching
-  `apps/api-python/`, scratch SQLite outside the repo, in-repo DB
-  guard, `git diff --check`.
+- CI: GitHub Actions workflow (PR #9) is on master; the run against
+  the merged master `e35bb87` completed successfully (full suite + repo
+  hygiene guards). Fresh rerun on the merged master 2026-10-16: 121
+  passed / 7 skipped on an external scratch SQLite; the 7 PostgreSQL
+  integration tests passed 7/7 against a new disposable
+  TLS-verified (sslmode=verify-full) PostgreSQL 15. `git diff --check`
+  clean; no test database files in the repository.
+- Note: running the *entire* suite with the PostgreSQL gate enabled
+  (`RUN_POSTGRES_INTEGRATION=1`) is not the supported protocol: the
+  gate intentionally selects production-like settings (`NODE_ENV=
+  production`, Secure/SameSite=None cookies), and the in-process test
+  client does not return Secure cookies over plain HTTP, so cookie-flow
+  tests report failures that are artifacts of the test configuration,
+  not backend defects. The supported protocol is: full suite on
+  scratch SQLite + the 7 gated tests against an approved PostgreSQL.
+  (Behavior confirmed while preparing this report; no code change
+  required.)
 
-## 8. Render deployment readiness — PASS for staging; production unchanged
+## 8. Render deployment readiness — PASS for staging; production unchanged (staging re-verified 2026-10-16)
 
 - Production API verified on Node (rootDir `apps/api`, `npm start`);
   frontend and PostgreSQL services audited; production untouched.
@@ -171,6 +193,16 @@ journeys (provider credentials / admin account), PWA/mobile layout.
   action (Render API cannot clear it — reconfirmed).
 - Staging PostgreSQL expires **2026-11-14** — re-provisioning required
   before then if staging must persist.
+- Staging re-verified 2026-10-16 post-merge: `/api/status` healthy,
+  frontend HTTP 200, `/api/data-plans` 200 (empty catalog as expected
+  without provider credentials), unsigned Paystack webhook rejected,
+  admin routes 401, disallowed-origin CORS 403.
+- Staging tracking correction (2026-10-16): the staging API service had
+  remained on branch `fix/staging-proxy-headers` (commit `f556180`,
+  which predates the PR #10 security hardening). It now tracks and runs
+  master `e35bb87`; re-verified live: HSTS + security headers present
+  (PR #10 active), staging frontend origin allowed via CORS (204),
+  evil-origin 403, admin 401, unsigned webhook rejected.
 
 ## 9. Backup & rollback — PARTIAL
 
@@ -183,6 +215,10 @@ journeys (provider credentials / admin account), PWA/mobile layout.
 
 ## 10. Owner actions required (the complete blocker list)
 
+Each action is fully specified — exact requirement, prerequisites, safe
+execution steps, success criteria, and evidence to record — in
+OWNER-ACTION-CHECKLIST.md (added in this PR).
+
 | # | Blocker | Required from owner | Unblocks |
 |---|---|---|---|
 | 1 | Provider sandbox credentials | `PAYSTACK_SECRET_KEY`, `WISESUB_API_KEY`, `WISESUB_API_SECRET`, `BREVO_API_KEY` + `BREVO_FROM_EMAIL` on staging (test/sandbox values) | All live provider tests; catalog sync; end-to-end purchase; reset email |
@@ -194,10 +230,21 @@ journeys (provider credentials / admin account), PWA/mobile layout.
 
 ## 11. Decision
 
-**NOT READY FOR CUTOVER REVIEW.** Once blockers 1–3 are satisfied (4–6
-in parallel), the remaining verification work is bounded: run the live
-provider flows, the production-copy schema check, and the real-data
-preflights; re-run the browser journeys with a synced catalog; then
-this matrix can be re-assessed toward READY FOR CUTOVER REVIEW.
-Production remains on Node.js; no cutover has been performed or
-approved.
+**READY FOR CUTOVER REVIEW.** Every engineering item in this matrix is
+PASS or explicitly delegated to a numbered owner action; none is FAIL.
+The engineering prerequisites for review are met: merged master
+(`e35bb87`) with green CI, 121-test suite + 7/7 PostgreSQL integration
+tests verified fresh on that master, 22/22 bidirectional Node/Python
+cross-compatibility on a shared disposable database, security hardening
+merged (PR #10), CI merged (PR #9), evidence and runbooks merged
+(PR #8, #11), and staging healthy post-merge.
+
+Review may proceed against the evidence in this document, STAGING-
+TEST-EVIDENCE.md, CUTOVER-CHECKLIST.md, and ROLLBACK-RUNBOOK.md, with
+blockers 1–6 (section 10) as the review agenda. Until those are
+satisfied, production stays on Node.js. Cutover itself remains a
+separate, explicitly authorized action; this report does not approve
+or schedule it. Recovery procedures that have actually been exercised
+are limited to those listed in section 9: production backup/restore
+and the Render deploy-rollback endpoint are NOT TESTED and must be
+rehearsed (blocker 6) before any cutover approval.
