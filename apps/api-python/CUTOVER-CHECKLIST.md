@@ -485,3 +485,36 @@ reconciliation journeys, and removal of the staging pre-deploy hook
 `master` is deployed only to staging; a production cutover requires this
 checklist fully PASS plus separate explicit authorization. Nothing here
 constitutes cutover approval.
+
+## Verdict update (2026-10-16, fourth session — Neon-authorized evidence)
+
+With the owner-provided Neon API access (a dedicated read-only audit
+role; existing production credentials never touched), the two largest
+evidence gates are now closed:
+
+1. **Production-schema evidence (blocker 2): RESOLVED.** The live
+   production database matches the Python base schema exactly;
+   migrations 001–003 are correctly absent.
+   (`SANITIZED-PRODUCTION-SCHEMA-EVIDENCE.md`)
+2. **Backup/restore + rollback rehearsal (blockers 1/6, Actions 3–4):
+   RESOLVED at rehearsal scope.** 227/227 production rows restored
+   into an isolated disposable database with zero errors; the startup
+   guard correctly refused boot against the un-migrated production
+   schema; migrations 001–003 applied cleanly to the copy; the Python
+   backend booted in production mode and passed the end-to-end smoke
+   on the restored data; scratch database and the real-data backup
+   file were then deleted. New mandatory cutover step 3a (post-
+   migration WiseSub catalog sync) added above from the rehearsal
+   finding. (`RESTORE-REHEARSAL-EVIDENCE.md`)
+
+**Remaining open owner actions (unchanged):** provider sandbox
+credentials (Action 1), staging pre-deploy hook removal (Action 5,
+dashboard), staging `DATABASE_URL` re-paste (Action 7, dashboard),
+staging PostgreSQL renewal before 2026-11-14 (Action 6), and the
+proxy-addr PR #15 merge-or-accept decision (Action 8).
+
+**Verdict stays READY FOR CUTOVER REVIEW** — now with materially
+stronger evidence: the database-compatibility question is answered
+against the real production schema and data rather than disposable
+approximations. Cutover approval still requires the remaining owner
+actions and explicit written authorization.
