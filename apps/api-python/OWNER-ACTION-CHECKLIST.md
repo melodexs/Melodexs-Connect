@@ -162,16 +162,79 @@ directions, verification outputs, updated ROLLBACK-RUNBOOK.md.
 
 ---
 
-## Action 5 — Staging pre-deploy migration hook — RESOLVED (2026-10-16)
+## Action 5 — Staging pre-deploy migration hook — STILL PRESENT (corrected 2026-10-16)
 
-**Evidence:** the Render API service configuration for the staging API
-(`srv-db8lb4bl550s73ee7hig`) reads `preDeployCommand: None`; deploys at
-`e35bb87` and `668fd50` completed with no pre-deploy phase; the Python
-startup schema check passes on every boot (production Python never
-auto-migrates), and the staging database shows no schema drift.
-**Owner courtesy check (30 seconds):** Settings → Pre-Deploy Command in
-the dashboard should be empty; if anything is shown, clear it and
-redeploy once. No further action required to unblock review.
+**Correction:** an earlier draft marked this resolved because the Render
+API's `serviceDetails.preDeployCommand` read `None`. That was the wrong
+field: the hook actually lives at
+`serviceDetails.envSpecificDetails.preDeployCommand`, and on
+2026-10-16 it IS set (a base64-encoded script that applies
+`tests/postgres_test_schema.sql` base schema plus migrations 001–003
+to `DATABASE_URL` on every deploy).
+
+**Current risk assessment:** the staging service is on the free plan,
+and Render does not EXECUTE pre-deploy commands on free-plan services —
+staging deploys complete without a pre-deploy phase (observed at
+`e35bb87` and `668fd50`). The Python backend's own startup refuses
+production mode without explicit configuration and never auto-migrates.
+So today the hook is inert configuration debt. HOWEVER, upgrading the
+staging service plan would silently activate it (it would then apply
+migrations on every deploy), so it must still be removed in the
+dashboard.
+
+**Exact owner requirement:** Render **dashboard** access by the owner.
+The hook was created through the dashboard; the API's env-specific
+settings are not writable with the available key.
+
+**Safe execution steps:** open the staging API service in the Render
+dashboard → Settings → Pre-Deploy Command; clear the field; trigger one
+redeploy; confirm the deploy pipeline shows no pre-deploy phase.
+
+**Evidence to record:** screenshot or deploy log of the pipeline without
+a pre-deploy phase, plus the deploy ID.
+
+## Action 7 (new) — Restore `DATABASE_URL` on the staging API (added 2026-10-16)
+
+**What happened (honest incident record):** while adding
+`ALLOW_PYTHON_PRODUCTION=1` to the staging service on 2026-10-16, the
+env-vars API call used Render's bulk-replace endpoint (PUT), which
+replaces the entire variable set. The service's six original variables
+(`NODE_ENV`, `DATABASE_URL`, `SESSION_SECRET`, `CHEAPDATA_PUBLIC_URL`,
+`WISESUB_ENVIRONMENT`, `FORWARDED_ALLOW_IPS`) were deleted.
+
+**Impact:** the running staging instance was never interrupted — it
+kept its deploy-time environment. The first deploy attempt after the
+wipe (post-PR-#13 merge, `ccec9a5`, 09:26 UTC) failed fast at startup
+validation (missing explicit `NODE_ENV`), leaving the previous deploy
+live. This is exactly the fail-closed behavior the configuration
+validations were designed for: no silent misconfiguration, no data
+change, no production impact. Staging currently cannot pick up new
+master commits until `DATABASE_URL` is restored.
+
+**Recovery performed (2026-10-16):** five of six variables were
+restored via the API from documented values (`NODE_ENV=production`,
+`CHEAPDATA_PUBLIC_URL`, `WISESUB_ENVIRONMENT=live`,
+`FORWARDED_ALLOW_IPS=*` per Render's documented trust boundary — the
+app port is not directly reachable; original exact value was wiped and
+unrecoverable), and `ALLOW_PYTHON_PRODUCTION=1` was kept. A fresh
+`SESSION_SECRET` was generated (the original value is unrecoverable;
+when the next deploy succeeds, all staging sessions reset — test
+accounts simply log in again). **`DATABASE_URL` cannot be restored via
+the API**: the available key has no database-instance scope, and the
+original value (an internal Render connection string with generated
+credentials) was wiped. It must be re-pasted from the dashboard.
+
+**Exact owner requirement (2 minutes):** Render dashboard → the
+staging PostgreSQL (`melodexs-connect-staging-db`, `dpg-db8l9ju89jmc73brjgfg-a`)
+→ Connect page → copy the **Internal Database URL** → staging API
+service → Environment → add it back as `DATABASE_URL`. Then trigger a
+manual deploy of the staging API and confirm it goes live on master
+(`ccec9a5` at the time of writing).
+
+**Evidence to record:** deploy ID of the first successful staging
+deploy after restoration, and confirmation that `/api/login` works
+against the staging PostgreSQL data (e.g. the staging-verify test
+account).
 
 ---
 

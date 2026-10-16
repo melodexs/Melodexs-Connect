@@ -293,7 +293,8 @@ these run):**
 | 5 | Browser walkthrough | **DONE (staging)** — register/PIN/login/logout/dashboard verified 2026-10-15 | Extend to purchase, admin, and reconciliation journeys after step 9 | Operator |
 | 6 | Staging uses a fresh empty database, not a copy of real data | **BLOCKED (data copy)** | Restore an approved production backup into staging and re-run preflights (step 1) | Owner |
 | 7 | Node smoke test against the staging database | **RESOLVED** — Node ran on the staging service against the staging PostgreSQL (temporary, restored); bidirectional cross-read verified (step 14) | None | Operator |
-| 8 | Leftover pre-deploy migration hook on staging | **RESOLVED (evidence 2026-10-16)** — Render API service config reads `preDeployCommand: None`; deploys to staging at `e35bb87` and `668fd50` completed with no pre-deploy phase; startup schema check passes with no unexpected migrations (production Python never auto-migrates). A 30-second dashboard glance at Settings → Pre-Deploy Command remains a courtesy confirmation for the owner | None required | Operator (owner courtesy check) |
+| 8 | Leftover pre-deploy migration hook on staging | **STILL PRESENT (corrected 2026-10-16)** — the hook lives at `serviceDetails.envSpecificDetails.preDeployCommand` (a base64 migration script), not at the field an earlier draft checked. It is INERT today (free plan does not execute pre-deploy commands; deploys at `e35bb87`/`668fd50` had no pre-deploy phase), but a plan upgrade would activate it | Remove the Pre-Deploy Command in the staging service dashboard before any plan change | Owner |
+| 9 | Staging `DATABASE_URL` wiped by an env-vars bulk-replace (2026-10-16 incident) | **BLOCKED (dashboard)** — five of six variables restored via API; the running instance was never interrupted and the next deploy fails closed; `DATABASE_URL` (internal Render connection string) is not recoverable with the available API key | Re-paste the Internal Database URL into the staging API env (see OWNER-ACTION-CHECKLIST Action 7), then deploy | Owner |
 
 ## Verdict
 
@@ -320,6 +321,11 @@ Python backend when `NODE_ENV=production` unless
 `ALLOW_PYTHON_PRODUCTION=1` is explicitly present in the environment
 (staging sets it; production never does), so a rootDir
 misconfiguration now crash-loops instead of silently serving Python.
+Note (verified 2026-10-16): the staging service uses a service-level
+start command (plain uvicorn) that bypasses the root script, so the
+guard protects the DEFAULT `npm start` path — exactly the path a
+misconfigured production service would take — while staging's opt-in
+variable is in place for whenever staging switches to the guarded start.
 **Never set `ALLOW_PYTHON_PRODUCTION=1` on a production service until
 cutover is explicitly authorized** — at that point it becomes the final
 arming step.
@@ -422,7 +428,18 @@ disposable PostgreSQL, staging browser journeys re-verified end to end
 (register → PIN → login → dashboard → logout → bad-login error →
 re-login → buy-data empty catalog), staging security gates re-verified
 (HSTS/security headers, CORS allow/deny, admin 401, unsigned webhook
-rejection). New finding (documented in PRODUCTION-READINESS §2): the
+rejection).
+
+**Corrections and incident (2026-10-16 post-merge verification):** the
+pre-deploy hook is STILL configured (found at
+`envSpecificDetails.preDeployCommand` — the earlier resolution read the
+wrong field; inert on the free plan but must be removed before any plan
+upgrade), and a bulk env-vars replace accidentally wiped the staging
+service's six environment variables; five were restored from documented
+values plus a fresh `SESSION_SECRET`, and `DATABASE_URL` requires an
+owner re-paste (OWNER-ACTION-CHECKLIST Action 7). Staging is serving
+the live pre-incident deploy with no user-visible impact; deploys fail
+closed until restored. New finding (documented in PRODUCTION-READINESS §2): the
 production **Node** dependency `proxy-addr@2.0.7` has a critical
 IP-spoofing advisory (GHSA-jqcg-44mw-7w3h) reachable via
 `trust proxy 1`; this is a pre-existing production-Node issue, not a
