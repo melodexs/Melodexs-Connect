@@ -193,6 +193,32 @@ redeploy; confirm the deploy pipeline shows no pre-deploy phase.
 **Evidence to record:** screenshot or deploy log of the pipeline without
 a pre-deploy phase, plus the deploy ID.
 
+## Action 8 (new) — Decide on the proxy-addr remediation PR (#15)
+
+**Finding (verified 2026-10-16 against the advisory and the code):**
+`proxy-addr@2.0.7` in the production Node backend is in the affected
+range of CVE-2026-90711 / GHSA-jqcg-44mw-7w3h (Critical 9.1, patched in
+2.0.8). The vulnerable configuration class — an IPv4-mapped IPv6 trust
+subnet with a short prefix — is **not present**: the app configures
+`trust proxy 1` (a hop count), which Express compiles itself without
+touching proxy-addr's subnet compiler, and Render's proxy fronting
+means the app port is not directly reachable. Behavioral tests on both
+versions confirm `req.ip` (the express-rate-limit keying input) is
+correct under the app's real configuration on 2.0.7 and identical on
+2.0.8; the CVE class spoofs on 2.0.7 and is fixed on 2.0.8.
+
+**Decision required (either is safe):**
+1. **Merge PR #15** (pins `proxy-addr ^2.0.8` in `apps/api`) — note this
+   AUTO-DEPLOYS production (autoDeploy on master). Risk is minimal: a
+   single transitive-dep pin with verified identical behavior; the
+   smoke test passes on 2.0.8.
+2. **Explicitly accept the residual risk** until the Python cutover
+   removes this dependency path entirely, and close the finding as
+   "accepted risk, remediated at cutover".
+
+**Evidence to record:** the merge + production deploy ID and health
+check, or a written acceptance note.
+
 ## Action 7 (new) — Restore `DATABASE_URL` on the staging API (added 2026-10-16)
 
 **What happened (honest incident record):** while adding
