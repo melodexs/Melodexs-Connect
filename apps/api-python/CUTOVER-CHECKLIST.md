@@ -369,14 +369,20 @@ PRODUCTION-READINESS §4).
    against the production database (read-only preflight) with no
    missing generated-ID defaults; migrations 001–003 already applied
    or applied in this window with the owner watching.
-   **3a. Catalog re-sync (MANDATORY, from the 2026-10-16 rehearsal
-   finding):** after migrations, run `POST
-   /api/admin/data-plans/synchronize` with live WiseSub credentials —
-   the inherited production `data_plans` rows have NULL
-   `source`/`category` (they predate migration 002) and are invisible
-   to `/api/data-plans` until this sync runs; verify the plan catalog
-   and `/api/data-categories` return live plans BEFORE switching
-   traffic.
+   **3a. Catalog re-sync and category assignment (MANDATORY, corrected
+   2026-10-16 post-cutover):** run `POST
+   /api/admin/data-plans/synchronize` with live WiseSub credentials to
+   attach provider package codes to the catalog (data purchases fail
+   without them). **Correction from the live cutover:** the sync alone
+   does NOT populate `category` — categories are admin-assigned labels,
+   and `/api/data-plans`, `/api/data-categories` and `/api/purchase-data`
+   all hard-require a non-empty `category`. After the sync, an admin must
+   assign categories (e.g. via `PATCH /api/admin/data-plans/{id}` or the
+   admin UI) and only then verify that the plan catalog returns live
+   plans BEFORE switching traffic. At the 2026-10-16 cutover this was
+   executed as: sync (134 added / 52 updated / 105 stale packages marked
+   unavailable) followed by assigning the neutral category "Data
+   Bundles" to all 186 purchasable plans.
 4. **Provider results confirmed:** live (non-sandbox) provider keys
    staged as production env values; sandbox evidence reviewed.
 5. **Release identification:** cut-over commit = the reviewed master
