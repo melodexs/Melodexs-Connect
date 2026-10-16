@@ -19,7 +19,7 @@ this checklist is fully PASS.**
 
 ## Pre-cutover steps
 
-### 1. Pre-cutover backup and recovery verification — BLOCKED (hosting access)
+### 1. Pre-cutover backup and recovery verification — REHEARSED 2026-10-16 (isolated, real production data; see RESTORE-REHEARSAL-EVIDENCE.md)
 
 - Take a full logical backup of the production database and store it
   encrypted, outside the hosting account.
@@ -38,7 +38,7 @@ dedicated generated role and database. It is a fresh empty database, not a copy 
 production data; the identity checks passed at its creation and every boot connects
 as that dedicated role.
 
-### 3. Schema and migration verification — PASS (disposable + fresh staging) / BLOCKED (staging copy of real data)
+### 3. Schema and migration verification — PASS (disposable + fresh staging + REAL PRODUCTION DATA rehearsal 2026-10-16)
 
 - Migrations 001/002/003 verified on the disposable database: idempotent
   re-runs, preflight 0 duplicate groups / 0 rows, migration 003 proven to
@@ -287,11 +287,11 @@ these run):**
 | # | Blocker | Status 2026-10-15 (second verification) | Required action | Responsible |
 |---|---|---|---|---|
 | 1 | No staging environment | **RESOLVED** — Render staging live; Node↔Python compatibility on the staging database verified in BOTH directions this session | Re-provision before the free-tier database expires 2026-11-14 if staging must persist | Owner |
-| 2 | Schema ID defaults | **PASS on staging + disposable** (database-generated ids; `schema_check` reports no `missing_generated_id_defaults`). The **production** schema remains the unknown | Run `DATABASE_URL=<approved-copy> NODE_ENV=test python -m app.schema_check --json` against an approved sanitized production copy before cutover | Owner + operator |
+| 2 | Schema ID defaults | **RESOLVED 2026-10-16** — production schema verified read-only via owner-authorized Neon access: matches the Python base schema exactly (serial vs identity is behaviorally equivalent); migrations 001–003 correctly absent. See `SANITIZED-PRODUCTION-SCHEMA-EVIDENCE.md` | None (re-verify if production schema changes before cutover) | Operator |
 | 3 | Side-by-side runtime comparison | **RESOLVED** — 33-check route matrix on a shared disposable PostgreSQL: full parity (step 7) | None (re-run after any route change) | Operator |
 | 4 | Provider sandbox unverified | **BLOCKED** — no WiseSub/Paystack/Brevo test credentials on staging; plan catalog empty until a WiseSub sync runs (exact blocked tests listed in step 9) | Configure provider test credentials on staging (step 9) | Owner |
 | 5 | Browser walkthrough | **DONE (staging)** — register/PIN/login/logout/dashboard verified 2026-10-15 | Extend to purchase, admin, and reconciliation journeys after step 9 | Operator |
-| 6 | Staging uses a fresh empty database, not a copy of real data | **BLOCKED (data copy)** | Restore an approved production backup into staging and re-run preflights (step 1) | Owner |
+| 6 | Staging uses a fresh empty database, not a copy of real data | **REHEARSED IN ISOLATION 2026-10-16** — the real production backup (227 rows) was restored into a disposable sandbox database, migrated, and the Python backend verified end-to-end on it (`RESTORE-REHEARSAL-EVIDENCE.md`). Copying real user data onto the staging service remains optional and is **not required** for cutover confidence | Owner decision (optional; not a blocker) | Owner |
 | 7 | Node smoke test against the staging database | **RESOLVED** — Node ran on the staging service against the staging PostgreSQL (temporary, restored); bidirectional cross-read verified (step 14) | None | Operator |
 | 8 | Leftover pre-deploy migration hook on staging | **STILL PRESENT (corrected 2026-10-16)** — the hook lives at `serviceDetails.envSpecificDetails.preDeployCommand` (a base64 migration script), not at the field an earlier draft checked. It is INERT today (free plan does not execute pre-deploy commands; deploys at `e35bb87`/`668fd50` had no pre-deploy phase), but a plan upgrade would activate it | Remove the Pre-Deploy Command in the staging service dashboard before any plan change | Owner |
 | 9 | Staging `DATABASE_URL` wiped by an env-vars bulk-replace (2026-10-16 incident) | **BLOCKED (dashboard)** — five of six variables restored via API; the running instance was never interrupted and the next deploy fails closed; `DATABASE_URL` (internal Render connection string) is not recoverable with the available API key | Re-paste the Internal Database URL into the staging API env (see OWNER-ACTION-CHECKLIST Action 7), then deploy | Owner |
@@ -369,6 +369,14 @@ PRODUCTION-READINESS §4).
    against the production database (read-only preflight) with no
    missing generated-ID defaults; migrations 001–003 already applied
    or applied in this window with the owner watching.
+   **3a. Catalog re-sync (MANDATORY, from the 2026-10-16 rehearsal
+   finding):** after migrations, run `POST
+   /api/admin/data-plans/synchronize` with live WiseSub credentials —
+   the inherited production `data_plans` rows have NULL
+   `source`/`category` (they predate migration 002) and are invisible
+   to `/api/data-plans` until this sync runs; verify the plan catalog
+   and `/api/data-categories` return live plans BEFORE switching
+   traffic.
 4. **Provider results confirmed:** live (non-sandbox) provider keys
    staged as production env values; sandbox evidence reviewed.
 5. **Release identification:** cut-over commit = the reviewed master
