@@ -64,9 +64,19 @@ async def fetch_network(client: httpx.AsyncClient, name: str, code: str) -> list
         if not isinstance(item, dict):
             raise ValueError(f"WiseSub returned a malformed package for {name}")
         normalized.append(normalize_package(item))
-    if len({item["code"] for item in normalized}) != len(normalized):
-        raise ValueError(f"WiseSub returned duplicate package identifiers for {name}")
-    return normalized
+    # The live provider catalog has shipped distinct products that share a
+    # package_code (seen on Glo: glo-dg-1485, glo-dg-1730). Purchases are made
+    # by package_code, so exactly one catalog row may exist per code. Match
+    # the legacy Node sync behavior: the last provider occurrence wins, and
+    # the collision is reported instead of silently dropping a network.
+    by_code: dict[str, dict] = {}
+    duplicates: list[str] = []
+    for item in normalized:
+        if item["code"] in by_code:
+            if item["code"] not in duplicates:
+                duplicates.append(item["code"])
+        by_code[item["code"]] = item
+    return list(by_code.values()), duplicates
 
 
 async def synchronize_plans() -> dict:
@@ -101,7 +111,10 @@ async def synchronize_plans() -> dict:
             if isinstance(fetched, Exception):
                 errors.append(f"{name}: {safe_error(fetched)}")
             else:
-                results.append((name, code, fetched))
+                packages, duplicates = fetched
+                if duplicates:
+                    errors.append(f"{name}: duplicate provider package codes kept the last provider occurrence (provider catalog defect): {', '.join(duplicates)}")
+                results.append((name, code, packages))
 
     added = updated = unavailable = 0
     with db_session() as db:

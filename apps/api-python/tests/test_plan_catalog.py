@@ -41,7 +41,7 @@ def test_sync_is_repeatable_and_preserves_admin_overrides(monkeypatch):
     code = "mtn-stable-" + secrets.token_hex(5)
     monkeypatch.setattr(plan_sync.httpx, "AsyncClient", lambda **kwargs: FakeClient())
     async def one_plan(client, network, code):
-        return [plan_sync.normalize_package({"package_code": code, "package_name": "N3,000 10GB - 30 days", "price": "3000"})]
+        return [plan_sync.normalize_package({"package_code": code, "package_name": "N3,000 10GB - 30 days", "price": "3000"})], []
     monkeypatch.setattr(plan_sync, "fetch_network", lambda client, network, provider_code: one_plan(client, network, code))
     first = asyncio.run(plan_sync.synchronize_plans())
     with db_session() as db:
@@ -63,7 +63,7 @@ def test_sync_recalculates_price_only_when_no_fixed_override(monkeypatch):
     cost = 100.0
     monkeypatch.setattr(plan_sync.httpx, "AsyncClient", lambda **kwargs: FakeClient())
     async def package(client, network, provider_code):
-        return [plan_sync.normalize_package({"package_code":code,"package_name":f"N100 {code}","price":cost})]
+        return [plan_sync.normalize_package({"package_code":code,"package_name":f"N100 {code}","price":cost})], []
     monkeypatch.setattr(plan_sync, "fetch_network", package)
     asyncio.run(plan_sync.synchronize_plans())
     with db_session() as db:
@@ -131,7 +131,7 @@ def test_successful_snapshot_marks_removed_package_unavailable(monkeypatch):
     with db_session() as db:
         q(db, "INSERT INTO data_plans(network,plan,provider_cost,selling_price,active,provider,provider_code,provider_package_code,source,provider_available,category) VALUES('MTN',:plan,10,11,1,'wisesub','mtn',:code,'wisesub',1,'General')", {"plan": "Removed " + code, "code": code})
     monkeypatch.setattr(plan_sync.httpx, "AsyncClient", lambda **kwargs: FakeClient())
-    async def empty(client, network, provider_code): return []
+    async def empty(client, network, provider_code): return [], []
     monkeypatch.setattr(plan_sync, "fetch_network", empty)
     result = asyncio.run(plan_sync.synchronize_plans())
     assert result["outcome"] == "success" and result["unavailable"] >= 1
@@ -209,3 +209,47 @@ def test_undocumented_failed_status_is_not_auto_refunded_but_admin_resolution_is
         assert client.post(f"/api/admin/purchases/{tx_id}/resolve", json={"status":"failed"}).status_code == 409
         with db_session() as db:
             assert float(q(db, "SELECT balance FROM users WHERE id=:id", {"id":user_id}).scalar()) == 50
+
+
+def test_fetch_network_deduplicates_colliding_provider_codes_last_wins(monkeypatch):
+    # Replicates the live WiseSub Glo defect (2026-10-16): two distinct
+    # products shipped with the same package_code.
+    payload = {"success": True, "data": {"packages": [
+        {"package_code": "glo-dg-1485", "package_name": "5GB (Best Value) - 1,695 Naira - 3 days", "price": 1661.1},
+        {"package_code": "glo-dg-1730", "package_name": "5GB (Best Value) - 1,875 Naira - 7 days", "price": 1837.5},
+        {"package_code": "glo-dg-1730", "package_name": "5GB (Best Value)  - 1,875 Naira - 14 days Night plan", "price": 1837.5},
+        {"package_code": "glo-dg-1485", "package_name": "3GB (Best Value) - 1,485 Naira - 30 days", "price": 1455.3},
+    ]}}
+    class DupClient(FakeClient):
+        async def get(self, url, **kwargs):
+            if url.endswith("/packages"):
+                return FakeResponse(payload)
+            return await FakeClient.get(self, url, **kwargs)
+    monkeypatch.setattr(plan_sync.httpx, "AsyncClient", lambda **kwargs: DupClient())
+    packages, duplicates = asyncio.run(plan_sync.fetch_network(DupClient(), "Glo", "glo"))
+    assert [p["code"] for p in packages] == ["glo-dg-1485", "glo-dg-1730"]
+    assert sorted(duplicates) == ["glo-dg-1485", "glo-dg-1730"]
+    by_code = {p["code"]: p for p in packages}
+    # The last provider occurrence wins, matching the legacy Node sync.
+    assert float(by_code["glo-dg-1485"]["cost"]) == 1455.3
+    assert "14 days Night plan" in by_code["glo-dg-1730"]["name"]
+
+
+def test_sync_survives_duplicate_provider_codes_and_records_the_defect(monkeypatch):
+    code = "glo-dup-" + secrets.token_hex(4)
+    async def conflicting(client, network, provider_code):
+        packages = [
+            plan_sync.normalize_package({"package_code": code, "package_name": "N1,000 2GB - 7 days", "price": 1000}),
+            plan_sync.normalize_package({"package_code": code, "package_name": "N2,000 5GB - 30 days", "price": 2000}),
+        ]
+        return packages, [code]
+    monkeypatch.setattr(plan_sync.httpx, "AsyncClient", lambda **kwargs: FakeClient())
+    monkeypatch.setattr(plan_sync, "fetch_network", conflicting)
+    result = asyncio.run(plan_sync.synchronize_plans())
+    with db_session() as db:
+        row = q(db, "SELECT plan,provider_cost,selling_price FROM data_plans WHERE provider_package_code=:code", {"code": code}).mappings().first()
+    assert row is not None, "the network must stay synced despite colliding provider codes"
+    assert float(row["provider_cost"]) == 2000, "the last provider occurrence must win"
+    assert "5GB - 30 days" in row["plan"]
+    assert any(code in e and "duplicate provider package codes" in e for e in result["errors"])
+    assert any("duplicate provider package codes" in (q(db, "SELECT errors FROM data_plan_sync_runs ORDER BY id DESC LIMIT 1").scalar() or "") for _ in [0])
