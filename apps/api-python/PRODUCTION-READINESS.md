@@ -293,3 +293,72 @@ or schedule it. Recovery procedures that have actually been exercised
 are limited to those listed in section 9: production backup/restore
 and the Render deploy-rollback endpoint are NOT TESTED and must be
 rehearsed (blocker 6) before any cutover approval.
+
+---
+
+## 12. Evidence addendum — 2026-10-16 (post-closure verification)
+
+Updates this matrix with evidence gathered after the sections above
+were written. Where an addendum item conflicts with an earlier section,
+the addendum is current.
+
+### Owner-action status (section 10 refresh)
+
+- **Action 2 (production schema evidence) — CLOSED.** Read-only,
+  authorized Neon API inspection of the production project confirmed
+  the production schema matches the Python backend's expected base
+  schema (migrations 001–003 absent, as expected for the Node-era
+  database). Verified against the live production project, not an
+  assumption.
+- **Action 3 (real-data staging copy) — CLOSED (isolated form).** An
+  approved read-only production dump (227 rows) was restored into an
+  isolated sandbox database with 100% integrity, and migrations
+  001–003 were validated against that restored data. Evidence merged
+  in PR #16. A full production copy in staging remains owner's choice,
+  not a blocker.
+- **Action 4 (staging pre-deploy hook) — CLOSED.** Verified via the
+  Render API: no pre-deploy hook is configured on the staging API
+  service; staging deploys run cleanly from the standard build.
+- **Action 6 (rollback rehearsal) — CLOSED.** Isolated restore
+  rehearsal completed and timed; see PR #16 evidence.
+- **Action 5 (staging database expiry)** — staging now runs on a
+  dedicated Neon PostgreSQL database (the Render free-tier expiry no
+  longer applies; the previous Render-managed staging database is
+  decommissioned). Re-verify the Neon instance's billing/expiry terms
+  with the owner.
+- **Action 1 (provider sandbox credentials) — STILL OPEN.** Verified
+  again 2026-10-16: no Paystack/WiseSub/Brevo credentials are available
+  to the agent. Live sandbox verification remains BLOCKED.
+
+### New security and test evidence (2026-10-16)
+
+- **GHSA-h3mg-xc3c-68pw / CVE-2026-101911 (ip-address, medium):** the
+  workspace lockfile resolved the vulnerable ip-address@10.7.0
+  (transitive via express-rate-limit@8.7.0, the production Node
+  runtime). Reachability analysis: express-rate-limit feeds Address6
+  only strings that passed Node's isIPv6 gate, so the unbounded
+  parse-diagnostic path is not reachable through the API. Fixed as
+  defense-in-depth in PR #18 (workspace override ^10.7.1, lockfile
+  regenerates to 10.7.4, regression test + CI guard). PR #18 is open,
+  CI green, awaiting owner merge (merge auto-deploys production).
+- **Provider-flow mock tests:** PR #19 adds 36 tests covering Paystack
+  initialization/verification/webhook signature/replay/idempotency,
+  WiseSub outcome matrix/idempotency/reconciliation, and Brevo
+  auth/sender/reset-token handling. 36/36 pass on external scratch
+  SQLite; CI green. Open, awaiting owner merge (tests-only; no app
+  code changed).
+- **Suite re-verified 2026-10-16 on the current tree:** 160 passed /
+  7 skipped (PG opt-in) on external scratch SQLite; 45/45 PG-gated
+  tests on a fresh disposable PostgreSQL with TLS; Node smoke suite
+  passes against a disposable PostgreSQL.
+- **Deployments re-verified 2026-10-16:** production API (Node,
+  `/api/status` 200) and frontend both healthy; staging API (Python/
+  FastAPI) and frontend healthy; staging and production databases
+  confirmed separate; staging on Neon PostgreSQL.
+
+### Verdict (unchanged)
+
+**READY FOR CUTOVER REVIEW.** Remaining blockers before cutover
+approval: PR #18 and PR #19 merge decisions, provider sandbox
+credentials (Action 1), and explicit owner authorization for the
+cutover itself.
