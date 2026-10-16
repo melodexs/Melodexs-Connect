@@ -209,3 +209,13 @@ would attempt Python, whose startup schema check hard-fails against the
 unmigrated production database (crash-loop, not silent divergence). Do not
 change the production root directory or start command until the cutover
 checklist is fully PASS.
+## Start-command guard (2026-10-16)
+
+The repository root's start script now launches the Python backend via
+`scripts/start-python-guarded.sh`, which refuses to boot when
+`NODE_ENV=production` unless `ALLOW_PYTHON_PRODUCTION=1` is set. The
+staging API service has this variable set (via Render API) so staging
+keeps booting normally; production never sets it, so a rootDir
+misconfiguration can no longer silently put Python in front of
+production traffic. See PR #13 and CUTOVER-CHECKLIST's production
+deployment preparation section.
