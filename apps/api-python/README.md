@@ -56,13 +56,17 @@ endpoint overrides and does not follow redirects. Startup performs a read-only
 schema check and refuses to start if required columns are missing. It does not
 create tables or alter production data.
 Migrations `001_api_rate_limits.sql`,
-`002_dynamic_data_catalog_and_reconciliation.sql`, and
-`003_unique_password_reset_tokens.sql` are additive. Review and apply them
+`002_dynamic_data_catalog_and_reconciliation.sql`,
+`003_unique_password_reset_tokens.sql`, and
+`004_serial_data_plans_id.sql` are additive. Review and apply them
 manually in a backed-up staging database first. Before migration 003, run
 `diagnostics/reset_token_unique_preflight.sql` and review all duplicate
 reset-token hash groups; resolve them deliberately without discarding accounts
 or tokens. Migration 002 adds provider availability, fixed price overrides,
 admin-assigned categories, sync history, and purchase idempotency fields/indexes.
+Migration 004 attaches a serial default to `data_plans.id`, which the legacy
+production table never received (its rows were bulk-imported with explicit
+ids). It is idempotent and never moves the sequence backwards.
 Its unique provider-package, transaction-reference, and user/idempotency
 indexes can fail if existing rows contain duplicate values; inspect and
 resolve those in staging before applying. Use the SELECT-only
