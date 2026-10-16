@@ -41,6 +41,19 @@ app.add_exception_handler(RequestValidationError, validation_error_handler)
 app.add_exception_handler(Exception, unexpected_error_handler)
 
 
+def _security_headers(response) -> None:
+    """Apply the baseline security headers to every outgoing response.
+
+    Mirrors the Node backend, where helmet() applies these headers
+    (including Strict-Transport-Security) to every response, including
+    rejected and blocked ones.
+    """
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Strict-Transport-Security"] = "max-age=15552000; includeSubDomains"
+
+
 class SecurityMiddleware(BaseHTTPMiddleware):
     def __init__(self, application):
         super().__init__(application)
@@ -53,7 +66,24 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         if not settings.production:
             allowed_origins.update({"http://localhost:3000", "http://127.0.0.1:3000", str(request.base_url).rstrip("/")})
         if origin and origin.rstrip("/") not in allowed_origins:
-            return JSONResponse({"success": False, "message": "CORS origin not allowed"}, status_code=403)
+            blocked = JSONResponse({"success": False, "message": "CORS origin not allowed"}, status_code=403)
+            _security_headers(blocked)
+            return blocked
+        # State-changing cross-origin requests are rejected BEFORE the
+        # route handler runs (the Node backend's origin gate also runs
+        # before its routes). A blocked request must never execute
+        # side effects such as registrations, purchases, or PIN changes.
+        if (
+            origin
+            and request.url.path.startswith("/api/")
+            and request.method in {"POST", "PUT", "PATCH", "DELETE"}
+            and request.url.path != "/api/paystack/webhook"
+        ):
+            configured = settings.cheapdata_public_url.rstrip("/") if settings.production else origin.rstrip("/")
+            if origin.rstrip("/") != configured and origin.rstrip("/") != "https://melodexs-connect.onrender.com":
+                blocked = JSONResponse({"success": False, "message": "Cross-origin request blocked."}, status_code=403)
+                _security_headers(blocked)
+                return blocked
         if request.method == "POST":
             rate_ok, rate_message = allowed(
                 request.url.path,
@@ -67,9 +97,7 @@ class SecurityMiddleware(BaseHTTPMiddleware):
                     rejected.headers["Access-Control-Allow-Headers"] = "Content-Type, Accept"
                     rejected.headers["Access-Control-Allow-Methods"] = "GET,POST,PUT,PATCH,DELETE,OPTIONS"
                     rejected.headers["Vary"] = "Origin"
-                rejected.headers["X-Content-Type-Options"] = "nosniff"
-                rejected.headers["X-Frame-Options"] = "DENY"
-                rejected.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+                _security_headers(rejected)
                 return rejected
         if origin:
             if request.method == "OPTIONS":
@@ -83,13 +111,7 @@ class SecurityMiddleware(BaseHTTPMiddleware):
             response.headers["Vary"] = "Origin"
         else:
             response = await call_next(request)
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        if request.url.path.startswith("/api/") and request.method in {"POST", "PUT", "PATCH", "DELETE"} and request.url.path != "/api/paystack/webhook" and origin:
-            configured = settings.cheapdata_public_url.rstrip("/") if settings.production else origin.rstrip("/")
-            if origin.rstrip("/") != configured and origin.rstrip("/") != "https://melodexs-connect.onrender.com":
-                return JSONResponse({"success": False, "message": "Cross-origin request blocked."}, status_code=403)
+        _security_headers(response)
         return response
 
 
