@@ -293,12 +293,178 @@ these run):**
 | 5 | Browser walkthrough | **DONE (staging)** — register/PIN/login/logout/dashboard verified 2026-10-15 | Extend to purchase, admin, and reconciliation journeys after step 9 | Operator |
 | 6 | Staging uses a fresh empty database, not a copy of real data | **BLOCKED (data copy)** | Restore an approved production backup into staging and re-run preflights (step 1) | Owner |
 | 7 | Node smoke test against the staging database | **RESOLVED** — Node ran on the staging service against the staging PostgreSQL (temporary, restored); bidirectional cross-read verified (step 14) | None | Operator |
-| 8 | Leftover pre-deploy migration hook on staging | **BLOCKED (dashboard-only)** — Render API reconfirmed unable to clear it (empty string and omission both rejected) | Remove the Pre-Deploy Command in the staging service dashboard | Owner |
+| 8 | Leftover pre-deploy migration hook on staging | **STILL PRESENT (corrected 2026-10-16)** — the hook lives at `serviceDetails.envSpecificDetails.preDeployCommand` (a base64 migration script), not at the field an earlier draft checked. It is INERT today (free plan does not execute pre-deploy commands; deploys at `e35bb87`/`668fd50` had no pre-deploy phase), but a plan upgrade would activate it | Remove the Pre-Deploy Command in the staging service dashboard before any plan change | Owner |
+| 9 | Staging `DATABASE_URL` wiped by an env-vars bulk-replace (2026-10-16 incident) | **BLOCKED (dashboard)** — five of six variables restored via API; the running instance was never interrupted and the next deploy fails closed; `DATABASE_URL` (internal Render connection string) is not recoverable with the available API key | Re-paste the Internal Database URL into the staging API env (see OWNER-ACTION-CHECKLIST Action 7), then deploy | Owner |
 
 ## Verdict
 
-**STAGING DEPLOYED AND BROADLY VERIFIED — NOT READY FOR CUTOVER.**
-The Python backend is live on Render staging. Verified to date: frontend
+
+## Production deployment preparation (review only — nothing executed)
+
+Current production (verified 2026-10-16 via Render API):
+
+- Production API: `melodexs-connect-api` (`srv-dap97sqd0e5s73f5hk70`),
+  branch `master`, **rootDir `apps/api`**, Node (`npm start`), live,
+  healthy (`/api/status` 200). NOTE: production auto-deploys on master
+  merges; the 2026-10-16 merges rebuilt production Node from unchanged
+  `apps/api` code (deploys `e35bb87`, `668fd50` — no behavioral change).
+- Production frontend: `Melodexs-Connect` (`srv-dap9lkh42hec739cpfgg`),
+  branch `master`, rootDir `apps/web`, live.
+
+**RootDir is the ONLY production guard.** The root `package.json`
+`start` script launches the **Python** backend. Production stays on
+Node solely because its Render service sets `rootDir: apps/api`. Risks:
+any future change to the production service's root directory, start
+command, or workspace layout could silently switch backends. Mitigation
+(merged via PR #13): the guarded root start script refuses to boot the
+Python backend when `NODE_ENV=production` unless
+`ALLOW_PYTHON_PRODUCTION=1` is explicitly present in the environment
+(staging sets it; production never does), so a rootDir
+misconfiguration now crash-loops instead of silently serving Python.
+Note (verified 2026-10-16): the staging service uses a service-level
+start command (plain uvicorn) that bypasses the root script, so the
+guard protects the DEFAULT `npm start` path — exactly the path a
+misconfigured production service would take — while staging's opt-in
+variable is in place for whenever staging switches to the guarded start.
+**Never set `ALLOW_PYTHON_PRODUCTION=1` on a production service until
+cutover is explicitly authorized** — at that point it becomes the final
+arming step.
+
+Proposed Python production configuration (for cutover review, not
+executed; values referenced by name only, no secrets):
+
+| Item | Value |
+|---|---|
+| Runtime | Python 3.11+, uvicorn `[standard]` (pinned ranges in `apps/api-python/requirements.txt`) |
+| Build | `pip install -r apps/api-python/requirements.txt` |
+| Start | guarded root start (`bash scripts/start-python-guarded.sh`) with `ALLOW_PYTHON_PRODUCTION=1` set at cutover |
+| Port | `${PORT:-3000}` (Render-injected) |
+| Trusted proxy | `--proxy-headers` + `FORWARDED_ALLOW_IPS` (Render's proxy boundary) |
+| Health check | `/api/status` (liveness); startup schema check acts as the readiness gate (refuses to serve on mismatch) |
+| Database | `DATABASE_URL` → existing production PostgreSQL (existing service, unchanged) |
+| Sessions | `SESSION_SECRET` (same value as Node's, required for cross-backend session/rollback compatibility; rotating it logs everyone out) |
+| CORS | `CHEAPDATA_PUBLIC_URL` = production frontend origin |
+| Providers | `PAYSTACK_SECRET_KEY`, `WISESUB_API_KEY`, `WISESUB_API_SECRET`, `WISESUB_ENVIRONMENT=live`, `BREVO_API_KEY`, `BREVO_FROM_EMAIL`, `BREVO_FROM_NAME`, `CHEAPDATA_MARKUP_PERCENT` |
+| Cutover arming | `ALLOW_PYTHON_PRODUCTION=1` (final step, only on explicit authorization) |
+| Logging | stdout (Render); no secrets emitted (verified in staging logs) |
+| Rollback | see ROLLBACK-RUNBOOK.md + rollback triggers below |
+
+Pre-cutover environment review must confirm: provider keys are
+**live** (not sandbox) values only at cutover time; every provider
+variable is present (production-mode startup validates WiseSub env;
+missing Brevo keys disable password-reset email delivery — see
+PRODUCTION-READINESS §4).
+
+## Ordered cutover execution plan (executes ONLY under explicit owner authorization)
+
+1. **Preconditions verified:** all six owner actions evidenced
+   (provider sandboxes tested on staging; production-schema copy
+   audited; real-data restore rehearsed; backup/restore + rollback
+   rehearsal complete; staging DB renewed; this checklist fully PASS).
+   Owner gives written cutover authorization naming the release commit.
+2. **Backup verification:** owner creates a production database backup
+   and confirms its integrity/restore path; record backup ID, size,
+   timestamp (rollback anchor).
+3. **Schema compatibility confirmation:** `app.schema_check` PASS
+   against the production database (read-only preflight) with no
+   missing generated-ID defaults; migrations 001–003 already applied
+   or applied in this window with the owner watching.
+4. **Provider results confirmed:** live (non-sandbox) provider keys
+   staged as production env values; sandbox evidence reviewed.
+5. **Release identification:** cut-over commit = the reviewed master
+   SHA; deploy it to the production API service **after** completing
+   steps 6–7 prep; record deploy IDs.
+6. **Production environment configuration review:** set the
+   environment variables per the table above (same names as Node where
+   shared; `ALLOW_PYTHON_PRODUCTION=1` LAST); never print values.
+7. **Health/readiness verification plan:** after deploy, check
+   `/api/status`, register/login smoke test, dashboard fetch, admin
+   gate 401, CORS allow for the production frontend origin.
+8. **Frontend API-origin transition:** production frontend's
+   `api-base-url` already points at the production API origin; if any
+   change is needed it is an explicit, reviewed config change (never
+   automatic).
+9. **Smoke tests:** the staging browser journeys (register, login,
+   PIN, dashboard, catalog, purchase with a small real amount, webhook
+   acceptance) executed against production by the owner or operator
+   with the owner watching.
+10. **Payment/purchase monitoring:** watch Paystack webhooks,
+    WiseSub fulfillment, and wallet/purchase transactions for the
+    first hour; no manual retry of uncertain transactions (the backend
+    leaves them pending for reconciliation by design).
+11. **Error-rate/latency monitoring:** Render metrics/logs for the
+    first 24–48h; rollback trigger thresholds below.
+12. **Rollback triggers:** sustained 5xx/error rate beyond baseline;
+    login/session failure; purchase or webhook processing failure;
+    database errors; any suspected double-credit or double-purchase.
+13. **Node restoration steps:** switch the production API service
+    back to `rootDir: apps/api` (Node) — or redeploy the previous
+    Node deploy via Render's rollback; do NOT change the database.
+14. **Database compatibility after rollback:** Node reads
+    Python-written rows (proven bidirectionally on staging + disposable
+    PostgreSQL); sessions issued under the same secret continue to
+    work on Node; if `SESSION_SECRET` was rotated, users re-login once.
+15. **Post-rollback validation:** same smoke tests as step 9 against
+    Node; confirm no pending-purchase or double-credit anomalies;
+    reconcile wallets/transactions against provider records.
+
+**Steps that cannot be safely reversed:** live purchase/webhook
+processing under Python creates rows both backends can read (reversible
+by rollback); a provider key rotation is reversible but invalidates
+nothing critical; **migrations 001–003 are additive and idempotent and
+are NOT reversed on rollback by design** (Node ignores the added
+columns/tables) — this is the accepted one-way data change. Session
+secret rotation forces one re-login. Nothing in the plan writes to the
+database destructively.
+
+## Verdict update (2026-10-16, third verification session)
+
+Master `668fd50` (PR #12 merged; CI green). Staging tracks master and
+auto-deployed `668fd50` live. Fresh re-verification this session:
+SQLite suite 121→124 passed (start-guard tests added in PR #13),
+PostgreSQL integration 7/7 on a new disposable TLS-verified database,
+22/22 Node↔Python cross-compatibility checks on a new shared
+disposable PostgreSQL, staging browser journeys re-verified end to end
+(register → PIN → login → dashboard → logout → bad-login error →
+re-login → buy-data empty catalog), staging security gates re-verified
+(HSTS/security headers, CORS allow/deny, admin 401, unsigned webhook
+rejection).
+
+**Corrections and incident (2026-10-16 post-merge verification):** the
+pre-deploy hook is STILL configured (found at
+`envSpecificDetails.preDeployCommand` — the earlier resolution read the
+wrong field; inert on the free plan but must be removed before any plan
+upgrade), and a bulk env-vars replace accidentally wiped the staging
+service's six environment variables; five were restored from documented
+values plus a fresh `SESSION_SECRET`, and `DATABASE_URL` requires an
+owner re-paste (OWNER-ACTION-CHECKLIST Action 7). Staging is serving
+the live pre-incident deploy with no user-visible impact; deploys fail
+closed until restored. New finding, investigated to closure (2026-10-16, documented in
+PRODUCTION-READINESS §2): the production **Node** dependency
+`proxy-addr@2.0.7` is in the affected range of GHSA-jqcg-44mw-7w3h /
+CVE-2026-90711 (Critical 9.1, patched in 2.0.8). Correcting an earlier
+wording: the advisory is **not reachable via `trust proxy 1`** — the
+vulnerable path requires a trust *subnet* (IPv4-mapped IPv6 with a
+short prefix), which this app does not configure. Behavioral proof on
+both versions through Express 5.2.1: under the app's actual hop-count
+config, `req.ip` returns the real client IP identically on 2.0.7 and
+2.0.8; the CVE's subnet config class spoofs `req.ip` on 2.0.7 and is
+fixed on 2.0.8. Remediation is prepared and tested as **PR #15**
+(pin `proxy-addr ^2.0.8` in `apps/api`, smoke test green on a
+disposable PostgreSQL). Owner decides: merge PR #15 (auto-deploys
+production; minimal-risk single dependency pin) or explicitly accept
+the residual risk until the Python cutover removes the path — see
+OWNER-ACTION-CHECKLIST Action 8.
+
+**STAGING VERIFIED, ENGINEERING COMPLETE — READY FOR CUTOVER REVIEW.**
+Remaining gates are exactly the owner actions (provider sandbox
+credentials, production-schema evidence, real-data restore/rehearsal,
+staging DB renewal). Cutover requires this checklist fully PASS plus
+separate written authorization. Production remains on Node.
+
+**Prior verdict (2026-10-15, superseded above):** NOT READY FOR
+CUTOVER at that time; the Python backend was live on Render staging.
+Verified then: frontend
 browser walkthrough, session/CORS/admin-gate/health checks, a 33-check
 side-by-side route matrix with full behavioural parity, and bidirectional
 Node↔Python data compatibility on the actual staging database (rollback

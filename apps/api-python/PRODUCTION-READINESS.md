@@ -86,6 +86,31 @@ Security audit (full findings reviewed in PR #10):
 | SameSite=None (production) | PASS (intentional) | Node parity by design (frontend/API are different origins); documented in Node code comments |
 | Unhashed session tokens in DB | PASS (constraint) | Required for cross-backend session compatibility (rollback); shared with Node |
 
+**Security finding (2026-10-16, third verification session) — production
+Node dependency, not a Python gap:** `apps/api` currently resolves
+`proxy-addr@2.0.7`, which is in the affected range of a critical
+IP-spoofing advisory (GHSA-jqcg-44mw-7w3h / CVE-2026-90711,
+IPv4-mapped IPv6 trust-subnet bypass, patched in 2.0.8); `ip-address`
+also has a moderate advisory (GHSA-h3mg-xc3c-68pw). **Corrected
+assessment (2026-10-16, verified against the advisory):** the
+vulnerable path requires a trust *subnet* (IPv4-mapped IPv6 with a
+short prefix); the app's `trust proxy 1` in `src/app.js` is a hop
+count, which Express compiles without proxy-addr's subnet compiler, so
+the advisory is **not exploitable as configured** (behavioral proof:
+`req.ip` resolves the real client IP identically on 2.0.7 and 2.0.8
+under the app's config; the advisory's subnet config class spoofs on
+2.0.7 and is fixed on 2.0.8). It affects the dependency **hygiene** of
+production today, independent of cutover. A tested remediation is
+prepared as PR #15 (pin `proxy-addr ^2.0.8`). The Python backend does not
+share this path (Uvicorn `--proxy-headers` + `FORWARDED_ALLOW_IPS`,
+standard-library IP parsing). Owner decision required: a reviewed
+minimal Node dependency bump (merges auto-deploy production — owner
+review essential), or explicit acceptance until the Python cutover
+removes the path. Not a Python-cutover blocker; not silently deferred
+(added to OWNER-ACTION-CHECKLIST as decision item). Dev-only note:
+`pytest 8.4.2` has a test-tool advisory (PYSEC-2026-1845); runtime
+dependencies are clean — bump with the next routine test-deps update.
+
 ## 3. Database & transaction safety — PASS (production copy BLOCKED)
 
 | Area | Status | Notes |
@@ -155,7 +180,8 @@ journeys (provider credentials / admin account), PWA/mobile layout.
 
 ## 7. CI & automated testing — PASS (re-verified 2026-10-16 on merged master)
 
-- Suite: **121 passed, 7 skipped** (after PR #10's 9 new tests).
+- Suite: **124 passed, 7 skipped** on master `668fd50` (2026-10-16:
+121 after PR #10's 9 security tests + 3 start-guard tests in PR #13).
 - The 7 skips are the PostgreSQL integration tests, opt-in by
   validated-connection gate (they run as 7/7 when explicitly enabled
   against an approved PostgreSQL — last verified 2026-10-15).

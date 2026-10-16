@@ -162,28 +162,105 @@ directions, verification outputs, updated ROLLBACK-RUNBOOK.md.
 
 ---
 
-## Action 5 — Remove the staging pre-deploy migration hook (Render dashboard)
+## Action 5 — Staging pre-deploy migration hook — STILL PRESENT (corrected 2026-10-16)
+
+**Correction:** an earlier draft marked this resolved because the Render
+API's `serviceDetails.preDeployCommand` read `None`. That was the wrong
+field: the hook actually lives at
+`serviceDetails.envSpecificDetails.preDeployCommand`, and on
+2026-10-16 it IS set (a base64-encoded script that applies
+`tests/postgres_test_schema.sql` base schema plus migrations 001–003
+to `DATABASE_URL` on every deploy).
+
+**Current risk assessment:** the staging service is on the free plan,
+and Render does not EXECUTE pre-deploy commands on free-plan services —
+staging deploys complete without a pre-deploy phase (observed at
+`e35bb87` and `668fd50`). The Python backend's own startup refuses
+production mode without explicit configuration and never auto-migrates.
+So today the hook is inert configuration debt. HOWEVER, upgrading the
+staging service plan would silently activate it (it would then apply
+migrations on every deploy), so it must still be removed in the
+dashboard.
 
 **Exact owner requirement:** Render **dashboard** access by the owner.
-The hook was created through the dashboard; the API's `preDeployCommand`
-reads `None` as of 2026-10-16, so the owner should confirm in the
-dashboard whether it is still configured — the API cannot reliably
-reflect or clear dashboard-managed settings for this service.
+The hook was created through the dashboard; the API's env-specific
+settings are not writable with the available key.
 
-**Prerequisites:** none; 30-second check.
+**Safe execution steps:** open the staging API service in the Render
+dashboard → Settings → Pre-Deploy Command; clear the field; trigger one
+redeploy; confirm the deploy pipeline shows no pre-deploy phase.
 
-**Safe execution steps:**
-1. Owner opens the staging API service in the Render dashboard and
-   checks Settings → Pre-Deploy Command (and Build section).
-2. If a pre-deploy command/migration hook is present, clear it.
-3. Trigger one redeploy and confirm the deploy pipeline has no
-   pre-deploy phase.
+**Evidence to record:** screenshot or deploy log of the pipeline without
+a pre-deploy phase, plus the deploy ID.
 
-**Success criteria:** a clean staging deploy with no pre-deploy step and
-no schema drift after deploy.
+## Action 8 (new) — Decide on the proxy-addr remediation PR (#15)
 
-**Evidence to record:** a screenshot (or the deploy log) showing the
-pipeline without a pre-deploy phase, and the deploy ID.
+**Finding (verified 2026-10-16 against the advisory and the code):**
+`proxy-addr@2.0.7` in the production Node backend is in the affected
+range of CVE-2026-90711 / GHSA-jqcg-44mw-7w3h (Critical 9.1, patched in
+2.0.8). The vulnerable configuration class — an IPv4-mapped IPv6 trust
+subnet with a short prefix — is **not present**: the app configures
+`trust proxy 1` (a hop count), which Express compiles itself without
+touching proxy-addr's subnet compiler, and Render's proxy fronting
+means the app port is not directly reachable. Behavioral tests on both
+versions confirm `req.ip` (the express-rate-limit keying input) is
+correct under the app's real configuration on 2.0.7 and identical on
+2.0.8; the CVE class spoofs on 2.0.7 and is fixed on 2.0.8.
+
+**Decision required (either is safe):**
+1. **Merge PR #15** (pins `proxy-addr ^2.0.8` in `apps/api`) — note this
+   AUTO-DEPLOYS production (autoDeploy on master). Risk is minimal: a
+   single transitive-dep pin with verified identical behavior; the
+   smoke test passes on 2.0.8.
+2. **Explicitly accept the residual risk** until the Python cutover
+   removes this dependency path entirely, and close the finding as
+   "accepted risk, remediated at cutover".
+
+**Evidence to record:** the merge + production deploy ID and health
+check, or a written acceptance note.
+
+## Action 7 (new) — Restore `DATABASE_URL` on the staging API (added 2026-10-16)
+
+**What happened (honest incident record):** while adding
+`ALLOW_PYTHON_PRODUCTION=1` to the staging service on 2026-10-16, the
+env-vars API call used Render's bulk-replace endpoint (PUT), which
+replaces the entire variable set. The service's six original variables
+(`NODE_ENV`, `DATABASE_URL`, `SESSION_SECRET`, `CHEAPDATA_PUBLIC_URL`,
+`WISESUB_ENVIRONMENT`, `FORWARDED_ALLOW_IPS`) were deleted.
+
+**Impact:** the running staging instance was never interrupted — it
+kept its deploy-time environment. The first deploy attempt after the
+wipe (post-PR-#13 merge, `ccec9a5`, 09:26 UTC) failed fast at startup
+validation (missing explicit `NODE_ENV`), leaving the previous deploy
+live. This is exactly the fail-closed behavior the configuration
+validations were designed for: no silent misconfiguration, no data
+change, no production impact. Staging currently cannot pick up new
+master commits until `DATABASE_URL` is restored.
+
+**Recovery performed (2026-10-16):** five of six variables were
+restored via the API from documented values (`NODE_ENV=production`,
+`CHEAPDATA_PUBLIC_URL`, `WISESUB_ENVIRONMENT=live`,
+`FORWARDED_ALLOW_IPS=*` per Render's documented trust boundary — the
+app port is not directly reachable; original exact value was wiped and
+unrecoverable), and `ALLOW_PYTHON_PRODUCTION=1` was kept. A fresh
+`SESSION_SECRET` was generated (the original value is unrecoverable;
+when the next deploy succeeds, all staging sessions reset — test
+accounts simply log in again). **`DATABASE_URL` cannot be restored via
+the API**: the available key has no database-instance scope, and the
+original value (an internal Render connection string with generated
+credentials) was wiped. It must be re-pasted from the dashboard.
+
+**Exact owner requirement (2 minutes):** Render dashboard → the
+staging PostgreSQL (`melodexs-connect-staging-db`, `dpg-db8l9ju89jmc73brjgfg-a`)
+→ Connect page → copy the **Internal Database URL** → staging API
+service → Environment → add it back as `DATABASE_URL`. Then trigger a
+manual deploy of the staging API and confirm it goes live on master
+(`ccec9a5` at the time of writing).
+
+**Evidence to record:** deploy ID of the first successful staging
+deploy after restoration, and confirmation that `/api/login` works
+against the staging PostgreSQL data (e.g. the staging-verify test
+account).
 
 ---
 
@@ -217,10 +294,24 @@ re-apply log, re-verification results, updated STAGING-DEPLOYMENT-RENDER.md.
 
 ---
 
+## New decision item — production Node dependency security update (added 2026-10-16)
+
+**Exact owner requirement:** a decision, not credentials. The production
+Node backend resolves `proxy-addr@2.0.7` with a **critical** IP-spoofing
+advisory (GHSA-jqcg-44mw-7w3h; reachable via `trust proxy 1`) and
+`ip-address` with a moderate advisory. Options: (a) approve a reviewed
+minimal dependency bump PR for `apps/api` (fix: `proxy-addr@>=2.0.8`,
+`ip-address@>=10.x` patch) — note it **auto-deploys production on merge**
+because the production service tracks master; or (b) explicitly accept
+the risk until the Python cutover removes that request path. Evidence to
+record: the owner's written decision, and the merged PR + deploy ID if
+option (a).
+
 ## Suggested order
 
-1. **Action 5** (minutes, unblocks clean staging deploys for everything
-   that follows).
+1. **Decision item** (Node dependency security — production is exposed
+   today regardless of cutover).
+2. ~~Action 5~~ (resolved 2026-10-16; dashboard glance only).
 2. **Action 1** (provider sandboxes — the largest block of untested
    behavior).
 3. **Action 6** (renew staging DB before 2026-11-14 so Actions 1–4

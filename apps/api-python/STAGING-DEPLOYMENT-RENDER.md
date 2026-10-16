@@ -82,6 +82,12 @@ re-provisioning.
    `pip install -r apps/api-python/requirements.txt`
 8. **Start Command** (verified against the actual entry point):
    `python3 -m uvicorn app.main:app --app-dir apps/api-python --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips ${FORWARDED_ALLOW_IPS:-127.0.0.1}`
+
+   **Historical note (pre-guard):** the command above was the original
+   plain start command. Since PR #13, the repo-root start runs the
+   guarded script (`scripts/start-python-guarded.sh`), which wraps this
+   exact uvicorn invocation behind the `ALLOW_PYTHON_PRODUCTION`
+   fail-closed check. See "Start-command guard" at the end of this file.
 9. **Health Check Path:** `/api/status`
 10. **Instance type:** smallest plan is fine for staging.
 
@@ -209,3 +215,13 @@ would attempt Python, whose startup schema check hard-fails against the
 unmigrated production database (crash-loop, not silent divergence). Do not
 change the production root directory or start command until the cutover
 checklist is fully PASS.
+## Start-command guard (2026-10-16)
+
+The repository root's start script now launches the Python backend via
+`scripts/start-python-guarded.sh`, which refuses to boot when
+`NODE_ENV=production` unless `ALLOW_PYTHON_PRODUCTION=1` is set. The
+staging API service has this variable set (via Render API) so staging
+keeps booting normally; production never sets it, so a rootDir
+misconfiguration can no longer silently put Python in front of
+production traffic. See PR #13 and CUTOVER-CHECKLIST's production
+deployment preparation section.
