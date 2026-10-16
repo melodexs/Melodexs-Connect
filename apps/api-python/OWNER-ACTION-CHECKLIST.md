@@ -162,28 +162,16 @@ directions, verification outputs, updated ROLLBACK-RUNBOOK.md.
 
 ---
 
-## Action 5 — Remove the staging pre-deploy migration hook (Render dashboard)
+## Action 5 — Staging pre-deploy migration hook — RESOLVED (2026-10-16)
 
-**Exact owner requirement:** Render **dashboard** access by the owner.
-The hook was created through the dashboard; the API's `preDeployCommand`
-reads `None` as of 2026-10-16, so the owner should confirm in the
-dashboard whether it is still configured — the API cannot reliably
-reflect or clear dashboard-managed settings for this service.
-
-**Prerequisites:** none; 30-second check.
-
-**Safe execution steps:**
-1. Owner opens the staging API service in the Render dashboard and
-   checks Settings → Pre-Deploy Command (and Build section).
-2. If a pre-deploy command/migration hook is present, clear it.
-3. Trigger one redeploy and confirm the deploy pipeline has no
-   pre-deploy phase.
-
-**Success criteria:** a clean staging deploy with no pre-deploy step and
-no schema drift after deploy.
-
-**Evidence to record:** a screenshot (or the deploy log) showing the
-pipeline without a pre-deploy phase, and the deploy ID.
+**Evidence:** the Render API service configuration for the staging API
+(`srv-db8lb4bl550s73ee7hig`) reads `preDeployCommand: None`; deploys at
+`e35bb87` and `668fd50` completed with no pre-deploy phase; the Python
+startup schema check passes on every boot (production Python never
+auto-migrates), and the staging database shows no schema drift.
+**Owner courtesy check (30 seconds):** Settings → Pre-Deploy Command in
+the dashboard should be empty; if anything is shown, clear it and
+redeploy once. No further action required to unblock review.
 
 ---
 
@@ -217,10 +205,24 @@ re-apply log, re-verification results, updated STAGING-DEPLOYMENT-RENDER.md.
 
 ---
 
+## New decision item — production Node dependency security update (added 2026-10-16)
+
+**Exact owner requirement:** a decision, not credentials. The production
+Node backend resolves `proxy-addr@2.0.7` with a **critical** IP-spoofing
+advisory (GHSA-jqcg-44mw-7w3h; reachable via `trust proxy 1`) and
+`ip-address` with a moderate advisory. Options: (a) approve a reviewed
+minimal dependency bump PR for `apps/api` (fix: `proxy-addr@>=2.0.8`,
+`ip-address@>=10.x` patch) — note it **auto-deploys production on merge**
+because the production service tracks master; or (b) explicitly accept
+the risk until the Python cutover removes that request path. Evidence to
+record: the owner's written decision, and the merged PR + deploy ID if
+option (a).
+
 ## Suggested order
 
-1. **Action 5** (minutes, unblocks clean staging deploys for everything
-   that follows).
+1. **Decision item** (Node dependency security — production is exposed
+   today regardless of cutover).
+2. ~~Action 5~~ (resolved 2026-10-16; dashboard glance only).
 2. **Action 1** (provider sandboxes — the largest block of untested
    behavior).
 3. **Action 6** (renew staging DB before 2026-11-14 so Actions 1–4
