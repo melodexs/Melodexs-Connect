@@ -13,7 +13,7 @@ NOT touched by anything here.
 | Production frontend | `https://melodexs-connect.onrender.com` | Render static site | LIVE, unchanged |
 | Python staging API | `https://melodexs-connect-api-staging.onrender.com` | Python (Uvicorn) | LIVE (deployed 2026-10-15) |
 | Staging frontend | `https://melodexs-connect-staging.onrender.com` | Render static site | LIVE (deployed 2026-10-15) |
-| Staging PostgreSQL | internal (Render private network) | Render PostgreSQL, free tier | LIVE; fresh empty DB; expires 2026-11-14 |
+| Staging PostgreSQL | Neon TLS connection string | Dedicated Neon PostgreSQL (2026-10-16) | LIVE; fresh empty DB; no expiry clock (old Render free DB unused, expires 2026-11-14) |
 
 The staging API was deployed from branch `fix/staging-proxy-headers` at
 commit `f556180` (content identical to master `87c1327` after PR #6). The
@@ -202,7 +202,7 @@ the repository itself. Production Node.js service: untouched, keep it.
 2. Configure provider **sandbox/test credentials** (WiseSub, Paystack
    test keys, Brevo test) on the staging service to unblock provider-flow
    verification and catalog sync.
-3. Note the staging PostgreSQL **expires 2026-11-14** (free tier);
+3. (Superseded 2026-10-16: staging now uses a dedicated Neon PostgreSQL database — see the checklist; the old Render free DB expiry no longer applies.)
    re-provision or upgrade before then if staging must persist.
 
 ## Latent production risk recorded (no action taken)

@@ -10,13 +10,17 @@ production Node backend (`apps/api/`) using four statuses:
 - **NOT TESTED** — no sufficient evidence exists
 
 **Overall verdict: READY FOR CUTOVER REVIEW.** All safely addressable
-engineering work is complete and verified: PRs #8–#11 are merged into
-master (`e35bb87`) in the reviewed order and CI is green on the merged
-master. The remaining gates are owner actions (blockers 1–6 in section
-10): provider sandbox verification, approved production-schema and
-real-data evidence, backup/rollback rehearsal, the staging pre-deploy
-hook removal, and staging database renewal. Cutover itself remains a
-separate, explicitly authorized action.
+engineering work is complete and verified on master `ed84f26`
+(CI green; PRs #8–#16 merged). As of 2026-10-16 the recovery-evidence
+gates are closed: approved production-schema evidence, backup restore
+and rollback rehearsal (Neon-authorized, isolated), staging pre-deploy
+hook removed, staging database renewed on dedicated Neon PostgreSQL,
+and staging re-verified live (deploy `dep-db900so5o2`) with a green
+E2E suite and browser journey. The remaining gates are owner-only:
+provider sandbox credentials (Paystack/WiseSub/Brevo), the
+`ip-address` moderate-advisory decision, and explicit production
+cutover authorization. Cutover itself remains a separate, explicitly
+authorized action.
 
 Snapshot: master `e35bb87` (PR #8, #9, #10, #11 merged 2026-10-16 in
 order 8→9→10→11; CI passed on the final master). Production remains on
@@ -215,14 +219,29 @@ journeys (provider credentials / admin account), PWA/mobile layout.
 - Staging: standard Python/Uvicorn build/start verified restored;
   `FORWARDED_ALLOW_IPS` set; `NODE_ENV=production` with the
   documented provider-key gaps.
-- Staging pre-deploy migration hook: BLOCKED on dashboard-only owner
-  action (Render API cannot clear it — reconfirmed).
-- Staging PostgreSQL expires **2026-11-14** — re-provisioning required
-  before then if staging must persist.
-- Staging re-verified 2026-10-16 post-merge: `/api/status` healthy,
-  frontend HTTP 200, `/api/data-plans` 200 (empty catalog as expected
-  without provider credentials), unsigned Paystack webhook rejected,
-  admin routes 401, disallowed-origin CORS 403.
+- Staging pre-deploy migration hook: **REMOVED 2026-10-16** via the
+  Render API (`preDeployCommand` cleared with an empty string; build and
+  start commands verified byte-identical after the PATCH). A future plan
+  upgrade can no longer silently activate the legacy migration script.
+- Staging database: **replaced 2026-10-16 with a dedicated Neon
+  PostgreSQL database** (empty project verified before use; base schema
+  + migrations 001–003 applied and verified over TLS; dedicated
+  least-privilege app role). The old Render free PostgreSQL is unused
+  and expires 2026-11-14 on its own; the new database has no expiry
+  clock. `DATABASE_URL` was written with Render's per-key endpoint, and
+  all seven staging variables were verified preserved afterward.
+- Staging re-verified 2026-10-16 (deploy `dep-db900so5o2`, **live** on
+  master `ed84f26`, 10:48 UTC): startup guard passed against the new
+  database; E2E suite green — registration, login, Secure+HttpOnly
+  session cookie, PIN set/verify/reject, own-vs-foreign transactions
+  authorization (403), catalog endpoints (empty catalog as expected
+  without provider credentials), admin gate 401/403, CORS allow
+  (staging frontend) and deny (unknown origin), HSTS/nosniff/X-Frame
+  headers, unknown-route 404, logout with session invalidation,
+  unconfigured-payments behavior (500 with the same generic message as
+  the Node backend — verified parity, no secret leakage), and a full
+  browser journey on the staging frontend (register → login →
+  dashboard → logout). Frontend HTTP 200.
 - Staging tracking correction (2026-10-16): the staging API service had
   remained on branch `fix/staging-proxy-headers` (commit `f556180`,
   which predates the PR #10 security hardening). It now tracks and runs
