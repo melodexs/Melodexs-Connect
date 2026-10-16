@@ -28,7 +28,8 @@
     "express-rate-limit": "^8.7.0",
     "express-session": "^1.19.0",
     "helmet": "^8.3.0",
-    "pg": "^8.23.0"
+    "pg": "^8.23.0",
+    "proxy-addr": "^2.0.8"
   },
   "devDependencies": {
     "nodemon": "^3.1.14"
