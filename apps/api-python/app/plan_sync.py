@@ -1,7 +1,9 @@
 """Database-backed WiseSub catalog synchronization.
 
 The provider currently documents package_code, package_name and price only.
-Categories are therefore admin-assigned and unknown packages stay hidden.
+Categories are therefore admin-assigned and unknown packages stay hidden;
+POST /api/admin/data-plans/auto-categorize derives categories for
+uncategorized plans without touching admin-set ones (see app/categorization.py).
 """
 import asyncio
 import json

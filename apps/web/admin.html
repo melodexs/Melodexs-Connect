@@ -323,6 +323,7 @@
         <p style="color:#6b7280;margin-bottom:18px;">Provider cost is what MELODEXS CONNECT pays. Selling price is the customer price. A manually set selling price stays fixed through synchronization; clear it with the API value <code>null</code> to return to the 2% round-up rule. Unclassified plans stay hidden from customers.</p>
         <div id="pythonCatalogControls">
             <button class="save-btn" type="button" onclick="synchronizePlans()">Synchronize WiseSub plans</button>
+            <button class="save-btn" type="button" onclick="autoCategorizePlans()">Auto-categorize new plans</button>
             <button class="toggle-btn" type="button" onclick="reconcilePurchases()">Check pending purchases</button>
             <p id="planSyncStatus" style="color:#6b7280;margin:12px 0 18px;">Loading synchronization status…</p>
         </div>
@@ -615,6 +616,18 @@
             showMessage(`Sync ${data.outcome}: ${data.added} added, ${data.updated} updated, ${data.unavailable} unavailable.`, data.success ? "success" : "error");
             await loadPlans();
         } catch (error) { showMessage(error.message, "error"); await loadPlanSyncStatus(); }
+    }
+
+    async function autoCategorizePlans() {
+        showMessage("Categorizing uncategorized plans…", "success");
+        try {
+            const response = await fetch("/api/admin/data-plans/auto-categorize", { method: "POST" });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.message || "Auto-categorization failed.");
+            const details = Object.entries(data.by_category || {}).map(([name, count]) => `${count} ${name}`).join(", ");
+            showMessage(`Categorized ${data.categorized} plans${details ? ": " + details : ""}. ${data.remaining_uncategorized} unmatched stay hidden for review.`, "success");
+            await loadPlans();
+        } catch (error) { showMessage(error.message, "error"); }
     }
 
     async function reconcilePurchases() {

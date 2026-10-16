@@ -3,6 +3,7 @@ import math
 from fastapi import APIRouter, Request, HTTPException
 from .database import db_session, q
 from .security import require_admin
+from .categorization import categorize, CATEGORY_ORDER
 from .plan_sync import synchronize_plans
 from .providers import wise_status
 from .database import engine
@@ -27,6 +28,31 @@ async def sync_plans(request: Request):
     except Exception as exc:
         raise HTTPException(502, "Plan synchronization failed safely. Existing plans were preserved.") from exc
     return result
+
+
+@router.post("/api/admin/data-plans/auto-categorize")
+def auto_categorize(request: Request):
+    """Assign derived categories to uncategorized WiseSub plans.
+
+    Only plans with no category are touched; admin-set categories are never
+    overwritten. Plans that match no rule stay hidden for manual review.
+    """
+    require_admin(request)
+    assigned: dict[str, int] = {label: 0 for label in CATEGORY_ORDER}
+    remaining = 0
+    with db_session() as db:
+        rows = q(db, "SELECT id,provider_package_code,provider_package_name FROM data_plans WHERE LOWER(TRIM(source))='wisesub' AND (category IS NULL OR TRIM(category)='')").mappings().all()
+        for row in rows:
+            category = categorize(row["provider_package_code"], row["provider_package_name"])
+            if category is None:
+                remaining += 1
+                continue
+            q(db, "UPDATE data_plans SET category=:category,updated_at=CURRENT_TIMESTAMP WHERE id=:id AND (category IS NULL OR TRIM(category)='')",
+              {"category": category, "id": row["id"]})
+            assigned[category] += 1
+    return {"success": True, "categorized": sum(assigned.values()),
+            "remaining_uncategorized": remaining,
+            "by_category": {k: v for k, v in assigned.items() if v}}
 
 
 @router.get("/api/admin/data-plans/synchronization")

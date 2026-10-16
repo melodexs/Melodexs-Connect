@@ -17,6 +17,7 @@ from fastapi.responses import JSONResponse, FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from .categorization import category_sort_sql
 from .config import settings, ROOT, validate_wisesub_configuration, wisesub_recipient
 from .database import db_session, engine, init_schema, q
 from .providers import paystack, send_brevo, wise_purchase
@@ -342,7 +343,7 @@ def transactions(request: Request, user_id: str):
 @app.get("/api/data-categories")
 def data_categories(network: str):
     with db_session() as db:
-        rows = q(db, "SELECT category,COUNT(*) plan_count FROM data_plans WHERE network=:network AND active=1 AND provider_available=1 AND selling_price>=provider_cost AND LOWER(TRIM(source))='wisesub' AND category IS NOT NULL AND TRIM(category)<>'' GROUP BY category ORDER BY LOWER(category)", {"network": network}).mappings().all()
+        rows = q(db, "SELECT category,COUNT(*) plan_count FROM data_plans WHERE network=:network AND active=1 AND provider_available=1 AND selling_price>=provider_cost AND LOWER(TRIM(source))='wisesub' AND category IS NOT NULL AND TRIM(category)<>'' GROUP BY category ORDER BY " + category_sort_sql() + "", {"network": network}).mappings().all()
     return {"success": True, "categories": [dict(x) for x in rows]}
 
 
