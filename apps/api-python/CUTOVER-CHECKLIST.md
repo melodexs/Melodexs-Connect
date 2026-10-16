@@ -88,7 +88,7 @@ migrations never run at boot (the one-shot provisioning used a temporary
 start command, since restored; the leftover pre-deploy hook must be removed
 in the dashboard — see STAGING-DEPLOYMENT-RENDER.md).
 
-### 7. Frontend-to-API compatibility checks — PARTIALLY PASS (staging browser walkthrough done; category-5 side-by-side matrix NOT TESTED)
+### 7. Frontend-to-API compatibility checks — PASS (staging walkthrough + side-by-side matrix)
 
 Point a **separate staging copy** of the frontend at the staging Python API
 via the `api-base-url` meta tag (this also enables the categorized catalog UI
@@ -106,6 +106,16 @@ frontend encodes an API target. An automated frontend-contract test
 (`tests/test_frontend_contract.py`) fails the Python suite if frontend calls
 and Python routes ever drift apart.
 
+**Side-by-side matrix (2026-10-15):** both backends were run against a
+single fresh disposable PostgreSQL database and exercised with identical
+scenarios: 33 checks, exact parity on all common routes (one apparent
+register discrepancy was a harness phone collision, resolved by a focused
+rerun: identical duplicate email/phone behavior), identical user-facing
+messages, identical CORS/admin/404/webhook behaviour, and one
+intentional difference (the new Python-only `/api/data-categories`
+route). Cross-backend login works in both directions on the same
+database. Full record: STAGING-TEST-EVIDENCE.md, section A.
+
 ### 8. Login/session behavior and user re-login — PARTIALLY PASS (automated + staging browser/API checks; wide-device browser matrix NOT TESTED)
 
 Automated regression tests prove: a request with only a legacy `connect.sid`
@@ -119,13 +129,44 @@ SameSite=none) — a full cross-browser matrix on staging is still open.
 
 ### 9. Payment/provider sandbox verification — BLOCKED (provider sandbox)
 
+**Exact tests blocked by missing credentials (all on staging):**
+
+*WiseSub* (needs `WISESUB_API_KEY`, `WISESUB_API_SECRET`; staging
+already sets `WISESUB_ENVIRONMENT=live`):
+1. `POST /api/admin/data-plans/synchronize` — full catalog sync into
+   `data_plans` / `data_categories` (currently both empty on staging).
+2. `GET /api/admin/data-plans/synchronization` — sync status reporting
+   over a real sync.
+3. Data purchase against a real synced plan (`/api/purchase-data`) and
+   WiseSub fulfillment confirmation.
+4. Confirming terminal failure semantics for refunds
+   (`WISESUB_FAILURE_STATUS_CONFIRMED` stays `false` — automated
+   refunds deliberately disabled until a sandbox confirms the
+   documented-failure-state question).
+
+*Paystack* (needs `PAYSTACK_SECRET_KEY`):
+5. `POST /api/fund-wallet` — initialize a real test transaction.
+6. `POST /api/fund-wallet/verify` — verify a completed test payment
+   and credit the wallet.
+7. `POST /api/paystack/webhook` — signature verification with a valid
+   Paystack-signed payload (unsigned payloads already correctly
+   rejected 401 on both backends).
+8. End-to-end wallet-funded purchase (step 10 with balance).
+
+*Brevo* (needs `BREVO_API_KEY`, `BREVO_FROM_EMAIL`):
+9. `POST /api/forgot-password` delivering a reset email to a real
+   test inbox.
+10. `POST /api/reset-password` completing with the emailed token
+    (bogus-token rejection already verified identical on both
+    backends).
+
 - Paystack test keys, a sandbox funding flow, and webhook signature checks.
 - WiseSub test credentials: sync, package removal, timeout/status reference,
   terminal-failure semantics (decides `WISESUB_FAILURE_STATUS_CONFIRMED`).
 - Brevo test-mode email for password reset.
 - No live purchase or real customer email at any point in staging.
 
-### 10. Purchase and transaction consistency checks — NOT TESTED (blocked on provider sandbox, step 9)
+### 10. Purchase and transaction consistency checks — NOT TESTED (blocked on provider sandbox, step 9; rejection paths already verified identical on both backends)
 
 Pending/success/failure/refund transitions, wallet balance integrity,
 reconciliation of pending purchases, and duplicate-request idempotency against
@@ -170,7 +211,7 @@ different operations; both differ from **data recovery**:
   database only after a documented data-loss incident, then repoint traffic.
   This is the last resort; it loses all post-backup writes.
 
-### 14. Rollback safety verification (Node can read Python-era data) — PARTIALLY PASS (disposable cross-read proven) / NOT TESTED (Node smoke against staging DB)
+### 14. Rollback safety verification (Node can read Python-era data) — PASS (disposable + staging, both directions)
 
 - **Python inserts omit IDs and require generated primary keys**; Node's DDL
   may not have them. If Python was allowed to write to a database whose
@@ -189,6 +230,16 @@ different operations; both differ from **data recovery**:
   copy and the Node smoke test has been run against the migrated staging
   database.**
 
+**Staging verification (2026-10-15):** the Node backend was run
+(temporarily, staging-only) directly against the staging PostgreSQL —
+it registered, logged in, served sessions, set and verified PINs, and
+logged into a Python-written account. The staging service was then
+restored to Python, which logged into the Node-written account and
+verified the Node-set PIN. Node↔Python data compatibility on the actual
+staging database is verified in both directions; Node's stay was
+insert-only (test accounts). Full record: STAGING-TEST-EVIDENCE.md,
+section B.
+
 ### 15. Post-cutover checks (after a future, separately authorized production cutover) — DEFINED
 
 - Monitor `/api/status`, error rates, purchase success rates, and wallet
@@ -198,29 +249,65 @@ different operations; both differ from **data recovery**:
   rollback window.
 - Review admin sync/reconciliation outputs on the first business day.
 
+## Rollback review: tested steps vs untested assumptions
+
+**Tested (with evidence):**
+- Application-traffic rollback mechanism: a staging service swap
+  (Python→Node→Python) was deployed and restored twice today; the
+  deploy/restore cycle itself is proven (Render deploys
+  `dep-db8m2tuq1p3s73bkcuk0` / `dep-db8m493bc2fs73ftche0`).
+- Data compatibility in BOTH directions on the actual staging
+  PostgreSQL: Node logged into a Python-written account; Python logged
+  into a Node-written account and verified a Node-set PIN
+  (STAGING-TEST-EVIDENCE.md, section B).
+- The same bidirectional login compatibility on a disposable
+  PostgreSQL (section A of the evidence).
+- Migrations 001–003 are additive-only; the Node backend ran against
+  the migrated staging database without errors, and the Python startup
+  schema check still passes after the Node run (no schema drift).
+- Session-secret rotation invalidates existing sessions (observed on
+  staging during the env restore): users would need one re-login after
+  a rollback that rotates the secret; the README's user-notice step
+  covers this.
+
+**Untested assumptions (do not treat rollback as fully proven until
+these run):**
+- The production backup/restore itself (step 1): no production data
+  copy has been taken or restored; RPO/RTO timing is unmeasured.
+- Rollback under production-scale data volume and load (staging holds
+  a handful of test accounts).
+- Real provider webhook replay/idempotency across a rollback boundary
+  (blocked on provider sandbox, step 9).
+- Render's one-click rollback to a specific earlier deploy on the
+  production service (never exercised; the staging swaps used fresh
+  deploys, not the rollback endpoint).
+
 ## Outstanding blockers (owner actions required)
 
-| # | Blocker | Status 2026-10-15 | Required action | Responsible |
+| # | Blocker | Status 2026-10-15 (second verification) | Required action | Responsible |
 |---|---|---|---|---|
-| 1 | No staging environment | **RESOLVED** — Render staging (API, frontend, PostgreSQL) live since 2026-10-15 | Re-provision before the free-tier database expires 2026-11-14 if staging must persist | Owner |
-| 2 | Schema ID defaults | **PASS on staging** (registration received a database-generated id). The **production** schema remains the unknown | Run the schema checker against an approved production data copy before cutover; resolve `missing_generated_id_defaults` | Owner + operator |
-| 3 | No side-by-side runtime comparison | **NOT TESTED** | Run the route matrix against both backends (step 7, category 5) | Operator |
-| 4 | Provider sandbox unverified | **BLOCKED** — no WiseSub/Paystack/Brevo test credentials on staging; the plan catalog is empty until a WiseSub sync runs | Configure provider test credentials on staging (step 9) | Owner |
-| 5 | Browser walkthrough | **DONE (staging)** — register/PIN/login/logout/dashboard verified on 2026-10-15 | Extend to purchase, admin, and reconciliation journeys after step 9 | Operator |
+| 1 | No staging environment | **RESOLVED** — Render staging live; Node↔Python compatibility on the staging database verified in BOTH directions this session | Re-provision before the free-tier database expires 2026-11-14 if staging must persist | Owner |
+| 2 | Schema ID defaults | **PASS on staging + disposable** (database-generated ids; `schema_check` reports no `missing_generated_id_defaults`). The **production** schema remains the unknown | Run `DATABASE_URL=<approved-copy> NODE_ENV=test python -m app.schema_check --json` against an approved sanitized production copy before cutover | Owner + operator |
+| 3 | Side-by-side runtime comparison | **RESOLVED** — 33-check route matrix on a shared disposable PostgreSQL: full parity (step 7) | None (re-run after any route change) | Operator |
+| 4 | Provider sandbox unverified | **BLOCKED** — no WiseSub/Paystack/Brevo test credentials on staging; plan catalog empty until a WiseSub sync runs (exact blocked tests listed in step 9) | Configure provider test credentials on staging (step 9) | Owner |
+| 5 | Browser walkthrough | **DONE (staging)** — register/PIN/login/logout/dashboard verified 2026-10-15 | Extend to purchase, admin, and reconciliation journeys after step 9 | Operator |
 | 6 | Staging uses a fresh empty database, not a copy of real data | **BLOCKED (data copy)** | Restore an approved production backup into staging and re-run preflights (step 1) | Owner |
-| 7 | Node smoke test against the staging database | **NOT TESTED** | Run the Node API briefly against the migrated staging database to confirm rollback cross-read (step 14) | Operator |
-| 8 | Leftover pre-deploy migration hook on staging | **BLOCKED (dashboard-only)** | Remove the Pre-Deploy Command in the staging service dashboard | Owner |
+| 7 | Node smoke test against the staging database | **RESOLVED** — Node ran on the staging service against the staging PostgreSQL (temporary, restored); bidirectional cross-read verified (step 14) | None | Operator |
+| 8 | Leftover pre-deploy migration hook on staging | **BLOCKED (dashboard-only)** — Render API reconfirmed unable to clear it (empty string and omission both rejected) | Remove the Pre-Deploy Command in the staging service dashboard | Owner |
 
 ## Verdict
 
-**STAGING DEPLOYED AND PARTIALLY VERIFIED — NOT READY FOR CUTOVER.**
-The Python backend is live on Render staging with the frontend walkthrough,
-session, CORS, admin-gate, and health checks passing (2026-10-15). The
-remaining blockers are provider sandbox credentials, an approved staging
-copy of real data (with the production-schema ID-default check that only a
-real copy can answer), the side-by-side route matrix, the Node smoke test
-against the staging database, and the removal of the staging pre-deploy
-hook. Production traffic remains on Node; the merged `master` is deployed
-only to staging; a production cutover requires this checklist fully PASS
-plus separate explicit authorization. Nothing here constitutes cutover
-approval.
+**STAGING DEPLOYED AND BROADLY VERIFIED — NOT READY FOR CUTOVER.**
+The Python backend is live on Render staging. Verified to date: frontend
+browser walkthrough, session/CORS/admin-gate/health checks, a 33-check
+side-by-side route matrix with full behavioural parity, and bidirectional
+Node↔Python data compatibility on the actual staging database (rollback
+safety). Remaining blockers: provider sandbox credentials (WiseSub /
+Paystack / Brevo — step 9 lists the exact blocked tests), an approved
+staging copy of real production data (which is also the only way to
+answer the production-schema ID-default question), real-data purchase and
+reconciliation journeys, and removal of the staging pre-deploy hook
+(dashboard-only). Production traffic remains on Node; the merged
+`master` is deployed only to staging; a production cutover requires this
+checklist fully PASS plus separate explicit authorization. Nothing here
+constitutes cutover approval.
