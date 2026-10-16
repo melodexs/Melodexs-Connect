@@ -88,12 +88,20 @@ Security audit (full findings reviewed in PR #10):
 
 **Security finding (2026-10-16, third verification session) — production
 Node dependency, not a Python gap:** `apps/api` currently resolves
-`proxy-addr@2.0.7`, which carries a critical IP-spoofing advisory
-(GHSA-jqcg-44mw-7w3h, IPv4-mapped IPv6 trust-subnet bypass) reachable
-via the active `trust proxy 1` setting in `src/app.js`; `ip-address`
-also has a moderate advisory (GHSA-h3mg-xc3c-68pw). This affects
-production **today, independent of cutover** (impact: spoofable client
-IPs could weaken IP-based rate limits). The Python backend does not
+`proxy-addr@2.0.7`, which is in the affected range of a critical
+IP-spoofing advisory (GHSA-jqcg-44mw-7w3h / CVE-2026-90711,
+IPv4-mapped IPv6 trust-subnet bypass, patched in 2.0.8); `ip-address`
+also has a moderate advisory (GHSA-h3mg-xc3c-68pw). **Corrected
+assessment (2026-10-16, verified against the advisory):** the
+vulnerable path requires a trust *subnet* (IPv4-mapped IPv6 with a
+short prefix); the app's `trust proxy 1` in `src/app.js` is a hop
+count, which Express compiles without proxy-addr's subnet compiler, so
+the advisory is **not exploitable as configured** (behavioral proof:
+`req.ip` resolves the real client IP identically on 2.0.7 and 2.0.8
+under the app's config; the advisory's subnet config class spoofs on
+2.0.7 and is fixed on 2.0.8). It affects the dependency **hygiene** of
+production today, independent of cutover. A tested remediation is
+prepared as PR #15 (pin `proxy-addr ^2.0.8`). The Python backend does not
 share this path (Uvicorn `--proxy-headers` + `FORWARDED_ALLOW_IPS`,
 standard-library IP parsing). Owner decision required: a reviewed
 minimal Node dependency bump (merges auto-deploy production — owner

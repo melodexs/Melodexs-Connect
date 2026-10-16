@@ -439,13 +439,22 @@ service's six environment variables; five were restored from documented
 values plus a fresh `SESSION_SECRET`, and `DATABASE_URL` requires an
 owner re-paste (OWNER-ACTION-CHECKLIST Action 7). Staging is serving
 the live pre-incident deploy with no user-visible impact; deploys fail
-closed until restored. New finding (documented in PRODUCTION-READINESS §2): the
-production **Node** dependency `proxy-addr@2.0.7` has a critical
-IP-spoofing advisory (GHSA-jqcg-44mw-7w3h) reachable via
-`trust proxy 1`; this is a pre-existing production-Node issue, not a
-Python gap — owner decides between a reviewed Node dependency bump
-(auto-deploys production on merge) or accepting the risk until the
-Python cutover removes that request path.
+closed until restored. New finding, investigated to closure (2026-10-16, documented in
+PRODUCTION-READINESS §2): the production **Node** dependency
+`proxy-addr@2.0.7` is in the affected range of GHSA-jqcg-44mw-7w3h /
+CVE-2026-90711 (Critical 9.1, patched in 2.0.8). Correcting an earlier
+wording: the advisory is **not reachable via `trust proxy 1`** — the
+vulnerable path requires a trust *subnet* (IPv4-mapped IPv6 with a
+short prefix), which this app does not configure. Behavioral proof on
+both versions through Express 5.2.1: under the app's actual hop-count
+config, `req.ip` returns the real client IP identically on 2.0.7 and
+2.0.8; the CVE's subnet config class spoofs `req.ip` on 2.0.7 and is
+fixed on 2.0.8. Remediation is prepared and tested as **PR #15**
+(pin `proxy-addr ^2.0.8` in `apps/api`, smoke test green on a
+disposable PostgreSQL). Owner decides: merge PR #15 (auto-deploys
+production; minimal-risk single dependency pin) or explicitly accept
+the residual risk until the Python cutover removes the path — see
+OWNER-ACTION-CHECKLIST Action 8.
 
 **STAGING VERIFIED, ENGINEERING COMPLETE — READY FOR CUTOVER REVIEW.**
 Remaining gates are exactly the owner actions (provider sandbox
