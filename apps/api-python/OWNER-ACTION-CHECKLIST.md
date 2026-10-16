@@ -15,14 +15,16 @@ actions: 1 (provider sandbox credentials), 5 (staging pre-deploy hook,
 dashboard), 6 (staging PostgreSQL expiry), 7 (staging DATABASE_URL
 re-paste), 8 (proxy-addr PR decision).
 
-Environment state as of 2026-10-16 (later update):
+Environment state as of 2026-10-16 (final update):
 
-- Master: `ccec9a5` (PRs #8–#13 merged; CI green).
-- Staging API now tracks master and is deployed at `e35bb87`
-  (previously it ran `f556180`, which predates the PR #10 security
-  hardening; corrected in this session).
-- Staging PostgreSQL: `dpg-db8l9ju89jmc73brjgfg-a`, free tier,
-  expires **2026-11-14**.
+- Master: `ed84f26` (PRs #8–#16 merged; CI green).
+- Staging API tracks master and is deployed **live** on `ed84f26`
+  (deploy `dep-db900so5o2`) after the `DATABASE_URL` restoration.
+- Staging PostgreSQL: dedicated **Neon** database (created 2026-10-16;
+  no expiry clock). The old Render free database
+  `dpg-db8l9ju89jmc73brjgfg-a` is unused and expires 2026-11-14.
+- Production: still Node.js, live on `ed84f26` (deploy `dep-db8vpqjk`),
+  verified healthy with the proxy-addr@2.0.8 remediation deployed.
 
 ---
 
@@ -142,36 +144,29 @@ covered by the unchanged Node service and the verified schema
 identity — Node can read the migrated database because migrations
 001–003 are purely additive.
 
-## Action 5 — Staging pre-deploy migration hook — STILL PRESENT (corrected 2026-10-16)
+## Action 5 — Staging pre-deploy migration hook — **RESOLVED 2026-10-16**
 
-**Correction:** an earlier draft marked this resolved because the Render
-API's `serviceDetails.preDeployCommand` read `None`. That was the wrong
-field: the hook actually lives at
-`serviceDetails.envSpecificDetails.preDeployCommand`, and on
-2026-10-16 it IS set (a base64-encoded script that applies
-`tests/postgres_test_schema.sql` base schema plus migrations 001–003
-to `DATABASE_URL` on every deploy).
+**Resolution:** the hook was removed through the Render API, not the
+dashboard. `PATCH /v1/services/{id}` accepts
+`serviceDetails.envSpecificDetails.preDeployCommand`, and Render's
+documented PATCH semantics are "provided fields update (null/empty
+unsets), omitted fields unchanged". Sending an empty string cleared
+the hook (a `null` value was ignored).
 
-**Current risk assessment:** the staging service is on the free plan,
-and Render does not EXECUTE pre-deploy commands on free-plan services —
-staging deploys complete without a pre-deploy phase (observed at
-`e35bb87` and `668fd50`). The Python backend's own startup refuses
-production mode without explicit configuration and never auto-migrates.
-So today the hook is inert configuration debt. HOWEVER, upgrading the
-staging service plan would silently activate it (it would then apply
-migrations on every deploy), so it must still be removed in the
-dashboard.
+**Verification (2026-10-16, fresh API reads):** after the PATCH,
+`envSpecificDetails.preDeployCommand` reads `''` while `buildCommand`
+(`pip install -r apps/api-python/requirements.txt`) and `startCommand`
+(`python3 -m uvicorn app.main:app --app-dir apps/api-python ...`) are
+byte-identical to before. The subsequent manual deploy `dep-db900so5o2`
+completed **live** on master `ed84f26` with no pre-deploy phase, and the
+application's own startup schema guard passed against the new staging
+database. A future plan upgrade can no longer silently activate the
+legacy migration script.
 
-**Exact owner requirement:** Render **dashboard** access by the owner.
-The hook was created through the dashboard; the API's env-specific
-settings are not writable with the available key.
+**Evidence:** deploy `dep-db900so5o2` (2026-10-16 10:48 UTC, status
+live); API-verified service config snapshot before/after.
 
-**Safe execution steps:** open the staging API service in the Render
-dashboard → Settings → Pre-Deploy Command; clear the field; trigger one
-redeploy; confirm the deploy pipeline shows no pre-deploy phase.
-
-**Evidence to record:** screenshot or deploy log of the pipeline without
-a pre-deploy phase, plus the deploy ID.
+---
 
 ## Action 8 (new) — Decide on the proxy-addr remediation PR (#15)
 
@@ -199,7 +194,7 @@ correct under the app's real configuration on 2.0.7 and identical on
 **Evidence to record:** the merge + production deploy ID and health
 check, or a written acceptance note.
 
-## Action 7 (new) — Restore `DATABASE_URL` on the staging API (added 2026-10-16)
+## Action 7 (new) — Restore `DATABASE_URL` on the staging API — **RESOLVED 2026-10-16**
 
 **What happened (honest incident record):** while adding
 `ALLOW_PYTHON_PRODUCTION=1` to the staging service on 2026-10-16, the
@@ -208,97 +203,91 @@ replaces the entire variable set. The service's six original variables
 (`NODE_ENV`, `DATABASE_URL`, `SESSION_SECRET`, `CHEAPDATA_PUBLIC_URL`,
 `WISESUB_ENVIRONMENT`, `FORWARDED_ALLOW_IPS`) were deleted.
 
-**Impact:** the running staging instance was never interrupted — it
-kept its deploy-time environment. The first deploy attempt after the
-wipe (post-PR-#13 merge, `ccec9a5`, 09:26 UTC) failed fast at startup
-validation (missing explicit `NODE_ENV`), leaving the previous deploy
-live. This is exactly the fail-closed behavior the configuration
-validations were designed for: no silent misconfiguration, no data
-change, no production impact. Staging currently cannot pick up new
-master commits until `DATABASE_URL` is restored.
-
 **Recovery performed (2026-10-16):** five of six variables were
-restored via the API from documented values (`NODE_ENV=production`,
-`CHEAPDATA_PUBLIC_URL`, `WISESUB_ENVIRONMENT=live`,
-`FORWARDED_ALLOW_IPS=*` per Render's documented trust boundary — the
-app port is not directly reachable; original exact value was wiped and
-unrecoverable), and `ALLOW_PYTHON_PRODUCTION=1` was kept. A fresh
-`SESSION_SECRET` was generated (the original value is unrecoverable;
-when the next deploy succeeds, all staging sessions reset — test
-accounts simply log in again). **`DATABASE_URL` cannot be restored via
-the API**: the available key has no database-instance scope, and the
-original value (an internal Render connection string with generated
-credentials) was wiped. It must be re-pasted from the dashboard.
+restored via the API, `ALLOW_PYTHON_PRODUCTION=1` kept, and a fresh
+`SESSION_SECRET` generated. The original `DATABASE_URL` (an internal
+Render connection string with generated credentials) was unrecoverable
+via the API, and the old staging PostgreSQL was additionally due for
+deletion on 2026-11-14 — so staging was migrated to a dedicated, empty
+**Neon PostgreSQL** database instead (see Action 6). The new
+`DATABASE_URL` was written with Render's per-key endpoint
+(`PUT /v1/services/{id}/env-vars/DATABASE_URL`), which updates a single
+variable and cannot repeat the bulk-replace incident; a follow-up read
+confirmed all seven variables present with no other value touched.
 
-**Exact owner requirement (2 minutes):** Render dashboard → the
-staging PostgreSQL (`melodexs-connect-staging-db`, `dpg-db8l9ju89jmc73brjgfg-a`)
-→ Connect page → copy the **Internal Database URL** → staging API
-service → Environment → add it back as `DATABASE_URL`. Then trigger a
-manual deploy of the staging API and confirm it goes live on master
-(`ccec9a5` at the time of writing).
+**Verified recovery:** first successful deploy after restoration:
+`dep-db900so5o2`, **live** on master `ed84f26` (2026-10-16 10:48 UTC).
+The startup guard passed against the new database, and a full E2E
+suite passed against the live deployment: registration, login,
+session cookie (Secure+HttpOnly), PIN set/verify/reject, own-vs-foreign
+transactions authorization, catalog endpoints, admin gate, CORS
+allow/deny, security headers, unknown-route 404, logout with session
+invalidation, plus a browser journey (register → login → dashboard →
+logout) on the staging frontend. Staging sessions were reset by design
+(fresh database + fresh `SESSION_SECRET`).
 
-**Evidence to record:** deploy ID of the first successful staging
-deploy after restoration, and confirmation that `/api/login` works
-against the staging PostgreSQL data (e.g. the staging-verify test
-account).
-
----
-
-## Action 6 — Staging PostgreSQL renewal or replacement before 2026-11-14
-
-**Exact owner requirement:** owner decision and dashboard action — the
-current agent API key cannot manage Render database instances (the
-databases endpoint is not accessible with it). The free-tier staging
-PostgreSQL (`dpg-db8l9ju89jmc73brjgfg-a`) is deleted at expiry on
-**2026-11-14**, taking all staging verification data with it.
-
-**Prerequisites:** decision on keeping staging beyond 2026-11-14
-(recommended, since cutover review requires it).
-
-**Safe execution steps (owner chooses one):**
-- Option A — upgrade the staging PostgreSQL to a paid instance in the
-  dashboard (data retained), then confirm the staging API still connects.
-- Option B — before expiry: export current staging data (optional, test
-  accounts only), let the agent provision a fresh free-tier instance via
-  API (or owner does it in the dashboard), update the staging API's
-  `DATABASE_URL`, re-run the idempotent base schema + migrations 001–003,
-  and re-run the staging verification suite (register/login/PIN/session
-  walkthrough, CORS, gates).
-
-**Success criteria:** staging PostgreSQL active beyond 2026-11-14 with the
-schema applied and verification green, or a deliberate written decision to
-retire staging.
-
-**Evidence to record:** new database ID and expiry date, migration
-re-apply log, re-verification results, updated STAGING-DEPLOYMENT-RENDER.md.
+**Evidence:** deploy `dep-db900so5o2` (live); env-var list re-read
+(7 keys); E2E logs from 2026-10-16 session.
 
 ---
 
-## New decision item — production Node dependency security update (added 2026-10-16)
+## Action 6 — Staging PostgreSQL renewal or replacement before 2026-11-14 — **RESOLVED 2026-10-16 (Option B executed)**
 
-**Exact owner requirement:** a decision, not credentials. The production
-Node backend resolves `proxy-addr@2.0.7` with a **critical** IP-spoofing
-advisory (GHSA-jqcg-44mw-7w3h; reachable via `trust proxy 1`) and
-`ip-address` with a moderate advisory. Options: (a) approve a reviewed
-minimal dependency bump PR for `apps/api` (fix: `proxy-addr@>=2.0.8`,
-`ip-address@>=10.x` patch) — note it **auto-deploys production on merge**
-because the production service tracks master; or (b) explicitly accept
-the risk until the Python cutover removes that request path. Evidence to
-record: the owner's written decision, and the merged PR + deploy ID if
-option (a).
+**Resolution:** staging now runs on a dedicated **Neon PostgreSQL**
+database provisioned through the authorized Neon API:
+
+- Host project: the existing second Neon project in the owner's org
+  (the Ohio/`aws-us-east-2` one; verified empty — 0 tables — before
+  use, so no data was overwritten or copied).
+- Database: newly created `staging` database on that project's primary
+  branch, owned by a newly created dedicated `staging_app` role
+  (least-privilege application role; credentials never committed).
+- Schema: the Python backend's reviewed base schema plus migrations
+  001–003 applied over TLS and verified (6 tables: `users`,
+  `data_plans`, `transactions`, `sessions`, `api_rate_limits`,
+  `data_plan_sync_runs`; 14 indexes/constraints including
+  `uq_users_reset_token_hash`, `uq_transactions_reference`,
+  `uq_transactions_user_idempotency`).
+- Lifecycle: Neon free-tier autosuspend replaces the Render free-DB
+  30-day deletion clock, so there is **no 2026-11-14 expiry** for the
+  new staging database.
+- The old Render free PostgreSQL (`dpg-db8l9ju89jmc73brjgfg-a`) is now
+  unused and unreachable with the available API key. The owner may
+  delete it in the dashboard or let it expire on 2026-11-14; it
+  contains only staging test accounts.
+
+**Evidence:** fresh API reads of the Neon project/branch/database
+inventories; schema verification query output (tables + indexes);
+staging deploy `dep-db900so5o2` live; E2E suite green (see Action 7).
+
+---
+
+## Production Node dependency security update — **PARTIALLY RESOLVED 2026-10-16**
+
+- `proxy-addr` (critical, GHSA-jqcg-44mw-7w3h): **RESOLVED.** PR #15
+  pinned `proxy-addr@^2.0.8`, merged as `bc1cc25`; the production Node
+  service auto-deployed and is **live** on `ed84f26` (deploy
+  `dep-db8vpqjk`, 2026-10-16 10:32 UTC). Production verified live
+  after the deploy: `/api/status` 200, security headers present,
+  generic 401 on bad login, admin gate 401, CORS deny for unknown
+  origins.
+- `ip-address` (moderate, GHSA-h3mg-xc3c-68pw; transitive via
+  `express-rate-limit@8.7.0`, currently 10.7.0): **STILL OPEN — owner
+  decision.** Reachable in production through rate-limiter IP parsing
+  of `X-Forwarded-For`. Options: (a) approve a minimal reviewed bump PR
+  for `apps/api` (auto-deploys production Node on merge, as PR #15
+  did), or (b) explicitly accept the moderate risk until the Python
+  cutover removes this code path entirely. The prior report's
+  recommendation (b + cutover) stands unless the owner chooses (a).
 
 ## Suggested order
 
-1. **Decision item** (Node dependency security — production is exposed
-   today regardless of cutover).
-2. ~~Action 5~~ (resolved 2026-10-16; dashboard glance only).
-2. **Action 1** (provider sandboxes — the largest block of untested
-   behavior).
-3. **Action 6** (renew staging DB before 2026-11-14 so Actions 1–4
-   evidence persists).
-4. **Action 2** (schema evidence), then **Action 3** (real-data restore),
-   then **Action 4** (rehearsal) — these three form the recovery-evidence
-   package.
+1. **Action 1** (provider sandboxes — the largest block of untested
+   behavior; credentials only the owner can supply).
+2. **`ip-address` decision** (a minimal PR awaits approval if chosen;
+   otherwise recorded as accepted risk until cutover).
+3. Production cutover approval once Action 1 evidence lands — all
+   other engineering gates are closed.
 
 Once Actions 1–4 are evidenced and 5–6 confirmed, PRODUCTION-READINESS.md
 can be re-assessed and cutover scheduled **only with explicit owner
