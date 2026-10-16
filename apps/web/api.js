@@ -8,15 +8,16 @@
      *   3. The page origin, for local development where the static site and
      *      the API are served from the same host.
      *
-     * After the Python API passes staging verification and release approval,
-     * flip API_TARGET_IS_PYTHON to true so the frontend enables the
-     * categorized catalog and purchase/reconciliation UI that only the
-     * Python API provides. Leave it false while Node is the production
-     * backend. See apps/api-python/CUTOVER-CHECKLIST.md.
+     * Cutover complete (2026-10-16): the Python/FastAPI backend is the
+     * production API, so API_TARGET_IS_PYTHON is true and the frontend
+     * enables the categorized catalog and purchase/reconciliation UI
+     * that only the Python API provides. The Node backend (apps/api)
+     * is retained in Git for rollback only; see
+     * apps/api-python/CUTOVER-CHECKLIST.md and ROLLBACK-RUNBOOK.md.
      */
 
-    // Cutover switch: false = Node backend (current production), true = Python.
-    const API_TARGET_IS_PYTHON = false;
+    // Cutover switch: false = Node backend (rollback path), true = Python (production).
+    const API_TARGET_IS_PYTHON = true;
     const PRODUCTION_API_URL = "https://melodexs-connect-api.onrender.com";
 
     // Staging/preview can set this meta value to a specific API origin.
