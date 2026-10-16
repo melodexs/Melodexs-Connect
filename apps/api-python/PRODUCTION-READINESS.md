@@ -197,6 +197,12 @@ journeys (provider credentials / admin account), PWA/mobile layout.
   frontend HTTP 200, `/api/data-plans` 200 (empty catalog as expected
   without provider credentials), unsigned Paystack webhook rejected,
   admin routes 401, disallowed-origin CORS 403.
+- Staging tracking correction (2026-10-16): the staging API service had
+  remained on branch `fix/staging-proxy-headers` (commit `f556180`,
+  which predates the PR #10 security hardening). It now tracks and runs
+  master `e35bb87`; re-verified live: HSTS + security headers present
+  (PR #10 active), staging frontend origin allowed via CORS (204),
+  evil-origin 403, admin 401, unsigned webhook rejected.
 
 ## 9. Backup & rollback — PARTIAL
 
@@ -208,6 +214,10 @@ journeys (provider credentials / admin account), PWA/mobile layout.
   deploy rollback endpoint, provider webhook replay across a switch.
 
 ## 10. Owner actions required (the complete blocker list)
+
+Each action is fully specified — exact requirement, prerequisites, safe
+execution steps, success criteria, and evidence to record — in
+OWNER-ACTION-CHECKLIST.md (added in this PR).
 
 | # | Blocker | Required from owner | Unblocks |
 |---|---|---|---|
