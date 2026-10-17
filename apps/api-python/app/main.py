@@ -18,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from .categorization import category_sort_sql
+from .provider_registry import (ensure_provider_rows, resolve_fulfillment_provider)
 from .config import settings, ROOT, validate_wisesub_configuration, wisesub_recipient
 from .database import db_session, engine, init_schema, q
 from .providers import paystack, send_brevo, wise_purchase
@@ -138,6 +139,8 @@ def startup():
         from .database import apply_catalog_test_schema
         apply_catalog_test_schema()
         init_rate_limit_table()
+    # Idempotent provider registry rows (WiseSub enabled, others disabled).
+    ensure_provider_rows()
 
 
 def user_row(db, user_id: int, include_secret=False):
@@ -447,6 +450,10 @@ async def purchase(request: Request, body: dict, service: str):
         if not selected: raise HTTPException(400, "That data plan is not currently available")
         if not selected["provider_package_code"] or not selected["provider_code"]:
             raise HTTPException(500, "This data plan is not properly configured. Please try another plan.")
+        # Extension point for multi-provider fulfillment: with routing
+        # disabled (production default) this resolves to the WiseSub adapter
+        # for every purchasable plan, i.e. the pre-existing behavior.
+        resolve_fulfillment_provider(selected["source"] or "wisesub")
         amount = float(selected["selling_price"])
         if not amount > 0: raise HTTPException(500, "Invalid data plan price")
 
@@ -501,7 +508,7 @@ async def purchase(request: Request, body: dict, service: str):
                 return {"success": previous["status"] == "successful", "status": previous["status"], "message": "This purchase request was already processed.", "reference": previous["reference"], "amount": float(previous["amount"]), "providerReference": previous["provider_reference"]}
         debit = q(db, "UPDATE users SET balance=balance-:amount WHERE id=:id AND balance>=:amount", {"amount": amount, "id": user_id})
         if debit.rowcount != 1: raise HTTPException(400, "Insufficient wallet balance")
-        q(db, "INSERT INTO transactions(user_id,type,amount,status,reference,description,idempotency_key) VALUES(:uid,'debit',:amount,'pending',:reference,:description,:idempotency_key)", {"uid": user_id, "amount": amount, "reference": reference, "description": description + " | Pending WiseSub confirmation", "idempotency_key": idempotency_key or None})
+        q(db, "INSERT INTO transactions(user_id,type,amount,status,reference,description,idempotency_key,provider) VALUES(:uid,'debit',:amount,'pending',:reference,:description,:idempotency_key,'wisesub')", {"uid": user_id, "amount": amount, "reference": reference, "description": description + " | Pending WiseSub confirmation", "idempotency_key": idempotency_key or None})
     try:
         provider_response = await wise_purchase(payload)
         provider_data = provider_response.json()

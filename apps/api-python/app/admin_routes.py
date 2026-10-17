@@ -4,6 +4,9 @@ from fastapi import APIRouter, Request, HTTPException
 from .database import db_session, q
 from .security import require_admin
 from .categorization import categorize, CATEGORY_ORDER
+from .price_comparison import compare_suppliers
+from .provider_registry import (all_adapters, get_adapter, provider_enabled,
+                                record_health, routing_status)
 from .plan_sync import synchronize_plans
 from .providers import wise_status
 from .database import engine
@@ -67,7 +70,7 @@ def sync_status(request: Request):
 def pending_purchases(request: Request):
     require_admin(request)
     with db_session() as db:
-        rows = q(db, "SELECT t.id,t.user_id,u.email,t.amount,t.status,t.reference,t.provider_reference,t.description,t.created_at FROM transactions t JOIN users u ON u.id=t.user_id WHERE t.type='debit' AND t.status='pending' ORDER BY t.id ASC LIMIT 200").mappings().all()
+        rows = q(db, "SELECT t.id,t.user_id,u.email,t.amount,t.status,t.reference,t.provider_reference,t.provider,t.description,t.created_at FROM transactions t JOIN users u ON u.id=t.user_id WHERE t.type='debit' AND t.status='pending' ORDER BY t.id ASC LIMIT 200").mappings().all()
     return {"success": True, "transactions": [dict(row) for row in rows]}
 
 
@@ -75,21 +78,34 @@ def pending_purchases(request: Request):
 async def reconcile_purchases(request: Request):
     require_admin(request)
     with db_session() as db:
-        pending = q(db, "SELECT id,user_id,reference,provider_reference FROM transactions WHERE type='debit' AND status='pending' ORDER BY id ASC LIMIT 100").mappings().all()
+        pending = q(db, "SELECT id,user_id,reference,provider_reference,provider FROM transactions WHERE type='debit' AND status='pending' ORDER BY id ASC LIMIT 100").mappings().all()
     results = []
     for transaction in pending:
         reference = transaction["provider_reference"] or transaction["reference"]
+        provider_slug = str(transaction["provider"] or "wisesub").strip().lower()
+        failure_is_final = False
         try:
-            response = await wise_status(reference)
-            payload = response.json()
-            status = ((payload.get("data") or {}).get("status") or "").strip().lower() if response.status_code < 400 and payload.get("success") is True else ""
+            if provider_slug == "wisesub":
+                response = await wise_status(reference)
+                payload = response.json()
+                status = ((payload.get("data") or {}).get("status") or "").strip().lower() if response.status_code < 400 and payload.get("success") is True else ""
+            else:
+                adapter = get_adapter(provider_slug)
+                if adapter is None or not adapter.is_configured():
+                    results.append({"reference": transaction["reference"], "status": "unresolved", "detail": f"Provider '{provider_slug}' is not configured for reconciliation"})
+                    continue
+                outcome = await adapter.transaction_status(reference)
+                status = outcome.status if outcome.recognized else ""
+                # A provider's "failed" is only final when it documents
+                # automatic refunds; anything else needs admin review.
+                failure_is_final = adapter.failure_status_is_final and adapter.auto_refunds_on_failure
             if status not in {"successful", "failed", "pending"}:
                 results.append({"reference": transaction["reference"], "status": "unresolved", "detail": "Provider response was not a recognized final status"})
                 continue
             if status == "pending":
                 results.append({"reference": transaction["reference"], "status": "pending"})
                 continue
-            if status == "failed" and not settings.wisesub_failure_status_confirmed:
+            if status == "failed" and not (failure_is_final or settings.wisesub_failure_status_confirmed):
                 results.append({"reference": transaction["reference"], "status": "failed_needs_admin_review"})
                 continue
             with db_session() as db:
@@ -216,3 +232,85 @@ def update_plan(request: Request, plan_id: str, body: dict):
             active = 0
         row = q(db, "UPDATE data_plans SET provider_cost=:cost,selling_price=:price,selling_price_override=:override,category=:category,active=:active,updated_at=CURRENT_TIMESTAMP WHERE id=:id RETURNING id,network,plan,provider_cost,selling_price,selling_price_override,category,active,provider_available,(selling_price-provider_cost) margin,updated_at", {"cost":cost,"price":price,"override":override,"category":category,"active":active,"id":plan_id}).mappings().first()
     return {"success": True, "message": "Data plan updated successfully", "plan": dict(row)}
+
+# ---------------------------------------------------------------------------
+# Multi-provider fulfillment platform (admin only)
+# ---------------------------------------------------------------------------
+
+@router.get("/api/admin/providers")
+def list_providers(request: Request):
+    require_admin(request)
+    with db_session() as db:
+        rows = {r["slug"]: dict(r) for r in q(db, "SELECT slug,name,enabled,status,last_check_at,last_check_detail FROM providers").mappings().all()}
+    providers = []
+    for adapter in all_adapters():
+        row = rows.get(adapter.slug, {})
+        providers.append({
+            "slug": adapter.slug,
+            "name": adapter.display_name,
+            "configured": adapter.is_configured(),
+            "enabled": bool(row.get("enabled", 0)),
+            "health": row.get("status"),
+            "last_check_at": row.get("last_check_at"),
+            "last_check_detail": row.get("last_check_detail"),
+            "auto_refunds_on_failure": adapter.auto_refunds_on_failure,
+            "capabilities": list(adapter.capabilities),
+        })
+    return {"success": True, "providers": providers, "routing": routing_status()}
+
+
+@router.patch("/api/admin/providers/{slug}")
+def set_provider_enabled(request: Request, slug: str, body: dict):
+    require_admin(request)
+    slug = slug.strip().lower()
+    adapter = get_adapter(slug)
+    if adapter is None:
+        raise HTTPException(404, "Unknown provider")
+    enabled = body.get("enabled")
+    if not isinstance(enabled, bool):
+        raise HTTPException(400, "enabled must be true or false")
+    if slug == "wisesub" and not enabled:
+        # WiseSub is the active fulfillment provider; disabling it while
+        # routing is WiseSub-only would break every purchase.
+        raise HTTPException(409, "WiseSub cannot be disabled while it is the active fulfillment provider")
+    if enabled and not adapter.is_configured():
+        raise HTTPException(409, "This provider has no credentials configured yet")
+    with db_session() as db:
+        changed = q(db, "UPDATE providers SET enabled=:enabled,updated_at=CURRENT_TIMESTAMP WHERE slug=:slug AND enabled<>:enabled", {"enabled": 1 if enabled else 0, "slug": slug})
+        if changed.rowcount == 0:
+            row = q(db, "SELECT enabled FROM providers WHERE slug=:slug", {"slug": slug}).scalar()
+            if row is None:
+                q(db, "INSERT INTO providers(slug,name,enabled,updated_at) VALUES(:slug,:name,:enabled,CURRENT_TIMESTAMP)", {"slug": slug, "name": adapter.display_name, "enabled": 1 if enabled else 0})
+    return {"success": True, "slug": slug, "enabled": enabled}
+
+
+@router.post("/api/admin/providers/{slug}/health-check")
+async def provider_health_check(request: Request, slug: str):
+    require_admin(request)
+    slug = slug.strip().lower()
+    adapter = get_adapter(slug)
+    if adapter is None:
+        raise HTTPException(404, "Unknown provider")
+    if not adapter.is_configured():
+        return {"success": True, "slug": slug, "supported": False,
+                "detail": "No credentials configured for this provider"}
+    result = await adapter.health_check()
+    if result.supported and result.message == "ok":
+        record_health(slug, True, "ok", str(result.balance))
+    else:
+        record_health(slug, False, result.message or "check failed")
+    return {"success": True, "slug": slug, "supported": result.supported,
+            "balance": float(result.balance) if result.balance is not None else None,
+            "currency": result.currency, "detail": result.message}
+
+
+@router.get("/api/admin/providers/price-comparison")
+def provider_price_comparison(request: Request, network: str):
+    require_admin(request)
+    if network not in {"MTN", "Airtel", "Glo", "9mobile"}:
+        raise HTTPException(400, "Invalid network")
+    from .provider_registry import eligible_provider_slugs
+    groups = compare_suppliers(network, eligible_provider_slugs())
+    return {"success": True, "network": network,
+            "routing": routing_status(),
+            "groups": [group.to_dict() for group in groups]}

@@ -7,7 +7,8 @@ EXPECTED_COLUMNS = {
     "users": {"id", "name", "email", "phone", "password", "purchase_pin", "balance", "virtual_account_number", "virtual_bank_name", "kyc_status", "is_admin", "reset_token_hash", "reset_token_expires_at", "created_at"},
     "data_plans": {"id", "plan_name", "network", "plan", "provider_cost", "selling_price", "selling_price_override", "active", "provider_available", "category", "provider_category", "sync_error", "provider", "provider_code", "provider_package_code", "provider_package_name", "data_size", "validity", "source", "status", "last_synced_at", "created_at", "updated_at"},
     "data_plan_sync_runs": {"id", "started_at", "finished_at", "outcome", "added", "updated", "unavailable", "errors"},
-    "transactions": {"id", "user_id", "type", "amount", "status", "reference", "description", "idempotency_key", "provider_reference", "created_at"},
+    "transactions": {"id", "user_id", "type", "amount", "status", "reference", "description", "idempotency_key", "provider_reference", "provider", "created_at"},
+    "providers": {"slug", "name", "enabled", "status", "last_check_at", "last_check_detail", "updated_at"},
     "sessions": {"sid", "sess", "expire"},
     "api_rate_limits": {"rate_key", "window_start", "request_count"},
 }
@@ -25,6 +26,7 @@ EXPECTED_TYPES = {
     # them to 0/1. PostgreSQL BOOLEAN is not interchangeable in those queries.
     "is_admin": {"integer", "smallint"},
     "provider_available": {"integer", "smallint"},
+    "enabled": {"integer", "smallint"},
     "active": {"integer", "smallint"},
     "expire": {"bigint", "integer"},
     "reset_token_expires_at": {"bigint", "integer"},
@@ -53,6 +55,7 @@ EXPECTED_CONSTRAINTS = {
     "transactions": {"PRIMARY KEY(id)", "FOREIGN KEY(user_id)->users(id)"},
     "sessions": {"PRIMARY KEY(sid)"},
     "api_rate_limits": {"PRIMARY KEY(rate_key)"},
+    "providers": {"PRIMARY KEY(slug)"},
 }
 GENERATED_ID_COLUMNS = {"users": "id", "data_plans": "id", "data_plan_sync_runs": "id", "transactions": "id"}
 EXPECTED_NOT_NULL = {

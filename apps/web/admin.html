@@ -328,6 +328,16 @@
             <p id="planSyncStatus" style="color:#6b7280;margin:12px 0 18px;">Loading synchronization status…</p>
         </div>
 
+    <!-- FULFILLMENT PROVIDERS -->
+    <div class="section">
+        <h2>Fulfillment Providers</h2>
+        <p style="color:#6b7280;margin-bottom:18px;">Multi-provider routing is disabled by default and purchases continue through WiseSub. Additional providers appear here once their API keys are configured as environment variables; they stay disabled until an administrator reviews them.</p>
+        <button class="save-btn" type="button" onclick="loadProviders()">Refresh providers</button>
+        <button class="toggle-btn" type="button" onclick="compareProviderCosts()">Compare supplier costs</button>
+        <div id="providerList" style="margin-top:14px;"></div>
+        <div id="providerComparison" style="margin-top:14px;"></div>
+    </div>
+
         <form id="planForm" class="plan-form" onsubmit="savePlan(event)">
             <select id="planNetwork" required>
                 <option value="MTN">MTN</option>
@@ -630,6 +640,69 @@
         } catch (error) { showMessage(error.message, "error"); }
     }
 
+    async function loadProviders() {
+        const box = document.getElementById("providerList");
+        try {
+            const response = await fetch("/api/admin/providers");
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.message || "Could not load providers.");
+            const rows = (data.providers || []).map(p => `
+                <div class="plan-card" style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
+                    <div>
+                        <strong>${p.name}</strong>
+                        <div style="color:#6b7280;font-size:13px;">
+                            ${p.configured ? "Credentials configured" : "No API key configured"} ·
+                            ${p.enabled ? "Enabled" : "Disabled"} ·
+                            ${p.last_check_at ? "Last check: " + p.last_check_at : "Never checked"}
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:8px;">
+                        <button class="toggle-btn" type="button" onclick="providerHealthCheck('${p.slug}')">Health check</button>
+                        ${p.slug === "wisesub" ? "" : `<button class="save-btn" type="button" onclick="toggleProvider('${p.slug}', ${!p.enabled})">${p.enabled ? "Disable" : "Enable"}</button>`}
+                    </div>
+                </div>`).join("");
+            const routing = data.routing || {};
+            box.innerHTML = rows + `<p style="color:#6b7280;margin-top:10px;">Routing: multi-provider ${routing.multi_provider_routing_enabled ? "ENABLED" : "disabled"} · primary provider: ${routing.primary_provider || "wisesub"}</p>`;
+        } catch (error) { box.innerHTML = `<p style="color:#b91c1c;">${error.message}</p>`; }
+    }
+
+    async function providerHealthCheck(slug) {
+        try {
+            const response = await fetch(`/api/admin/providers/${slug}/health-check`, { method: "POST" });
+            const data = await response.json();
+            showMessage(data.detail || data.message || "Health check completed.", response.ok ? "success" : "error");
+            await loadProviders();
+        } catch (error) { showMessage(error.message, "error"); }
+    }
+
+    async function toggleProvider(slug, enabled) {
+        try {
+            const response = await fetch(`/api/admin/providers/${slug}`, { method: "PATCH", headers: {"Content-Type": "application/json"}, body: JSON.stringify({ enabled }) });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.message || "Could not update provider.");
+            showMessage(`${slug} ${enabled ? "enabled" : "disabled"}.`, "success");
+            await loadProviders();
+        } catch (error) { showMessage(error.message, "error"); }
+    }
+
+    async function compareProviderCosts() {
+        const box = document.getElementById("providerComparison");
+        try {
+            const response = await fetch("/api/admin/providers/price-comparison?network=MTN");
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.message || "Could not compare suppliers.");
+            const groups = (data.groups || []).slice(0, 10).map(g => {
+                const quotes = (g.quotes || []).map(qt => `${qt.provider}: ₦${qt.supplier_cost}${qt.available ? "" : " (not routable)"}`).join(" · ");
+                return `<div style="padding:8px 0;border-bottom:1px solid #e5e7eb;">
+                    <strong>${g.size_mb ? g.size_mb + "MB" : "Unknown size"} · ${g.validity_days || "?"} days</strong>
+                    <div style="color:#6b7280;font-size:13px;">${quotes || "No supplier quotes"}</div>
+                    <div style="color:#6b7280;font-size:13px;">${g.reason || ""}</div>
+                </div>`;
+            }).join("");
+            box.innerHTML = `<h3 style="margin:12px 0 6px;">Supplier cost comparison (MTN)</h3>` + (groups || "<p style='color:#6b7280;'>No catalog groups to compare yet.</p>");
+        } catch (error) { box.innerHTML = `<p style="color:#b91c1c;">${error.message}</p>`; }
+    }
+
     async function reconcilePurchases() {
         try {
             const response = await fetch("/api/admin/purchases/reconcile", { method: "POST" });
@@ -758,6 +831,8 @@
                 loadTransactions(user.id),
                 loadPlans()
             ]);
+
+            loadProviders();
 
         }
 
