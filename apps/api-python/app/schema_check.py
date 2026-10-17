@@ -65,6 +65,7 @@ EXPECTED_NOT_NULL = {
     "transactions": {"id", "user_id", "type", "amount", "status", "created_at"},
     "sessions": {"sid", "sess", "expire"},
     "api_rate_limits": {"rate_key", "window_start", "request_count"},
+    "providers": {"slug", "name", "enabled", "updated_at"},
 }
 EXPECTED_INDEXES = {"users": {"uq_users_reset_token_hash"}, "sessions": {"idx_sessions_expire"}, "data_plans": {"uq_data_plans_provider_package"}, "transactions": {"uq_transactions_reference", "uq_transactions_user_idempotency"}}
 EXPECTED_INDEX_DEFINITIONS = {

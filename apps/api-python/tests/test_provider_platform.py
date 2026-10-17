@@ -364,6 +364,23 @@ def test_purchase_records_fulfillment_provider(monkeypatch):
 # Migration/schema compatibility
 # --------------------------------------------------------------------------
 
+def test_schema_check_table_maps_are_consistent():
+    """Every expected table must have entries in every per-table map.
+
+    The PostgreSQL inspection path indexes EXPECTED_NOT_NULL[<table>]
+    directly; a table listed in EXPECTED_COLUMNS but missing from the
+    other maps crashed production startup while the tolerant SQLite
+    path passed CI. This guard keeps the two paths equivalent.
+    """
+    from app.schema_check import (EXPECTED_COLUMNS, EXPECTED_CONSTRAINTS,
+                                  EXPECTED_NOT_NULL, GENERATED_ID_COLUMNS)
+    for table in EXPECTED_COLUMNS:
+        assert table in EXPECTED_CONSTRAINTS, f"{table} missing from EXPECTED_CONSTRAINTS"
+        assert table in EXPECTED_NOT_NULL, f"{table} missing from EXPECTED_NOT_NULL"
+        assert table in GENERATED_ID_COLUMNS or "id" not in EXPECTED_COLUMNS[table], (
+            f"{table} has an id column but no generated-id policy")
+
+
 def test_schema_check_accepts_provider_tables():
     from app.schema_check import inspect_schema, schema_incompatibilities
     incompatible = schema_incompatibilities(inspect_schema())
