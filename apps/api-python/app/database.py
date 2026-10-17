@@ -64,6 +64,13 @@ def init_schema():
                 finished_at {timestamp_type}, outcome TEXT NOT NULL,
                 added INTEGER NOT NULL DEFAULT 0, updated INTEGER NOT NULL DEFAULT 0,
                 unavailable INTEGER NOT NULL DEFAULT 0, errors TEXT)"""))
+        # Multi-provider platform registry. WiseSub is enabled by default;
+        # additional providers stay disabled until an admin enables them.
+        conn.execute(text(f"""CREATE TABLE IF NOT EXISTS providers (
+            slug TEXT PRIMARY KEY, name TEXT NOT NULL,
+            enabled {bool_type} NOT NULL DEFAULT 0,
+            status TEXT, last_check_at {timestamp_type}, last_check_detail TEXT,
+            updated_at {timestamp_type} NOT NULL DEFAULT {now})"""))
         conn.execute(text(f"""CREATE TABLE IF NOT EXISTS transactions (
             id {auto}, user_id INTEGER NOT NULL, type TEXT NOT NULL, amount {money_type} NOT NULL,
             status TEXT NOT NULL, reference TEXT, description TEXT, created_at {timestamp_type} NOT NULL DEFAULT {now},
@@ -71,6 +78,7 @@ def init_schema():
         if engine.dialect.name != "sqlite":
             conn.execute(text("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS idempotency_key TEXT"))
             conn.execute(text("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS provider_reference TEXT"))
+            conn.execute(text("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS provider TEXT"))
             conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_transactions_reference ON transactions(reference) WHERE reference IS NOT NULL"))
             conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_transactions_user_idempotency ON transactions(user_id,idempotency_key) WHERE idempotency_key IS NOT NULL"))
         conn.execute(text("CREATE TABLE IF NOT EXISTS sessions (sid TEXT PRIMARY KEY, sess TEXT NOT NULL, expire BIGINT NOT NULL)"))
@@ -100,9 +108,10 @@ def apply_catalog_test_schema():
                     conn.exec_driver_sql(f"ALTER TABLE data_plans ADD COLUMN {name} {kind}")
             conn.exec_driver_sql("CREATE UNIQUE INDEX IF NOT EXISTS uq_data_plans_provider_package ON data_plans(source, provider_code, provider_package_code) WHERE source IS NOT NULL AND provider_code IS NOT NULL AND provider_package_code IS NOT NULL")
             tx_existing = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(transactions)")}
-            for name in ("idempotency_key", "provider_reference"):
+            for name in ("idempotency_key", "provider_reference", "provider"):
                 if name not in tx_existing:
                     conn.exec_driver_sql(f"ALTER TABLE transactions ADD COLUMN {name} TEXT")
+            conn.exec_driver_sql("CREATE TABLE IF NOT EXISTS providers (slug TEXT PRIMARY KEY, name TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 0, status TEXT, last_check_at TEXT, last_check_detail TEXT, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
             conn.exec_driver_sql("CREATE UNIQUE INDEX IF NOT EXISTS uq_transactions_reference ON transactions(reference) WHERE reference IS NOT NULL")
             conn.exec_driver_sql("CREATE UNIQUE INDEX IF NOT EXISTS uq_transactions_user_idempotency ON transactions(user_id,idempotency_key) WHERE idempotency_key IS NOT NULL")
             conn.exec_driver_sql("CREATE UNIQUE INDEX IF NOT EXISTS uq_users_reset_token_hash ON users(reset_token_hash) WHERE reset_token_hash IS NOT NULL")

@@ -28,6 +28,13 @@ class Settings(BaseSettings):
     # semantics. Keep automated refunds disabled until staging confirms them.
     wisesub_failure_status_confirmed: bool = False
     cheapdata_markup_percent: float = 2
+    # Multi-provider fulfillment platform. Routing stays WiseSub-only
+    # until an admin deliberately enables it after a second provider is
+    # configured, enabled and verified.
+    multi_provider_routing_enabled: bool = False
+    meledata_api_key: str | None = None
+    rizpay_api_key: str | None = None
+    rizpay_base_url: str | None = None
     brevo_api_key: str | None = None
     brevo_from_email: str | None = None
     brevo_from_name: str = "MELODEXS CONNECT"
