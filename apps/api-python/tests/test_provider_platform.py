@@ -12,6 +12,7 @@ Covers:
 """
 import asyncio
 import json
+import re
 import secrets
 from decimal import Decimal
 
@@ -29,7 +30,7 @@ from app.provider_meledata import MeleDataAdapter, _plan_family
 from app.provider_registry import (ensure_provider_rows, provider_enabled,
                                    resolve_fulfillment_provider,
                                    safe_fallback_candidate)
-from app.provider_rizpay import RizPayAdapter
+from app.provider_rizpay import RizPayAdapter, external_reference_for
 from app.provider_wisesub import WiseSubAdapter
 
 
@@ -90,6 +91,9 @@ class FakeResponse:
         if isinstance(self._payload, Exception):
             raise self._payload
         return self._payload
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise RuntimeError(f"HTTP {self.status_code}")
 
 
 def test_mele_purchase_success_and_autorefunded_failure(monkeypatch):
@@ -150,24 +154,123 @@ def test_rizpay_pending_acceptance_and_duplicate_reference(monkeypatch):
     adapter = RizPayAdapter()
     monkeypatch.setattr(settings, "rizpay_api_key", "rzp_test", raising=False)
 
+    sent = {}
+
     async def accepted_pending(path, **kwargs):
-        return FakeResponse(200, {"data": {"id": 42, "attributes": {"status": "pending"}}})
+        sent.update(kwargs["json"])
+        # Verified response shape: 201 + status envelope + txn id string.
+        return FakeResponse(201, {"status": {"code": 201, "message": "Purchase created successfully"},
+                                  "data": {"id": "txn_abc123", "type": "transaction",
+                                           "attributes": {"status": "pending"}}})
     monkeypatch.setattr("app.provider_rizpay.httpx.AsyncClient", _fake_client(accepted_pending))
-    result = asyncio.run(adapter.submit_data_purchase(network="MTN", package_code="9", phone="08011111111", reference="ord-1"))
+    result = asyncio.run(adapter.submit_data_purchase(network="MTN", package_code="prd_2271",
+                                                       phone="08022222222", reference="20261017223000a1b2c3d4e5f6"))
     # Accepted but not delivered: pending, never successful.
-    assert result.outcome is PurchaseOutcome.PENDING and result.provider_reference == "42"
+    assert result.outcome is PurchaseOutcome.PENDING and result.provider_reference == "txn_abc123"
+    # Product ids stay strings and the external reference follows the
+    # provider's documented /^\d{10}[a-zA-Z0-9]{6}$/ format.
+    assert sent["product_id"] == "prd_2271"
+    assert sent["network"] == "MTN"
+    external = external_reference_for("20261017223000a1b2c3d4e5f6")
+    assert sent["external_reference"] == external
+    assert re.fullmatch(r"\d{10}[a-zA-Z0-9]{6}", external)
+    # Deterministic per order: retries reuse the same reference.
+    assert external_reference_for("20261017223000a1b2c3d4e5f6") == external
+    assert external_reference_for("20261017223000ffffff1234567") != external
 
     async def delivered(path, **kwargs):
-        return FakeResponse(200, {"data": {"id": 43, "attributes": {"status": "successful"}}})
+        return FakeResponse(200, {"status": {"code": 200}, "data": {"id": "txn_abc124",
+                                                                   "attributes": {"status": "successful"}}})
     monkeypatch.setattr("app.provider_rizpay.httpx.AsyncClient", _fake_client(delivered))
-    result = asyncio.run(adapter.submit_data_purchase(network="MTN", package_code="9", phone="08011111111", reference="ord-2"))
+    result = asyncio.run(adapter.submit_data_purchase(network="MTN", package_code="prd_2271",
+                                                       phone="08011111111", reference="20261017223001a1b2c3d4e5f6"))
     assert result.outcome is PurchaseOutcome.SUCCESSFUL
 
+    # DUPLICATE_REFERENCE is a 400 error carrying error.code, not a 409.
     async def duplicate(path, **kwargs):
-        return FakeResponse(409, {"code": "DUPLICATE_REFERENCE"})
+        return FakeResponse(400, {"status": {"code": 400, "message": "Bad Request"},
+                                  "error": {"code": "DUPLICATE_REFERENCE",
+                                            "message": "external_reference already used"}})
     monkeypatch.setattr("app.provider_rizpay.httpx.AsyncClient", _fake_client(duplicate))
-    result = asyncio.run(adapter.submit_data_purchase(network="MTN", package_code="9", phone="08011111111", reference="ord-2"))
+    result = asyncio.run(adapter.submit_data_purchase(network="MTN", package_code="prd_2271",
+                                                       phone="08011111111", reference="20261017223001a1b2c3d4e5f6"))
     assert result.outcome is PurchaseOutcome.UNCERTAIN
+
+    # Other 400s (INSUFFICIENT_BALANCE, PURCHASE_FAILED, ...) stay
+    # uncertain: refunds are not documented as automatic.
+    async def insufficient(path, **kwargs):
+        return FakeResponse(400, {"status": {"code": 400}, "error": {"code": "INSUFFICIENT_BALANCE"}})
+    monkeypatch.setattr("app.provider_rizpay.httpx.AsyncClient", _fake_client(insufficient))
+    result = asyncio.run(adapter.submit_data_purchase(network="MTN", package_code="prd_2271",
+                                                       phone="08044444444", reference="20261017223002a1b2c3d4e5f6"))
+    assert result.outcome is PurchaseOutcome.UNCERTAIN
+
+
+def test_rizpay_catalog_and_balance_use_verified_shapes(monkeypatch):
+    adapter = RizPayAdapter()
+    monkeypatch.setattr(settings, "rizpay_api_key", "rzp_test", raising=False)
+
+    async def page1(path, **kwargs):
+        assert path.endswith("/products/dataplans")
+        assert kwargs["params"] == {"page": 1}
+        return FakeResponse(200, {
+            "status": {"code": 200, "message": "Success"},
+            "data": [
+                {"id": "prd_2270", "type": "data_plan", "attributes": {
+                    "display_name": "9mobile 1GB / 30 Days (SME)",
+                    "network": "9MOBILE", "bundle_size": "1GB", "duration": "30 Days",
+                    "bundle_type": "SME",
+                    "price": {"amount": "135.52", "currency": "NGN", "basis": "fixed"}}},
+                {"id": "prd_2271", "type": "data_plan", "attributes": {
+                    "display_name": "MTN 2GB / 30 Days",
+                    "network": "MTN", "bundle_size": "2GB", "duration": "30 Days",
+                    "bundle_type": None,
+                    "price": {"amount": "1000.00", "currency": "NGN", "basis": "fixed"}}},
+            ],
+            "pagination": {"page": 1, "per_page": 20, "total_pages": 2, "total_count": 45}})
+    async def page2(path, **kwargs):
+        assert kwargs["params"] == {"page": 2}
+        return FakeResponse(200, {
+            "status": {"code": 200},
+            "data": [
+                {"id": "prd_2272", "type": "data_plan", "attributes": {
+                    "display_name": "Glo 5GB / 30 Days (CG)",
+                    "network": "GLO", "bundle_size": "5GB", "duration": "30 Days",
+                    "bundle_type": "CG",
+                    "price": {"amount": "2030.00", "currency": "NGN", "basis": "fixed"}}},
+            ],
+            "pagination": {"page": 2, "per_page": 20, "total_pages": 2, "total_count": 45}})
+
+    # fetch_catalog opens ONE client and pages inside it, so dispatch
+    # per request rather than per client.
+    page_calls = {"n": 0}
+
+    async def paged(path, **kwargs):
+        page_calls["n"] += 1
+        assert kwargs["params"] == {"page": page_calls["n"]}
+        handler = page1 if page_calls["n"] == 1 else page2
+        return await handler(path, **kwargs)
+
+    monkeypatch.setattr("app.provider_rizpay.httpx.AsyncClient", _fake_client(paged))
+    packages = asyncio.run(adapter.fetch_catalog())
+    assert [p.code for p in packages] == ["prd_2270", "prd_2271", "prd_2272"]
+    sme = packages[0]
+    assert sme.network == "9Mobile" and sme.plan_type == "SME"
+    assert sme.data_size == "1GB" and sme.validity == "30 Days"
+    assert sme.cost == Decimal("135.52") and sme.name.startswith("9mobile 1GB")
+    # null bundle_type keeps the plan out of automatic equivalence.
+    assert packages[1].plan_type is None
+    assert packages[2].plan_type == "CG" and packages[2].cost == Decimal("2030")
+
+    async def balance(path, **kwargs):
+        assert path.endswith("/account/balance")
+        return FakeResponse(200, {"status": {"code": 200, "message": "Balance retrieved"},
+                                  "data": {"balance": "100000.00", "currency": "NGN",
+                                           "updated_at": "2026-05-18T10:30:00+01:00"}})
+    monkeypatch.setattr("app.provider_rizpay.httpx.AsyncClient", _fake_client(balance))
+    result = asyncio.run(adapter.account_balance())
+    assert result.supported is True and result.balance == Decimal("100000.00")
+    assert result.currency == "NGN"
 
 
 def test_wisesub_adapter_never_emits_final_failure(monkeypatch):
