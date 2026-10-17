@@ -35,6 +35,8 @@ class Settings(BaseSettings):
     meledata_api_key: str | None = None
     rizpay_api_key: str | None = None
     rizpay_base_url: str | None = None
+    gndata_api_key: str | None = None
+    gndata_base_url: str | None = None
     brevo_api_key: str | None = None
     brevo_from_email: str | None = None
     brevo_from_name: str = "MELODEXS CONNECT"

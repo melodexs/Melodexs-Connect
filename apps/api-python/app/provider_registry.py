@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from .config import settings
 from .database import db_session, q
 from .provider_base import ProviderAdapter
+from .provider_gndata import GnDataAdapter
 from .provider_meledata import MeleDataAdapter
 from .provider_rizpay import RizPayAdapter
 from .provider_wisesub import WiseSubAdapter
@@ -27,7 +28,7 @@ _PRIMARY_PROVIDER = "wisesub"
 
 
 def default_adapters() -> list[ProviderAdapter]:
-    return [WiseSubAdapter(), MeleDataAdapter(), RizPayAdapter()]
+    return [WiseSubAdapter(), MeleDataAdapter(), RizPayAdapter(), GnDataAdapter()]
 
 
 _ADAPTERS: dict[str, ProviderAdapter] = {a.slug: a for a in default_adapters()}
