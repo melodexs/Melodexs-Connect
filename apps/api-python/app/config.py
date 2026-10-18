@@ -48,6 +48,8 @@ class Settings(BaseSettings):
     meledata_purchase_tests: bool = False
     rizpay_api_key: str | None = None
     rizpay_base_url: str | None = None
+    gndata_api_key: str | None = None
+    gndata_base_url: str | None = None
     # VTpass sandbox validation tooling (app/vtpass_sandbox.py). These are
     # SANDBOX-ONLY credentials; the tooling refuses any non-sandbox host.
     vtpass_sandbox_api_key: str | None = None
