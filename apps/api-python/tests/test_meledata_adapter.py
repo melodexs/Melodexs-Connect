@@ -369,6 +369,43 @@ def test_request_urls_are_the_final_no_trailing_slash_forms():
     assert not _FakeClient.instances[-1].calls[0][1].endswith("/data/status/")
 
 
+def test_mode_gate_rejects_missing_mode_indicators(monkeypatch):
+    """A wallet balance alone never proves purchases are safe: with
+    MELEDATA_TEST_MODE set, a wallet response with a usable balance but
+    NO mode/livemode indicators must fail closed."""
+    _set_test_mode(True)
+    queue(_Response(body={"success": True, "data": {"balance": 500,
+                                                    "currency": "NGN"}}))  # no mode fields
+    refusal = asyncio.run(MeleDataAdapter()._test_mode_gate())
+    assert refusal is not None, "a balance without mode indicators must not pass the gate"
+
+
+def test_mode_gate_rejects_inconsistent_mode_indicators(monkeypatch):
+    """mode='test' paired with livemode=true is self-contradictory: the
+    gate must refuse rather than trust the convenient field."""
+    _set_test_mode(True)
+    queue(_Response(body={"success": True, "data": {"balance": 500, "currency": "NGN",
+                                                    "livemode": True, "mode": "test"}}))
+    refusal = asyncio.run(MeleDataAdapter()._test_mode_gate())
+    assert refusal is not None, "inconsistent mode indicators must fail closed"
+
+
+def test_mode_gate_accepts_consistent_test_mode_only(monkeypatch):
+    """Control case: mode='test' AND livemode=false passes, and the
+    purchase proceeds to the provider (never silently skipped)."""
+    _set_test_mode(True)
+    queue(_Response(body={"success": True, "data": {"balance": 500, "currency": "NGN",
+                                                    "livemode": False, "mode": "test"}}))
+    queue(_Response(body={"status": True, "data": {"status": "success",
+                                                    "reference": "ref-consistent"}}))
+    result = asyncio.run(MeleDataAdapter().submit_data_purchase(
+        network="MTN", package_code="553", phone="08031234567", reference="ref-consistent"))
+    assert result.outcome is PurchaseOutcome.SUCCESSFUL
+    purchase_calls = [c for i in _FakeClient.instances for c in i.calls]
+    assert any("/data/purchase" in c[1] for c in purchase_calls), \
+        "a verified test-mode wallet must allow the purchase attempt to proceed"
+
+
 def test_no_webhook_or_history_capabilities_are_claimed():
     adapter = MeleDataAdapter()
     assert "webhooks" not in adapter.capabilities

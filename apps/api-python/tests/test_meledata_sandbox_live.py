@@ -23,6 +23,12 @@ Verified live 2026-10-18 (test token):
 
 No live credential is ever used, no wallet is funded, and nothing here
 can reach a real customer.
+
+READ-ONLY BY DEFAULT: with only MELEDATA_LIVE_TESTS=1 the suite issues
+wallet, catalog and requery requests only - none of which can initiate
+a transaction. The single purchase-attempt test additionally requires
+MELEDATA_PURCHASE_TESTS=1 (a second, independent opt-in) so no live
+verification run ever calls a purchase endpoint by accident.
 """
 import pytest
 
@@ -69,6 +75,10 @@ async def test_live_catalog_uses_integer_plan_ids(adapter):
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(
+    not getattr(settings, "meledata_purchase_tests", False),
+    reason="Purchase attempts are a SEPARATE opt-in: set MELEDATA_PURCHASE_TESTS=1 "
+           "(plus MELEDATA_LIVE_TESTS=1, MELEDATA_TEST_MODE=1) to run this one test")
 async def test_test_purchase_is_safely_refused_without_a_wallet_debit(adapter):
     """Provider limitation (2026-10-18): test purchases return HTTP 400
     'Insufficient wallet balance.' even against the test wallet. The

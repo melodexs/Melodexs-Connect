@@ -89,15 +89,70 @@ against the test wallet (plans from NGN 110 up) returns HTTP 400
 with both the test secret and test public tokens. MELE test purchases
 are therefore NOT verified end-to-end. The purchase success/failure/
 duplicate-reference paths are covered by mocked contract tests only
-(`tests/test_meledata_adapter.py`, 18 tests). Enabling live MELE routing
-must wait until the provider confirms test-purchase behavior (support
+(`tests/test_meledata_adapter.py`). Enabling live MELE routing must
+wait until the provider confirms test-purchase behavior (support
 contact recommended before any live integration).
 
-Opt-in live verification tests: `tests/test_meledata_sandbox_live.py`
-(4 tests, all passing 2026-10-18): wallet mode fail-closed gate, catalog
-integrity, refused-purchase-without-debit safety, and unowned-reference
-requery. Enable with `MELEDATA_LIVE_TESTS=1`, `MELEDATA_TEST_MODE=1` and a
-`mele_test_...` token in `MELEDATA_API_KEY`.
+### Is there an official MELE DATA sandbox? (documented evidence)
+
+No sandbox is documented anywhere on https://meledata.ng/developer/docs.
+What the official documentation DOES establish (extracted 2026-10-18):
+
+- ONE base URL serves all traffic; the TOKEN selects the mode. There is
+  no sandbox host.
+- Tokens carry a mode: the wallet response documents `livemode`
+  ("true for live tokens, false for test") and `mode` ("live" or
+  "test"), and issued keys are visibly prefixed (`mele_live_...` /
+  `mele_test_...`).
+- Only `GET /wallet/` and `GET /data/status/?ref=` are labeled
+  "Live + test". `POST /data/purchase`, `GET /data/plans` and
+  `POST /airtime/purchase` carry NO test-mode label - the docs never
+  state that purchases can be simulated with test tokens.
+- No documented process exists for issuing test credentials, funding or
+  activating a test wallet, or simulating purchases. The error table's
+  `400 insufficient_balance` means "Wallet is below the order total."
+- Safe purchase-status checks ARE documented: `GET /data/status/?ref=`
+  (requery, token-scoped, 404 for other users' references), reference
+  idempotency ("Retry with the same reference and you get back the
+  original response - no double-debit", max 80 chars, per-token scope)
+  and automatic wallet refund on carrier rejection.
+
+Live behavior observed with a test token (read-only requests; the
+purchase attempts predate this stricter policy): wallet reports a MOCK
+balance (NGN 1,000,000, mode "test", livemode false); the catalog works;
+purchases are refused with insufficient_balance. The most likely
+explanations (unconfirmed): the purchase path checks a different,
+uninitialized balance for test tokens, or test purchases are simply not
+implemented server-side. This is a provider question, not a bug we can
+fix client-side.
+
+Prepared support inquiry (NOT sent; no account details or keys in it):
+1. Does MELE DATA offer an official sandbox/test mode for the Data and
+   Airtime purchase APIs, or are test tokens read-only?
+2. How are test credentials issued, and how should a developer confirm
+   they are in test mode? (We currently rely on the documented
+   `mode`/`livemode` wallet fields.)
+3. Why does `POST /data/purchase` with a test token return HTTP 400
+   "Insufficient wallet balance." although `/wallet/` reports a
+   NGN 1,000,000 test balance?
+4. Can purchase testing be enabled for our test token without real
+   funds, live purchases, or wallet funding - and if so, what is the
+   documented test behavior (responses for success, failure,
+   duplicate reference)?
+5. Please confirm the duplicate-reference recovery path: given
+   `409 duplicate_reference`, is requery via `GET /data/status/?ref=`
+   the documented way to establish the original purchase's outcome?
+
+Public contact found on https://meledata.ng: mmtechglobe@gmail.com.
+Send only with owner approval.
+
+Opt-in live verification tests: `tests/test_meledata_sandbox_live.py`.
+`MELEDATA_LIVE_TESTS=1` (with `MELEDATA_TEST_MODE=1` and a `mele_test_...`
+token in `MELEDATA_API_KEY`) enables the READ-ONLY checks: wallet mode
+fail-closed gate, catalog integrity, and unowned-reference requery.
+The single purchase-attempt test additionally requires
+`MELEDATA_PURCHASE_TESTS=1`, so no live verification run ever calls a
+purchase endpoint by accident.
 
 ## Deliberately NOT done
 

@@ -95,6 +95,9 @@ class FakeResponse:
 def test_mele_purchase_success_and_autorefunded_failure(monkeypatch):
     adapter = MeleDataAdapter()
     monkeypatch.setattr(settings, "meledata_api_key", "mele_test_key", raising=False)
+    # Pin test mode OFF: this test exercises the purchase mapping itself and
+    # must not inherit a developer's live-verification MELEDATA_TEST_MODE env.
+    monkeypatch.setattr(settings, "meledata_test_mode", False, raising=False)
 
     async def ok_purchase(path, **kwargs):
         return FakeResponse(200, {"status": True, "message": "Transaction successful",
@@ -306,7 +309,12 @@ def test_provider_endpoints_require_admin():
         assert client.get("/api/admin/providers/price-comparison?network=MTN").status_code == 403
 
 
-def test_wisesub_cannot_be_disabled_and_unconfigured_cannot_be_enabled():
+def test_wisesub_cannot_be_disabled_and_unconfigured_cannot_be_enabled(monkeypatch):
+    # Isolate from live-verification env vars: this test asserts the
+    # unconfigured-provider enable guard and must not see a developer's
+    # MELEDATA_API_KEY / MELEDATA_TEST_MODE settings.
+    monkeypatch.setattr(settings, "meledata_api_key", None, raising=False)
+    monkeypatch.setattr(settings, "meledata_test_mode", False, raising=False)
     with TestClient(main.app) as client:
         _admin_client(client)
         blocked = client.patch("/api/admin/providers/wisesub", json={"enabled": False})

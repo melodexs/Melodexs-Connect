@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     # test_meledata_sandbox_live.py). Requires a mele_test_... token and
     # MELEDATA_TEST_MODE=1. Never on by default.
     meledata_live_tests: bool = False
+    # Second, independent opt-in for the ONE live test that hits a
+    # purchase endpoint (currently refused by the provider sandbox).
+    # MELEDATA_LIVE_TESTS alone is read-only: wallet/catalog/status only.
+    meledata_purchase_tests: bool = False
     rizpay_api_key: str | None = None
     rizpay_base_url: str | None = None
     # VTpass sandbox validation tooling (app/vtpass_sandbox.py). These are
