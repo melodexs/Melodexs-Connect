@@ -13,10 +13,12 @@ Documented surface (checked 2026-10-17):
   unique UUID per purchase request; HTTP 409 means that key is already
   in progress (duplicate protection)
 - Base URL note: the documentation page prints
-  "http://localhost:8002/api/v1" in its Base URL box (a docs defect);
-  the provider's own sample asset URLs use https://api.gndata.com.ng.
-  The public portal domain is used here and MUST be re-verified against
-  the live service before any purchase (see GN_DATA_BASE_URL override).
+  "http://localhost:8002/api/v1" in its Base URL box (a docs defect;
+  that host is unreachable). VERIFIED 2026-10-18: an unauthenticated GET
+  to https://api.gndata.com.ng/api/v1/wallet/balance returns HTTP 401
+  "Not authenticated. Provide a valid Bearer token in the Authorization
+  header." confirming the live host, the /api/v1 prefix and the Bearer
+  scheme. The adapter rejects any non-HTTPS GN_DATA_BASE_URL override.
 - GET /api/v1/wallet/balance -> {balance, currency, user_id, email,
   account_numbers:[...funding accounts]}
 - GET /api/v1/data/services?include_plans=true -> networks with nested
@@ -62,7 +64,12 @@ _NETWORK_NORMALIZERS = {
 
 
 def _base_url() -> str:
-    return (settings.gndata_base_url or GN_DEFAULT_BASE_URL).rstrip("/")
+    url = (settings.gndata_base_url or GN_DEFAULT_BASE_URL).rstrip("/")
+    if not url.startswith("https://"):
+        # Fail closed: a non-HTTPS override would send the Bearer key in
+        # plaintext (the docs even print a localhost http URL by mistake).
+        raise ValueError("GN Data base URL must use HTTPS")
+    return url
 
 
 def _decimal(value) -> Decimal | None:
@@ -121,8 +128,9 @@ class GnDataAdapter(ProviderAdapter):
         return headers
 
     async def fetch_catalog(self) -> list[CatalogPackage]:
+        base = _base_url()  # fail closed on an insecure override, before any client
         async with httpx.AsyncClient(timeout=20, follow_redirects=False) as client:
-            response = await client.get(f"{_base_url()}/data/services",
+            response = await client.get(f"{base}/data/services",
                                         params={"include_plans": "true"},
                                         headers=self._headers())
             response.raise_for_status()
@@ -149,8 +157,9 @@ class GnDataAdapter(ProviderAdapter):
         return packages
 
     async def _plans_for_network(self, network_id) -> list:
+        base = _base_url()
         async with httpx.AsyncClient(timeout=20, follow_redirects=False) as client:
-            response = await client.get(f"{_base_url()}/data/plans/{network_id}",
+            response = await client.get(f"{base}/data/plans/{network_id}",
                                         headers=self._headers())
             response.raise_for_status()
             plans = response.json()
@@ -182,12 +191,17 @@ class GnDataAdapter(ProviderAdapter):
 
     async def submit_data_purchase(self, *, network: str, package_code: str, phone: str, reference: str) -> PurchaseResult:
         try:
+            base = _base_url()
+        except ValueError as exc:
+            return PurchaseResult(PurchaseOutcome.FAILED_FINAL,
+                                  message=f"GN Data base URL rejected: {exc}; nothing was sent to the provider")
+        try:
             network_id, _, plan_id = package_code.partition(":")
             if not network_id or not plan_id:
                 return PurchaseResult(PurchaseOutcome.FAILED_FINAL,
                                      message="Invalid GN Data plan mapping; nothing was sent to the provider")
             async with httpx.AsyncClient(timeout=30, follow_redirects=False) as client:
-                response = await client.post(f"{_base_url()}/data/purchase",
+                response = await client.post(f"{base}/data/purchase",
                                              headers=self._headers(post=True, reference=reference),
                                              json={"phone": phone,
                                                    "network_id": int(network_id),
@@ -198,6 +212,13 @@ class GnDataAdapter(ProviderAdapter):
             body = response.json()
         except Exception:
             body = {}
+        if response.status_code == 401:
+            # Documented as missing/invalid Authorization: the request is
+            # rejected before any transaction is created, so this is a
+            # final failure, never an uncertain outcome.
+            return PurchaseResult(PurchaseOutcome.FAILED_FINAL,
+                                  message="GN Data rejected the API key; no purchase was created",
+                                  raw=body)
         if response.status_code == 409:
             # Duplicate Idempotency-Key: the original request exists but
             # its outcome is NOT proven by this response.
@@ -239,8 +260,9 @@ class GnDataAdapter(ProviderAdapter):
 
     async def account_balance(self) -> BalanceResult:
         try:
+            base = _base_url()
             async with httpx.AsyncClient(timeout=20, follow_redirects=False) as client:
-                response = await client.get(f"{_base_url()}/wallet/balance",
+                response = await client.get(f"{base}/wallet/balance",
                                             headers=self._headers())
             body = response.json()
         except Exception as exc:

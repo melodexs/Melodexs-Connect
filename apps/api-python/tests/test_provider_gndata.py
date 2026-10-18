@@ -206,3 +206,103 @@ def test_balance_from_documented_shape(monkeypatch):
     result = _run(_adapter(monkeypatch).account_balance())
     assert result.supported is True
     assert result.balance == Decimal("15450") and result.currency == "NGN"
+
+
+# ---------------------------------------------------------------------------
+# Regression tests added during the 2026-10-18 production-readiness review:
+# documented 401 semantics, HTTPS enforcement, redirect rejection, and
+# secret-hygiene on every outcome path.
+# ---------------------------------------------------------------------------
+
+def test_purchase_401_is_final_failure_never_uncertain(monkeypatch):
+    """Docs: 401 = missing/invalid Bearer key. No transaction can be
+    created, so it must map to FAILED_FINAL (uncertain would strand a
+    purchase with no status endpoint to reconcile it)."""
+    async def handler(path, **kwargs):
+        return FakeResponse(401, {"detail": "Not authenticated. Provide a valid Bearer token in the Authorization header."})
+    import httpx
+    monkeypatch.setattr(httpx, "AsyncClient", _fake_client(handler))
+    result = _run(
+        _adapter(monkeypatch).submit_data_purchase(network="MTN", package_code="1:10",
+                                                   phone="08031234567", reference="REF-6"))
+    assert result.outcome is PurchaseOutcome.FAILED_FINAL
+    assert result.provider_reference is None
+
+
+def test_insecure_base_url_override_rejected_before_any_request(monkeypatch):
+    """The docs print an http://localhost base URL (a defect); an http
+    override must fail closed BEFORE any request, so the Bearer key can
+    never travel over plaintext."""
+    monkeypatch.setattr(settings, "gndata_api_key", "gn_test_key", raising=False)
+    monkeypatch.setattr(settings, "gndata_base_url", "http://localhost:8002/api/v1", raising=False)
+    import httpx
+    def _boom(**kwargs):
+        raise AssertionError("no HTTP request may be attempted")
+    monkeypatch.setattr(httpx, "AsyncClient", _boom)
+    result = _run(
+        GnDataAdapter().submit_data_purchase(network="MTN", package_code="1:10",
+                                             phone="08031234567", reference="REF-7"))
+    assert result.outcome is PurchaseOutcome.FAILED_FINAL
+    assert "HTTPS" in result.message
+    # catalog building must fail closed too, not silently fall back
+    with pytest.raises(ValueError):
+        _run(GnDataAdapter().fetch_catalog())
+
+
+def test_redirect_responses_are_not_followed_and_fail_closed(monkeypatch):
+    """follow_redirects=False is asserted by construction: a 3xx must
+    produce one single request and an uncertain outcome, never a second
+    request that could carry the Bearer key to an unexpected host."""
+    import httpx
+    seen = []
+    async def handler(path, **kwargs):
+        seen.append((path, kwargs))
+        return FakeResponse(302, {"detail": "Moved"})
+    class CapturingClient:
+        def __init__(self, **kwargs):
+            seen.append(("__init__", kwargs))
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): return False
+        async def post(self, path, **kwargs): return await handler(path, **kwargs)
+        async def get(self, path, **kwargs): return await handler(path, **kwargs)
+    monkeypatch.setattr(httpx, "AsyncClient", CapturingClient)
+    result = _run(
+        _adapter(monkeypatch).submit_data_purchase(network="MTN", package_code="1:10",
+                                                   phone="08031234567", reference="REF-8"))
+    assert result.outcome is PurchaseOutcome.UNCERTAIN
+    inits = [s for s in seen if s[0] == "__init__"]
+    requests = [s for s in seen if s[0] != "__init__"]
+    assert len(inits) == 1 and inits[0][1].get("follow_redirects") is False
+    assert len(requests) == 1, "a redirect must not trigger a second request"
+
+
+def test_no_api_key_leaks_in_any_outcome_path(monkeypatch):
+    """Every failure/uncertain path must be reproducible in logs without
+    exposing the Bearer key: messages carry provider status only."""
+    key = "gn_super_secret_key_xyz"
+    monkeypatch.setattr(settings, "gndata_api_key", key, raising=False)
+    import httpx
+    import app.provider_gndata as gn
+
+    results = []
+    # timeout path
+    async def boom(path, **kwargs):
+        raise TimeoutError("connection timed out")
+    monkeypatch.setattr(gn.httpx, "AsyncClient", _fake_client(boom))
+    results.append(_run(GnDataAdapter().submit_data_purchase(
+        network="MTN", package_code="1:10", phone="0803", reference="REF-9")))
+    # 500 path
+    async def fivehundred(path, **kwargs):
+        return FakeResponse(500, {"message": "server error"})
+    monkeypatch.setattr(gn.httpx, "AsyncClient", _fake_client(fivehundred))
+    results.append(_run(GnDataAdapter().submit_data_purchase(
+        network="MTN", package_code="1:10", phone="0803", reference="REF-10")))
+    # balance error path
+    monkeypatch.setattr(gn.httpx, "AsyncClient", _fake_client(boom))
+    results.append(_run(GnDataAdapter().account_balance()))
+    # headers must carry the key, but no result may expose it
+    for r in results:
+        blob = str(r.message or "") + str(getattr(r, "raw", None) or "")
+        assert key not in blob
+    headers = GnDataAdapter()._headers(post=True, reference="REF-11")
+    assert headers["Authorization"] == f"Bearer {key}"

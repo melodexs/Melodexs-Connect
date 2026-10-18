@@ -206,6 +206,7 @@ def test_registry_defaults_and_wisesub_protection():
     assert provider_enabled("wisesub") is True
     assert provider_enabled("meledata") is False
     assert provider_enabled("rizpay") is False
+    assert provider_enabled("gndata") is False
     # Routing disabled: only wisesub resolves.
     assert resolve_fulfillment_provider("wisesub").slug == "wisesub"
     with pytest.raises(RuntimeError):
