@@ -568,10 +568,19 @@
 
             const displayPlan = customerPlanName || item.plan;
 
+            /*
+             * Show the secondary validity label only when the plan title
+             * does not already contain it (e.g. "MTN 4GB - (2 days)"
+             * must not repeat "2 Days" underneath).
+             */
+            const validityLabel = String(item.validity || "").trim();
+            const titleHasValidity = validityLabel &&
+                displayPlan.toLowerCase().includes(validityLabel.toLowerCase());
+
             return `
                 <button type="button" class="plan" data-plan="${escapeHtml(item.plan)}" data-price="${Number(item.selling_price)}" data-validity="${escapeHtml(item.validity || "")}">
                     <strong>${escapeHtml(displayPlan)}</strong>
-                    ${item.validity ? `<small>${escapeHtml(item.validity)}</small>` : ""}
+                    ${validityLabel && !titleHasValidity ? `<small>${escapeHtml(validityLabel)}</small>` : ""}
                     <span class="price">₦${Number(item.selling_price).toLocaleString("en-NG")}</span>
                 </button>
             `;
