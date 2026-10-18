@@ -33,8 +33,26 @@ class Settings(BaseSettings):
     # configured, enabled and verified.
     multi_provider_routing_enabled: bool = False
     meledata_api_key: str | None = None
+    # MELE DATA has one base URL for live and test traffic; the API key
+    # selects the mode. When MELEDATA_TEST_MODE is true the adapter fails
+    # closed unless the provider reports mode="test" and livemode=false.
+    meledata_base_url: str | None = None
+    meledata_test_mode: bool = False
+    # Explicit opt-in for live MELE DATA verification (pytest module
+    # test_meledata_sandbox_live.py). Requires a mele_test_... token and
+    # MELEDATA_TEST_MODE=1. Never on by default.
+    meledata_live_tests: bool = False
     rizpay_api_key: str | None = None
     rizpay_base_url: str | None = None
+    # VTpass sandbox validation tooling (app/vtpass_sandbox.py). These are
+    # SANDBOX-ONLY credentials; the tooling refuses any non-sandbox host.
+    vtpass_sandbox_api_key: str | None = None
+    vtpass_sandbox_public_key: str | None = None
+    vtpass_sandbox_secret_key: str | None = None
+    vtpass_sandbox_base_url: str = "https://sandbox.vtpass.com/api"
+    # Explicit opt-in for live sandbox HTTP tests (pytest module
+    # test_vtpass_sandbox_live). Never on by default.
+    vtpass_sandbox_live_tests: bool = False
     brevo_api_key: str | None = None
     brevo_from_email: str | None = None
     brevo_from_name: str = "MELODEXS CONNECT"

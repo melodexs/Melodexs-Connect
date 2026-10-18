@@ -68,6 +68,11 @@ class BalanceResult:
     balance: Decimal | None = None
     currency: str | None = None
     message: str = ""
+    # Provider-reported wallet mode (e.g. MELE DATA "live"/"test") and its
+    # livemode flag. Used by sandbox-mode guards; None when the provider
+    # does not report a mode (WiseSub, VTpass balance endpoint).
+    mode: str | None = None
+    livemode: bool | None = None
 
 
 @dataclass(frozen=True)
