@@ -83,6 +83,10 @@ def queue(*responses):
     _FakeClient.responses.extend(responses)
 
 
+def _set_test_mode(value: bool):
+    settings.meledata_test_mode = value
+
+
 # ------------------------------------------------------------ config
 
 def test_configured_only_with_a_key():
@@ -313,6 +317,57 @@ def test_test_mode_guard_blocks_when_wallet_unreachable():
 
 
 # --------------------------------------------------------- capabilities
+
+def test_redirect_responses_are_not_followed_and_fail_closed():
+    """MELE 308-redirects its trailing-slash endpoints; the adapter must
+    call the final URLs, never follow a redirect, and treat a 3xx body
+    as an error/uncertain outcome (verified live: the slash forms
+    redirect and return an HTML stub)."""
+    queue(_Response(status_code=308, text="Redirecting..."))
+    result = asyncio.run(MeleDataAdapter().submit_data_purchase(
+        network="MTN", package_code="553", phone="08031234567", reference="ref-1"))
+    assert result.outcome is PurchaseOutcome.UNCERTAIN
+    fake = _FakeClient.instances[0]
+    assert fake.options.get("follow_redirects") is False
+    assert len(fake.calls) == 1, "a redirect response must not trigger a second request"
+
+    queue(_Response(status_code=308, text="Redirecting..."))
+    balance = asyncio.run(MeleDataAdapter().account_balance())
+    assert balance.balance is None, "a redirect body must never parse as a balance"
+
+    queue(_Response(status_code=308, text="Redirecting..."))
+    status = asyncio.run(MeleDataAdapter().transaction_status("ref-1"))
+    assert status.recognized is False
+
+
+def test_redirect_body_cannot_satisfy_the_test_mode_gate():
+    """Even if a redirect/HTML stub sneaks in, the MELEDATA_TEST_MODE
+    wallet gate must fail closed on an unreadable mode."""
+    _set_test_mode(True)
+    queue(_Response(status_code=308, text="Redirecting..."))
+    refusal = asyncio.run(MeleDataAdapter()._test_mode_gate())
+    assert refusal is not None
+    queue(_Response(status_code=308, text="Redirecting..."))
+    result = asyncio.run(MeleDataAdapter().submit_data_purchase(
+        network="MTN", package_code="553", phone="08031234567", reference="ref-2"))
+    assert result.outcome is PurchaseOutcome.UNCERTAIN
+    assert result.message and "fail" in result.message.lower()
+
+
+def test_request_urls_are_the_final_no_trailing_slash_forms():
+    """Regression: /wallet and /data/status must be called WITHOUT the
+    trailing slash (the slash forms 308-redirect; the adapter must not
+    depend on redirect following)."""
+    queue(_Response(body={"success": True, "data": {"balance": 5.0, "currency": "NGN",
+                                                    "mode": "test", "livemode": False}}))
+    asyncio.run(MeleDataAdapter().account_balance())
+    assert _FakeClient.instances[-1].calls[0][1].endswith("/wallet")
+    assert not _FakeClient.instances[-1].calls[0][1].endswith("/wallet/")
+    queue(_Response(body={"success": True, "data": {"status": "delivered"}}))
+    asyncio.run(MeleDataAdapter().transaction_status("ref-3"))
+    assert _FakeClient.instances[-1].calls[0][1].endswith("/data/status")
+    assert not _FakeClient.instances[-1].calls[0][1].endswith("/data/status/")
+
 
 def test_no_webhook_or_history_capabilities_are_claimed():
     adapter = MeleDataAdapter()

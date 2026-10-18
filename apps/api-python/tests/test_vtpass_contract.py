@@ -98,6 +98,10 @@ def test_sandbox_url_guard_accepts_only_the_documented_sandbox_host():
     "https://api.vtpass.com",              # unknown host
     "http://sandbox.vtpass.com/api",       # not https
     "https://sandbox.vtpass.com.evil.io/api",  # suffix attack
+    "https://sandbox.vtpass.com@evil.io/api",  # userinfo attack (credentials style)
+    "https://user@sandbox.vtpass.com/api",     # userinfo prefix
+    "https://sandbox.vtpass.com:8443/api",     # non-default port
+    "ftp://sandbox.vtpass.com/api",
     "", None,
 ])
 def test_sandbox_url_guard_fails_closed_on_non_sandbox_urls(bad):
@@ -334,6 +338,35 @@ async def test_documented_test_phone_table_is_preserved():
 
 
 # ------------------------------------------------------------ secret hygiene
+
+@pytest.mark.asyncio
+@pytest.mark.asyncio
+@pytest.mark.parametrize("endpoint", ["balance", "service-variations", "pay", "requery"])
+async def test_redirect_responses_are_never_followed(endpoint, monkeypatch):
+    """A sandbox request must never follow a redirect to any host (live
+    included). Regression guard: every client is built with
+    follow_redirects=False and a single call is made - the 3xx itself is
+    an error/uncertain outcome, never a hop."""
+    redirect = _Response(status_code=308, text="Redirecting...")
+    patch_async(monkeypatch, responses={endpoint: redirect})
+    c = client()
+    if endpoint == "balance":
+        with pytest.raises(VtpassSandboxError):
+            await c.balance()
+    elif endpoint == "service-variations":
+        with pytest.raises(VtpassSandboxError):
+            await c.service_variations("mtn-data")
+    elif endpoint == "pay":
+        result = await c.purchase(service_id="mtn-data", variation_code="v",
+                                  phone="08011111111", request_id=new_request_id())
+        assert result.outcome is PurchaseOutcome.UNCERTAIN
+    else:
+        result = await c.requery(new_request_id())
+        assert result.recognized is False
+    fake = _FakeClient.instances[0]
+    assert fake.options.get("follow_redirects") is False
+    assert len(fake.calls) == 1, "a redirect response must not trigger a second request"
+
 
 @pytest.mark.asyncio
 async def test_no_credentials_in_results_or_errors(monkeypatch):
