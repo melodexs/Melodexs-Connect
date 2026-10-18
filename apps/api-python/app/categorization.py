@@ -9,8 +9,8 @@ provider's own package naming conventions:
 - Night & Binge   : night-only and binge plans
 - Campus Booster  : Glo campus booster family
 - Mega & Long-Term: mega plans and 2-month/3-month/90/120/365-day volumes
-- Daily Plans     : validity of 1 day
-- Weekly Plans    : validity of 2-7 days
+- Daily Plans     : validity of 1-2 days
+- Weekly Plans    : validity of 3-7 days
 - Monthly Plans   : validity of 8-30 days (includes 14-day plans)
 
 Rules are evaluated in order and only ever assign a category; a package
@@ -115,7 +115,10 @@ def categorize(package_code: str | None, package_name: str | None) -> str | None
     days = _validity_days(name, code)
     if days is None:
         return None
-    if days <= 1:
+    # Two-day packs are short-lived budget buys shown next to daily packs;
+    # Weekly starts at 3 days. (WiseSub sells both 1-day and 2-day variants
+    # of the same "Daily Plan" product line.)
+    if days <= 2:
         return DAILY
     if days <= 7:
         return WEEKLY
