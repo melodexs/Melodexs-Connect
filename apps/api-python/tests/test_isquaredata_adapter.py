@@ -263,10 +263,31 @@ async def test_balance_reports_wallet_balance(configured, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_airtime_is_not_implemented(configured):
-    with pytest.raises(NotImplementedError):
-        await configured.submit_airtime_purchase(
-            network="MTN", phone="08163212121", amount=Decimal("100"), reference="r")
+async def test_airtime_purchase_maps_documented_endpoint(configured, monkeypatch):
+    captured = {}
+
+    def handler(request):
+        captured["url"] = str(request.url)
+        captured["body"] = json.loads(request.content)
+        # The documented airtime purchase endpoint returns no body.
+        return httpx.Response(200, json={"detail": "ok"})
+
+    transport = _mock_transport(handler)
+    original = httpx.AsyncClient
+
+    class Patched(original):
+        def __init__(self, *a, **kw):
+            kw["transport"] = transport
+            super().__init__(*a, **kw)
+
+    monkeypatch.setattr(httpx, "AsyncClient", Patched)
+    result = await configured.submit_airtime_purchase(
+        network="MTN", phone="08163212121", amount=Decimal("100"), reference="AIR-1")
+    assert result.outcome is PurchaseOutcome.PENDING
+    assert captured["url"] == f"{ISQUARE_BASE_URL}/airtime/buy/"
+    assert captured["body"] == {"network": 1, "phone_number": "08163212121",
+                                "amount": 100, "reference": "AIR-1",
+                                "disable_validation": False}
 
 
 def test_adapter_is_conservative_by_default():

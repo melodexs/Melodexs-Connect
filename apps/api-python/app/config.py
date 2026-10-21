@@ -54,6 +54,18 @@ class Settings(BaseSettings):
     # real username/password must come from the ISQUAREDATA dashboard.
     isquaredata_username: str | None = None
     isquaredata_password: str | None = None
+    # Webhook signature key for verifying x-isquare-signature
+    # (HMAC-SHA512 of the raw body). The provider documents this as the
+    # USER ID shown on the dashboard profile.
+    isquaredata_webhook_user_key: str | None = None
+    # The single active catalog + fulfillment source. WiseSub is the
+    # safe default; ISQUAREDATA is activated only by setting
+    # ACTIVE_CATALOG_SOURCE=isquaredata in the production environment.
+    # The retained provider stays registered, enabled and reconcilable.
+    active_catalog_source: str = "wisesub"
+    # Explicit opt-in for allowing WiseSub-confirmed failures to finalize
+    # during reconciliation (unchanged default).
+    wisesub_failure_status_confirmed: bool = False
     # Optional webhook receiver URL sent with each purchase; the provider
     # posts the true transaction status there. Leave unset until a signed
     # webhook receiver is built and validated.

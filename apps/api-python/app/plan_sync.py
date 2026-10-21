@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 
 import httpx
 
+from .categorization import categorize
 from .config import settings, wisesub_base_url
 from .database import db_session, engine, q
 from .providers import wise_headers
@@ -167,3 +168,94 @@ async def synchronize_plans() -> dict:
            "errors": json.dumps(errors) if errors else None, "id": run})
     return {"success": not errors, "outcome": outcome, "added": added, "updated": updated,
             "unavailable": unavailable, "errors": errors}
+
+def _isquaredata_category(code: str, name: str) -> str | None:
+    return categorize(code, name)
+
+
+async def synchronize_isquaredata_plans() -> dict:
+    """Sync the ACTIVE ISQUAREDATA catalog into data_plans.
+
+    Only the verified adapter catalog is used (api_amount as the supplier
+    cost). Prices follow the single markup policy:
+    selling_price = ceil(provider_cost * (1 + markup/100)). WiseSub rows,
+    overrides and history are never touched by this sync.
+    """
+    from .provider_registry import get_adapter
+
+    adapter = get_adapter("isquaredata")
+    if adapter is None or not adapter.is_configured():
+        raise RuntimeError("ISQUAREDATA is not configured for catalog synchronization")
+    packages = await adapter.fetch_catalog()
+
+    errors: list[str] = []
+    added = updated = unavailable = 0
+    with db_session() as db:
+        run = q(db, "INSERT INTO data_plan_sync_runs(outcome) VALUES('running') RETURNING id").scalar()
+        if engine.dialect.name == "postgresql":
+            q(db, "SELECT pg_advisory_xact_lock(712034, 2)")
+        seen = set()
+        existing_rows = q(db, "SELECT id,provider_package_code FROM data_plans WHERE LOWER(TRIM(source))='isquaredata'").mappings().all()
+        for row in existing_rows:
+            if not row["provider_package_code"]:
+                continue
+            if str(row["provider_package_code"]) in {str(p.code) for p in packages}:
+                continue
+            changed = q(db, "UPDATE data_plans SET provider_available=0,sync_error=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=:id AND provider_available<>0", {"id": row["id"]})
+            unavailable += max(changed.rowcount, 0)
+        for package in packages:
+            code = str(package.code).strip()
+            if not code or code in seen:
+                continue
+            seen.add(code)
+            plan_name = str(package.name or "").strip()
+            if not plan_name or not package.cost or float(package.cost) <= 0:
+                errors.append(f"skipped malformed ISQUAREDATA package {code}")
+                continue
+            network = package.network
+            provider_code = network.strip().lower()
+            selling = selling_price(float(package.cost))
+            category = _isquaredata_category(code, plan_name)
+            current = q(db, "SELECT id FROM data_plans WHERE LOWER(TRIM(source))='isquaredata' AND provider_package_code=:code", {"code": code}).first()
+            if current:
+                q(db, """UPDATE data_plans SET network=:network,plan=:plan,provider_cost=:cost,
+                    selling_price=:selling,provider_package_name=:name,data_size=:size,
+                    validity=:validity,provider='isquaredata',source='isquaredata',
+                    provider_code=:provider_code,provider_available=1,active=1,
+                    category=COALESCE(category,:category),last_synced_at=CURRENT_TIMESTAMP,
+                    sync_error=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=:id""",
+                  {"network": network, "plan": plan_name, "cost": float(package.cost),
+                   "selling": selling, "name": plan_name, "size": package.data_size,
+                   "validity": package.validity, "provider_code": provider_code,
+                   "category": category, "id": current[0]})
+                updated += 1
+            else:
+                plan_key = plan_name
+                occupied = q(db, "SELECT id FROM data_plans WHERE network=:network AND plan=:plan", {"network": network, "plan": plan_key}).first()
+                if occupied:
+                    plan_key = f"{plan_name} ({code})"
+                q(db, """INSERT INTO data_plans(network,plan,provider_cost,selling_price,active,
+                    provider,provider_code,provider_package_code,provider_package_name,data_size,
+                    validity,category,source,last_synced_at,provider_available)
+                    VALUES(:network,:plan,:cost,:selling,1,'isquaredata',:provider_code,:code,
+                    :name,:size,:validity,:category,'isquaredata',CURRENT_TIMESTAMP,1)""",
+                  {"network": network, "plan": plan_key, "cost": float(package.cost),
+                   "selling": selling, "provider_code": provider_code, "code": code,
+                   "name": plan_name, "size": package.data_size, "validity": package.validity,
+                   "category": category})
+                added += 1
+        outcome = "success" if not errors else "partial"
+        q(db, "UPDATE data_plan_sync_runs SET finished_at=CURRENT_TIMESTAMP,outcome=:outcome,added=:added,updated=:updated,unavailable=:unavailable,errors=:errors WHERE id=:id",
+          {"outcome": outcome, "added": added, "updated": updated, "unavailable": unavailable,
+           "errors": json.dumps(errors) if errors else None, "id": run})
+    return {"success": not errors, "outcome": outcome, "added": added, "updated": updated,
+            "unavailable": unavailable, "errors": errors}
+
+
+async def synchronize_active_plans() -> dict:
+    """Run the catalog sync for the currently active supplier source."""
+    from .provider_registry import primary_provider
+
+    if primary_provider() == "isquaredata":
+        return await synchronize_isquaredata_plans()
+    return await synchronize_plans()

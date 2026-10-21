@@ -24,7 +24,18 @@ from .provider_meledata import MeleDataAdapter
 from .provider_rizpay import RizPayAdapter
 from .provider_wisesub import WiseSubAdapter
 
-_PRIMARY_PROVIDER = "wisesub"
+# The primary fulfillment provider is configuration-driven: WiseSub is the
+# safe code default; production activates ISQUAREDATA via
+# ACTIVE_CATALOG_SOURCE. WiseSub always stays registered, enabled and
+# reconcilable (it is never removed).
+_RETAINED_PROVIDER = "wisesub"
+
+
+def primary_provider() -> str:
+    source = (getattr(settings, "active_catalog_source", "") or "").strip().lower()
+    if source not in _ADAPTERS or _ADAPTERS[source].selection_excluded:
+        return _RETAINED_PROVIDER
+    return source
 
 
 def default_adapters() -> list[ProviderAdapter]:
@@ -51,7 +62,7 @@ def ensure_provider_rows() -> None:
     """
     with db_session() as db:
         for adapter in all_adapters():
-            default_enabled = 1 if adapter.slug == _PRIMARY_PROVIDER else 0
+            default_enabled = 1 if adapter.slug in (primary_provider(), _RETAINED_PROVIDER) else 0
             q(db, """INSERT INTO providers(slug, name, enabled, updated_at)
                      VALUES(:slug, :name, :enabled, CURRENT_TIMESTAMP)
                      ON CONFLICT(slug) DO NOTHING""",
@@ -59,7 +70,7 @@ def ensure_provider_rows() -> None:
         # The primary provider can never be disabled while it is the only
         # enabled one; keep its row enabled even if the table was created
         # with a different default.
-        q(db, "UPDATE providers SET enabled=1 WHERE slug=:slug", {"slug": _PRIMARY_PROVIDER})
+        q(db, "UPDATE providers SET enabled=1 WHERE slug IN (:active, :retained)", {"active": primary_provider(), "retained": _RETAINED_PROVIDER})
 
 
 def provider_enabled(slug: str) -> bool:
@@ -101,9 +112,10 @@ def resolve_fulfillment_provider(plan_source: str) -> ProviderAdapter:
     """
     source = (plan_source or "").strip().lower()
     if not settings.multi_provider_routing_enabled:
-        if source != _PRIMARY_PROVIDER:
-            raise RuntimeError("Multi-provider routing is disabled; only WiseSub plans are purchasable")
-        return _ADAPTERS[_PRIMARY_PROVIDER]
+        active = primary_provider()
+        if source != active:
+            raise RuntimeError(f"Multi-provider routing is disabled; only {active} plans are purchasable")
+        return _ADAPTERS[active]
     adapter = _ADAPTERS.get(source)
     if adapter is None or adapter.selection_excluded:
         raise RuntimeError(f"Provider '{source}' is excluded from fulfillment selection")
@@ -148,7 +160,7 @@ def safe_fallback_candidate(*, current_provider: str, outcome: str,
 def routing_status() -> dict:
     return {
         "multi_provider_routing_enabled": settings.multi_provider_routing_enabled,
-        "primary_provider": _PRIMARY_PROVIDER,
+        "primary_provider": primary_provider(),
         "eligible_providers": sorted(eligible_provider_slugs()),
         "excluded_providers": sorted(a.slug for a in all_adapters()
                                      if a.selection_excluded),

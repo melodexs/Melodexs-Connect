@@ -5,9 +5,9 @@ from .database import db_session, q
 from .security import require_admin
 from .categorization import categorize, CATEGORY_ORDER
 from .price_comparison import compare_suppliers
-from .provider_registry import (all_adapters, get_adapter, provider_enabled,
+from .provider_registry import (all_adapters, get_adapter, primary_provider, provider_enabled,
                                 record_health, routing_status)
-from .plan_sync import synchronize_plans
+from .plan_sync import synchronize_active_plans
 from .providers import wise_status
 from .database import engine
 from .config import settings
@@ -27,7 +27,7 @@ def list_plans(request: Request):
 async def sync_plans(request: Request):
     require_admin(request)
     try:
-        result = await synchronize_plans()
+        result = await synchronize_active_plans()
     except Exception as exc:
         raise HTTPException(502, "Plan synchronization failed safely. Existing plans were preserved.") from exc
     return result
@@ -44,7 +44,7 @@ def auto_categorize(request: Request):
     assigned: dict[str, int] = {label: 0 for label in CATEGORY_ORDER}
     remaining = 0
     with db_session() as db:
-        rows = q(db, "SELECT id,provider_package_code,provider_package_name FROM data_plans WHERE LOWER(TRIM(source))='wisesub' AND (category IS NULL OR TRIM(category)='')").mappings().all()
+        rows = q(db, "SELECT id,provider_package_code,provider_package_name FROM data_plans WHERE LOWER(TRIM(source))=:source AND (category IS NULL OR TRIM(category)='')", {"source": primary_provider()}).mappings().all()
         for row in rows:
             category = categorize(row["provider_package_code"], row["provider_package_name"])
             if category is None:
@@ -274,10 +274,14 @@ def set_provider_enabled(request: Request, slug: str, body: dict):
     enabled = body.get("enabled")
     if not isinstance(enabled, bool):
         raise HTTPException(400, "enabled must be true or false")
-    if slug == "wisesub" and not enabled:
-        # WiseSub is the active fulfillment provider; disabling it while
-        # routing is WiseSub-only would break every purchase.
-        raise HTTPException(409, "WiseSub cannot be disabled while it is the active fulfillment provider")
+    if not enabled and slug == primary_provider():
+        # The active supplier receives every new purchase; disabling it
+        # would break the whole purchase path.
+        raise HTTPException(409, f"{slug} cannot be disabled while it is the active fulfillment provider")
+    if not enabled and slug == "wisesub":
+        # WiseSub is retained for history and reconciliation; the owner has
+        # explicitly decided it stays enabled.
+        raise HTTPException(409, "WiseSub is retained and cannot be disabled")
     if enabled and adapter.selection_excluded:
         raise HTTPException(409, "This provider is excluded from selection")
     if enabled and not adapter.is_configured():

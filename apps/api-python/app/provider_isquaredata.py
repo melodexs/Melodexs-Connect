@@ -72,6 +72,8 @@ import re
 from base64 import b64encode
 from decimal import Decimal, InvalidOperation
 
+import hashlib
+import hmac
 import httpx
 
 from .config import settings
@@ -83,6 +85,17 @@ ISQUARE_TIMEOUT = 30.0
 MAX_REFERENCE_LENGTH = 100
 
 # Verified service-name keywords -> platform display networks.
+# Documented airtime network identifiers (Developer Documentation page:
+# MTN 1, AIRTEL 2, GLO 3, 9MOBILE 4). Data plans do not use these ids; the
+# data buy payload carries the plan id only.
+AIRTIME_NETWORK_IDS = {
+    "mtn": 1,
+    "airtel": 2,
+    "glo": 3,
+    "9mobile": 4,
+}
+
+
 NETWORK_KEYWORDS = (
     ("9MOBILE", "9mobile"),
     ("ETISALAT", "9mobile"),
@@ -286,9 +299,56 @@ class IsquareDataAdapter(ProviderAdapter):
     async def submit_airtime_purchase(self, *, network: str,
                                       phone: str, amount: Decimal,
                                       reference: str) -> PurchaseResult:
-        # The airtime endpoint exists in the documentation but is out of
-        # scope until the data path is validated end to end.
-        raise NotImplementedError("ISQUAREDATA airtime purchases are not implemented")
+        """Airtime via POST /api/airtime/buy/ (documented contract).
+
+        The documented response body carries status "pending" plus
+        balances; the true status arrives via webhook/requery, so this is
+        never marked SUCCESSFUL from the purchase response alone.
+        """
+        self._require_configured()
+        if not _valid_reference(reference):
+            return PurchaseResult(outcome=PurchaseOutcome.UNCERTAIN,
+                                  message="Invalid reference for ISQUAREDATA purchase")
+        network_id = AIRTIME_NETWORK_IDS.get((network or "").strip().lower())
+        if network_id is None:
+            return PurchaseResult(outcome=PurchaseOutcome.UNCERTAIN,
+                                  message="ISQUAREDATA does not support this airtime network")
+        try:
+            airtime_amount = int(Decimal(str(amount)))
+        except (InvalidOperation, TypeError, ValueError):
+            return PurchaseResult(outcome=PurchaseOutcome.UNCERTAIN,
+                                  message="Invalid airtime amount for ISQUAREDATA")
+        if airtime_amount < 50 or airtime_amount > 50000:
+            return PurchaseResult(outcome=PurchaseOutcome.UNCERTAIN,
+                                  message="Airtime amount out of the supported ISQUAREDATA range")
+        payload = {
+            "network": network_id,
+            "amount": airtime_amount,
+            "phone_number": str(phone).strip(),
+            "reference": str(reference).strip(),
+            "disable_validation": False,
+        }
+        webhook_url = (settings.isquaredata_webhook_url or "").strip()
+        if webhook_url:
+            payload["webhook_url"] = webhook_url
+        try:
+            async with httpx.AsyncClient(timeout=ISQUARE_TIMEOUT,
+                                         follow_redirects=False) as client:
+                response = await client.post(f"{ISQUARE_BASE_URL}/airtime/buy/",
+                                            headers=self._headers(), json=payload)
+        except httpx.HTTPError:
+            return PurchaseResult(outcome=PurchaseOutcome.UNCERTAIN,
+                                  message="ISQUAREDATA request failed: httpx error")
+        if response.status_code >= 500 or response.status_code in (401, 403, 429):
+            return PurchaseResult(outcome=PurchaseOutcome.UNCERTAIN,
+                                  message=f"ISQUAREDATA returned HTTP {response.status_code}")
+        if response.status_code >= 400:
+            # Documented shape (e.g. insufficient balance): refunds are NOT
+            # documented, so this stays UNCERTAIN for requery/reconciliation.
+            return PurchaseResult(outcome=PurchaseOutcome.UNCERTAIN,
+                                  message=f"ISQUAREDATA rejected the purchase (HTTP {response.status_code})")
+        return PurchaseResult(outcome=PurchaseOutcome.PENDING,
+                              message="ISQUAREDATA accepted the request; outcome pending reconciliation")
 
     async def transaction_status(self, reference: str) -> StatusResult:
         self._require_configured()
@@ -349,3 +409,17 @@ class IsquareDataAdapter(ProviderAdapter):
             return BalanceResult(supported=True,
                                  message="ISQUAREDATA balance response missing wallet_balance")
         return BalanceResult(supported=True, balance=balance, currency="NGN")
+
+def verify_webhook_signature(raw_body: bytes, signature: str, user_key: str) -> bool:
+    """Verify x-isquare-signature = HMAC-SHA512(raw body, user key).
+
+    The provider documents the comparison as a plain string comparison of
+    the hex digest (PHP example). Constant-time compare is used anyway.
+    """
+    if not raw_body or not signature or not user_key:
+        return False
+    try:
+        expected = hmac.new(user_key.encode(), raw_body, hashlib.sha512).hexdigest()
+    except (AttributeError, TypeError, ValueError):
+        return False
+    return hmac.compare_digest(str(signature).strip().lower(), expected)
