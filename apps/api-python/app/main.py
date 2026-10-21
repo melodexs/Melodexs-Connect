@@ -18,7 +18,9 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from .categorization import category_sort_sql
-from .provider_registry import (ensure_provider_rows, resolve_fulfillment_provider)
+from .provider_registry import (ensure_provider_rows, get_adapter, primary_provider, resolve_fulfillment_provider)
+from .provider_isquaredata import verify_webhook_signature
+from .provider_base import PurchaseOutcome
 from .config import settings, ROOT, validate_wisesub_configuration, wisesub_recipient
 from .database import db_session, engine, init_schema, q
 from .providers import paystack, send_brevo, wise_purchase
@@ -346,14 +348,14 @@ def transactions(request: Request, user_id: str):
 @app.get("/api/data-categories")
 def data_categories(network: str):
     with db_session() as db:
-        rows = q(db, "SELECT category,COUNT(*) plan_count FROM data_plans WHERE network=:network AND active=1 AND provider_available=1 AND selling_price>=provider_cost AND LOWER(TRIM(source))='wisesub' AND category IS NOT NULL AND TRIM(category)<>'' GROUP BY category ORDER BY " + category_sort_sql() + "", {"network": network}).mappings().all()
+        rows = q(db, "SELECT category,COUNT(*) plan_count FROM data_plans WHERE network=:network AND active=1 AND provider_available=1 AND selling_price>=provider_cost AND LOWER(TRIM(source))=:source AND category IS NOT NULL AND TRIM(category)<>'' GROUP BY category ORDER BY " + category_sort_sql() + "", {"network": network, "source": primary_provider()}).mappings().all()
     return {"success": True, "categories": [dict(x) for x in rows]}
 
 
 @app.get("/api/data-plans")
 def data_plans(network: str | None = None, category: str | None = None):
-    conditions = ["active=1", "provider_available=1", "selling_price>=provider_cost", "LOWER(TRIM(source))='wisesub'", "category IS NOT NULL", "TRIM(category)<>''"]
-    params = {}
+    conditions = ["active=1", "provider_available=1", "selling_price>=provider_cost", "LOWER(TRIM(source))=:source", "category IS NOT NULL", "TRIM(category)<>''"]
+    params = {"source": primary_provider()}
     if network:
         conditions.append("network=:network"); params["network"] = network
     if category:
@@ -434,6 +436,165 @@ def add_pending_purchase_note(reference: str, user_id: int, note: str):
         q(db, "UPDATE transactions SET description=description || :note WHERE reference=:reference AND user_id=:user_id AND type='debit' AND status='pending'", {"note": " | " + note, "reference": reference, "user_id": user_id})
 
 
+async def isquaredata_purchase_flow(user_id: int, body: dict, service: str, network: str, phone: str, pin: str):
+    """Fulfillment through the ISQUAREDATA adapter (active supplier).
+
+    Safety mirrors the WiseSub path exactly: backend-validated price,
+    Purchase PIN, pending-duplicate guard, idempotency key, atomic wallet
+    debit, pending-held outcomes. Additional supplier-side pre-flight: the
+    ISQUAREDATA wallet balance must cover the purchase BEFORE the customer
+    is debited, so an unfunded supplier fails cleanly instead of hanging
+    customer money.
+    """
+    adapter = get_adapter("isquaredata")
+    if adapter is None or not adapter.is_configured():
+        raise HTTPException(503, "The data provider is not available right now. Please try again later.")
+    selected = None
+    amount = 0.0
+    plan = body.get("plan")
+    if service == "data":
+        with db_session() as db:
+            selected = q(db, "SELECT * FROM data_plans WHERE network=:network AND plan=:plan AND active=1 AND provider_available=1 AND selling_price>=provider_cost AND category IS NOT NULL AND LOWER(TRIM(source))='isquaredata'", {"network": network, "plan": plan}).mappings().first()
+        if not selected: raise HTTPException(400, "That data plan is not currently available")
+        if not selected["provider_package_code"]:
+            raise HTTPException(500, "This data plan is not properly configured. Please try another plan.")
+        amount = float(selected["selling_price"])
+        if not math.isfinite(amount) or amount <= 0: raise HTTPException(409, "That data plan price is invalid. Refresh the plan list.")
+        try: expected_price = float(body.get("expectedPrice", body.get("amount", amount)))
+        except (TypeError, ValueError): expected_price = float("nan")
+        if not math.isfinite(expected_price) or abs(expected_price - amount) >= 0.005:
+            raise HTTPException(409, "The plan price changed. Review the current price and confirm again.")
+        description = f"{network} {plan} data purchase for {phone} | Category: {selected['category']} | Price: {amount:.2f}"
+    else:
+        try:
+            amount = float(body.get("amount") or 0)
+        except (TypeError, ValueError):
+            amount = 0
+        if not amount.is_integer() or amount < 50 or amount > 50000: raise HTTPException(400, "Airtime amount must be between \u20a650 and \u20a650,000")
+        amount = int(amount)
+        if amount <= 0: raise HTTPException(400, "A valid airtime amount is required")
+        description = f"{network} airtime purchase for {phone}"
+    with db_session() as db:
+        user = q(db, "SELECT id,balance,purchase_pin FROM users WHERE id=:id", {"id": user_id}).mappings().first()
+        if engine.dialect.name != "sqlite":
+            user = q(db, "SELECT id,balance,purchase_pin FROM users WHERE id=:id FOR UPDATE", {"id": user_id}).mappings().first()
+        if not user: raise HTTPException(404, "User not found")
+        if not user["purchase_pin"]:
+            raise HTTPException(400, "Please create a Purchase PIN before buying data")
+        if not password_check(pin, user["purchase_pin"]): raise HTTPException(401, "Incorrect Purchase PIN")
+        pending_prefix = description.split(" | Category:", 1)[0]
+        pending_purchase = q(db, "SELECT reference FROM transactions WHERE user_id=:uid AND type='debit' AND status='pending' AND SUBSTR(description,1,LENGTH(:prefix))=:prefix ORDER BY id DESC LIMIT 1", {"uid": user_id, "prefix": pending_prefix}).mappings().first()
+        if pending_purchase:
+            return JSONResponse({"success": False, "pending": True, "message": "A matching purchase is still being confirmed. Please do not submit it again.", "reference": pending_purchase["reference"]}, status_code=202)
+        if user["balance"] < amount: raise HTTPException(400, "Insufficient wallet balance")
+        idempotency_key = str(body.get("requestId") or "").strip()
+        if idempotency_key:
+            if len(idempotency_key) > 100: raise HTTPException(400, "Invalid request ID")
+            previous = q(db, "SELECT reference,status,amount,description FROM transactions WHERE user_id=:uid AND idempotency_key=:key", {"uid": user_id, "key": idempotency_key}).mappings().first()
+            if previous:
+                if previous["status"] == "pending":
+                    return JSONResponse({"success": False, "pending": True, "message": "This purchase is still being confirmed. Please do not retry it.", "reference": previous["reference"]}, status_code=202)
+                return {"success": previous["status"] == "successful", "status": previous["status"], "message": "This purchase request was already processed.", "reference": previous["reference"], "amount": float(previous["amount"])}
+    # Supplier pre-flight: refuse cleanly BEFORE any customer debit when the
+    # supplier wallet cannot cover the purchase (read-only balance call).
+    supplier_amount = None
+    try:
+        supplier_balance = await adapter.account_balance()
+        if supplier_balance.supported and supplier_balance.balance is not None:
+            supplier_amount = float(supplier_balance.balance)
+    except Exception:
+        supplier_amount = None
+    if supplier_amount is None or supplier_amount < float(amount):
+        logger.warning("ISQUAREDATA pre-flight balance check refused a purchase (supplier balance unavailable or insufficient)")
+        raise HTTPException(503, "The data provider is temporarily unavailable. Your wallet was not charged. Please try again shortly.")
+    reference = ref()
+    with db_session() as db:
+        debit = q(db, "UPDATE users SET balance=balance-:amount WHERE id=:id AND balance>=:amount", {"amount": amount, "id": user_id})
+        if debit.rowcount != 1: raise HTTPException(400, "Insufficient wallet balance")
+        q(db, "INSERT INTO transactions(user_id,type,amount,status,reference,description,idempotency_key,provider) VALUES(:uid,'debit',:amount,'pending',:reference,:description,:idem,'isquaredata')",
+          {"uid": user_id, "amount": amount, "reference": reference, "description": description + " | Pending ISQUAREDATA confirmation", "idem": idempotency_key or None})
+    try:
+        if service == "data":
+            result = await adapter.submit_data_purchase(network=network, package_code=str(selected["provider_package_code"]), phone=phone, reference=reference)
+        else:
+            result = await adapter.submit_airtime_purchase(network=network, phone=phone, amount=amount, reference=reference)
+    except Exception:
+        add_pending_purchase_note(reference, user_id, "ISQUAREDATA submission failed; outcome requires reconciliation")
+        return JSONResponse({"success": False, "pending": True, "message": "We could not immediately confirm your purchase. Please do not retry this purchase.", "reference": reference}, status_code=202)
+    if result.outcome == PurchaseOutcome.SUCCESSFUL:
+        # The adapter never returns SUCCESSFUL from the purchase response
+        # alone; this branch exists only for the documented future state.
+        with db_session() as db:
+            q(db, "UPDATE transactions SET status='successful',provider_reference=:pref,description=:description WHERE reference=:reference AND user_id=:id AND type='debit' AND status='pending'",
+              {"pref": reference, "description": description + " | ISQUAREDATA reference: " + reference, "reference": reference, "id": user_id})
+        return {"success": True, "status": "successful", "message": "Purchase successful.", "reference": reference, "amount": float(amount)}
+    add_pending_purchase_note(reference, user_id, result.message or "outcome pending reconciliation")
+    return JSONResponse({"success": False, "pending": True, "message": "Your purchase was accepted and is being confirmed. You will be notified once delivery is confirmed. Please do not retry.", "reference": reference}, status_code=202)
+
+
+@app.post("/api/webhooks/isquaredata")
+async def isquaredata_webhook(request: Request):
+    """ISQUAREDATA transaction webhooks.
+
+    Signature: x-isquare-signature = HMAC-SHA512(raw body, user key),
+    the key being the dashboard USER ID (ISQUAREDATA_WEBHOOK_USER_KEY).
+    A signed 'success' webhook finalizes the pending transaction; a
+    'failed' webhook must ALSO be confirmed by the status requery before
+    the customer wallet is refunded (double-source confirmation).
+    """
+    raw = await request.body()
+    user_key = (getattr(settings, "isquaredata_webhook_user_key", "") or "").strip()
+    if not user_key:
+        raise HTTPException(503, "Webhook verification is not configured")
+    signature = request.headers.get("x-isquare-signature") or ""
+    if not verify_webhook_signature(raw, signature, user_key):
+        raise HTTPException(401, "Invalid signature")
+    try:
+        payload = json.loads(raw or b"{}")
+    except (ValueError, UnicodeDecodeError):
+        raise HTTPException(400, "Invalid payload")
+    if not isinstance(payload, dict):
+        raise HTTPException(400, "Invalid payload")
+    reference = str(payload.get("reference") or "").strip()
+    status = str(payload.get("status") or "").strip().lower()
+    if not reference or status not in {"success", "failed", "pending"}:
+        raise HTTPException(400, "Invalid webhook payload")
+    if status == "pending":
+        return {"success": True, "status": "pending"}
+    with db_session() as db:
+        transaction = q(db, "SELECT id,user_id,amount,status,description FROM transactions WHERE reference=:reference AND type='debit' AND provider='isquaredata' ORDER BY id DESC LIMIT 1", {"reference": reference}).mappings().first()
+    if not transaction:
+        logger.info("ISQUAREDATA webhook referenced an unknown transaction; ignored")
+        return {"success": True, "ignored": True}
+    if transaction["status"] != "pending":
+        return {"success": True, "status": transaction["status"], "note": "already final"}
+    if status == "success":
+        with db_session() as db:
+            q(db, "UPDATE transactions SET status='successful',provider_reference=:pref,description=:description WHERE id=:id AND status='pending'",
+              {"pref": reference, "description": str(transaction["description"]).split(" | Pending ISQUAREDATA confirmation")[0] + " | ISQUAREDATA confirmed delivery", "id": transaction["id"]})
+        return {"success": True, "status": "successful", "reference": reference}
+    # failed: double-confirm through the status requery before refunding
+    adapter = get_adapter("isquaredata")
+    confirmed_failure = False
+    if adapter is not None and adapter.is_configured():
+        try:
+            outcome = await adapter.transaction_status(reference)
+            confirmed_failure = bool(outcome.recognized and outcome.status == "failed")
+        except Exception:
+            confirmed_failure = False
+    if not confirmed_failure:
+        add_pending_purchase_note(reference, transaction["user_id"], "ISQUAREDATA webhook reported failure but the requery did not confirm; held for admin review")
+        return {"success": True, "status": "failed_unconfirmed", "note": "held for admin review"}
+    with db_session() as db:
+        if engine.dialect.name != "sqlite":
+            q(db, "SELECT pg_advisory_xact_lock(712034, 3)")
+        refund = q(db, "UPDATE transactions SET status='failed',description=:description WHERE id=:id AND status='pending'",
+                   {"description": str(transaction["description"]).split(" | Pending ISQUAREDATA confirmation")[0] + " | ISQUAREDATA confirmed failure; wallet refunded", "id": transaction["id"]})
+        if refund.rowcount == 1:
+            q(db, "UPDATE users SET balance=balance+:amount WHERE id=:id", {"amount": transaction["amount"], "id": transaction["user_id"]})
+    return {"success": True, "status": "failed_refunded", "reference": reference}
+
+
 async def purchase(request: Request, body: dict, service: str):
     user_id = require_user(request)
     network, phone, pin = body.get("network"), body.get("phone"), body.get("pin")
@@ -442,6 +603,8 @@ async def purchase(request: Request, body: dict, service: str):
     pin = validate_pin(pin)
     if not network or not phone or not nigeria_phone(phone): raise HTTPException(400, "Please enter a valid Nigerian phone number")
     if network not in {"MTN", "Airtel", "Glo", "9mobile"}: raise HTTPException(400, "Invalid network")
+    if primary_provider() == "isquaredata":
+        return await isquaredata_purchase_flow(user_id, body, service, network, phone, pin)
     selected = None
     plan = body.get("plan")
     if service == "data":

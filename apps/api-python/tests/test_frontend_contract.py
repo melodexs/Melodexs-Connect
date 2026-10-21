@@ -115,7 +115,10 @@ def test_python_routes_cover_the_documented_frontend_contract():
     #    smoke test.
     #  - /api/purchase-pin/verify: programmatic PIN check (admin/support tool).
     #  - /api/paystack/webhook: called by Paystack server-to-server.
-    allowed_unused = {"/api/status", "/api/purchase-pin/verify", "/api/paystack/webhook"}
+    #  - /api/webhooks/isquaredata: ISQUAREDATA supplier server-to-server
+    #    signed transaction callbacks.
+    allowed_unused = {"/api/status", "/api/purchase-pin/verify", "/api/paystack/webhook",
+                      "/api/webhooks/isquaredata"}
     assert set(unused) == allowed_unused, (
         f"Unexpected Python routes unused by the frontend: "
         f"{sorted(set(unused) - allowed_unused)}"
