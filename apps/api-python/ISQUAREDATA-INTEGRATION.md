@@ -21,11 +21,25 @@ must still be obtained from ISQUAREDATA before production activation.
 Base URL: `https://isquaredata.com/api` (HTTPS only; the adapter follows
 no redirects and applies connect/read timeouts).
 
-Authentication: HTTP Basic Auth. The published collection uses
-placeholder credentials (`test:test`) which the live API rejects with
-HTTP 403 (verified 2026-10-21). Real credentials must come from the
-ISQUAREDATA dashboard/profile - exact credential names still to be
-confirmed with support.
+Authentication: HTTP Basic Auth, **verified live 2026-10-21**: the username
+is the account's **phone number** and the password is the **dashboard
+password** (the published `test:test` pair is rejected with HTTP 403).
+Confirmed via read-only `GET /api/balance/`, `GET /api/data/services/`,
+`GET /api/data/plans/` and `GET /api/transactions/` (all HTTP 200).
+Secret values live only in deployment env vars (`ISQUAREDATA_USERNAME`,
+`ISQUAREDATA_PASSWORD`), never in this repository. The webhook signature
+`user_key` is documented as the profile USER ID; the dashboard profile
+shows a UUID, which is the presumed key (unverified until a signed
+webhook arrives).
+
+**Live catalog findings (2026-10-21):** `GET /api/data/services/` returns
+8 active services / 156 plans; `GLO NORMAL DATA` and `GLO SME` are
+disabled provider-side ("unstable" per the dashboard notice), so the Glo
+cost advantages in the comparison below are **not currently purchasable**.
+`GET /api/data/plans/` returns all 209 plans including disabled ones; the
+adapter uses the active `/data/services/` snapshot. Plan records carry
+extra undocumented fields (`value_size` GB quantity, per-plan
+`commission`, `custom_gateway`) usable as catalog metadata.
 
 | Purpose | Method & path | Notes |
 |---|---|---|
