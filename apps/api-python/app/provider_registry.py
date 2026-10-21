@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from .config import settings
 from .database import db_session, q
 from .provider_base import ProviderAdapter
+from .provider_isquaredata import IsquareDataAdapter
 from .provider_meledata import MeleDataAdapter
 from .provider_rizpay import RizPayAdapter
 from .provider_wisesub import WiseSubAdapter
@@ -27,7 +28,8 @@ _PRIMARY_PROVIDER = "wisesub"
 
 
 def default_adapters() -> list[ProviderAdapter]:
-    return [WiseSubAdapter(), MeleDataAdapter(), RizPayAdapter()]
+    return [WiseSubAdapter(), IsquareDataAdapter(), MeleDataAdapter(),
+            RizPayAdapter()]
 
 
 _ADAPTERS: dict[str, ProviderAdapter] = {a.slug: a for a in default_adapters()}
@@ -67,9 +69,14 @@ def provider_enabled(slug: str) -> bool:
 
 
 def eligible_provider_slugs() -> set[str]:
-    """Configured + enabled provider slugs."""
+    """Configured + enabled provider slugs.
+
+    Selection-excluded providers (retired alternatives kept only for
+    compatibility) are never eligible for fulfillment or fallback."""
     result = set()
     for adapter in all_adapters():
+        if adapter.selection_excluded:
+            continue
         if adapter.is_configured() and provider_enabled(adapter.slug):
             result.add(adapter.slug)
     return result
@@ -98,7 +105,9 @@ def resolve_fulfillment_provider(plan_source: str) -> ProviderAdapter:
             raise RuntimeError("Multi-provider routing is disabled; only WiseSub plans are purchasable")
         return _ADAPTERS[_PRIMARY_PROVIDER]
     adapter = _ADAPTERS.get(source)
-    if adapter is None or not adapter.is_configured() or not provider_enabled(source):
+    if adapter is None or adapter.selection_excluded:
+        raise RuntimeError(f"Provider '{source}' is excluded from fulfillment selection")
+    if not adapter.is_configured() or not provider_enabled(source):
         raise RuntimeError(f"Provider '{source}' is not configured and enabled for fulfillment")
     return adapter
 
@@ -141,4 +150,6 @@ def routing_status() -> dict:
         "multi_provider_routing_enabled": settings.multi_provider_routing_enabled,
         "primary_provider": _PRIMARY_PROVIDER,
         "eligible_providers": sorted(eligible_provider_slugs()),
+        "excluded_providers": sorted(a.slug for a in all_adapters()
+                                     if a.selection_excluded),
     }
