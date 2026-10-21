@@ -86,6 +86,11 @@ MAX_REFERENCE_LENGTH = 100
 NETWORK_KEYWORDS = (
     ("9MOBILE", "9mobile"),
     ("ETISALAT", "9mobile"),
+    # 9mobile's reseller family is named "T2 DATA" with no carrier in
+    # the service name. Verified against the live catalog (2026-10-21):
+    # its plans match WiseSub's 9mobile T2 family one-to-one (83MB
+    # DAILY, 650MB 3-DAYS, 2GB MONTHLY ... at near-identical costs).
+    ("T2", "9mobile"),
     ("AIRTEL", "Airtel"),
     ("GLO", "Glo"),
     ("MTN", "MTN"),
