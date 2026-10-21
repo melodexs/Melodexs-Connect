@@ -48,6 +48,16 @@ class Settings(BaseSettings):
     meledata_purchase_tests: bool = False
     rizpay_api_key: str | None = None
     rizpay_base_url: str | None = None
+    # ISQUAREDATA (next provider, disabled-by-default until validated).
+    # HTTP Basic Auth against https://isquaredata.com/api; the published
+    # docs use placeholder credentials (rejected live with 403), so the
+    # real username/password must come from the ISQUAREDATA dashboard.
+    isquaredata_username: str | None = None
+    isquaredata_password: str | None = None
+    # Optional webhook receiver URL sent with each purchase; the provider
+    # posts the true transaction status there. Leave unset until a signed
+    # webhook receiver is built and validated.
+    isquaredata_webhook_url: str | None = None
     # VTpass sandbox validation tooling (app/vtpass_sandbox.py). These are
     # SANDBOX-ONLY credentials; the tooling refuses any non-sandbox host.
     vtpass_sandbox_api_key: str | None = None
