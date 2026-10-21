@@ -108,6 +108,11 @@ class ProviderAdapter(ABC):
     #: without an extra admin confirmation gate (kept conservative: the
     #: WiseSub-style confirmation flag still applies unless documented)
     failure_status_is_final: bool = False
+    #: True when the provider is deliberately EXCLUDED from selection
+    #: (routing, fallback and the admin provider-selection UI) while its
+    #: adapter code stays for compatibility (tests, historical
+    #: reconciliation). Excluded adapters can never fulfill a purchase.
+    selection_excluded: bool = False
     capabilities: tuple[str, ...] = ()
 
     @abstractmethod

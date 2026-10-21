@@ -244,6 +244,11 @@ def list_providers(request: Request):
         rows = {r["slug"]: dict(r) for r in q(db, "SELECT slug,name,enabled,status,last_check_at,last_check_detail FROM providers").mappings().all()}
     providers = []
     for adapter in all_adapters():
+        if adapter.selection_excluded:
+            # Retired alternatives are excluded from the provider-selection
+            # UI; their adapters remain functional for compatibility and
+            # historical reconciliation only.
+            continue
         row = rows.get(adapter.slug, {})
         providers.append({
             "slug": adapter.slug,
@@ -273,6 +278,8 @@ def set_provider_enabled(request: Request, slug: str, body: dict):
         # WiseSub is the active fulfillment provider; disabling it while
         # routing is WiseSub-only would break every purchase.
         raise HTTPException(409, "WiseSub cannot be disabled while it is the active fulfillment provider")
+    if enabled and adapter.selection_excluded:
+        raise HTTPException(409, "This provider is excluded from selection")
     if enabled and not adapter.is_configured():
         raise HTTPException(409, "This provider has no credentials configured yet")
     with db_session() as db:
