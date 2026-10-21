@@ -277,6 +277,12 @@ def test_adapter_is_conservative_by_default():
     assert "data" in adapter.capabilities
 
 
+def test_t2_service_maps_to_9mobile():
+    # Regression: the live catalog names its 9mobile family simply
+    # "T2 DATA" (no carrier keyword) - it must map to 9mobile.
+    assert _network_from_service_name("T2 DATA") == "9mobile"
+
+
 def test_name_helpers():
     assert _network_from_service_name("MTN SME DATA") == "MTN"
     assert _network_from_service_name("AIRTEL DATA") == "Airtel"
