@@ -1791,6 +1791,123 @@ body.spotlight-on .spotlight { opacity: 1; }
 .landing-feature p { font-size: 14px; color: var(--bluegray); line-height: 1.65; transform: translateZ(14px); }
 
 /* ============================================================
+   PEOPLE (3D photo cards)
+   ============================================================ */
+.landing-people {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 0 clamp(20px, 6vw, 64px) 80px;
+    position: relative;
+    z-index: 1;
+}
+
+.people-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 22px;
+    perspective: 900px;
+}
+
+.people-card {
+    position: relative;
+    margin: 0;
+    border-radius: 22px;
+    overflow: hidden;
+    border: 1px solid rgba(199, 209, 221, .14);
+    background: var(--navy-800);
+    transform-style: preserve-3d;
+    transition: transform .2s ease-out, border-color .3s ease, box-shadow .3s ease;
+    will-change: transform;
+}
+
+.people-card:nth-child(2) { margin-top: 26px; }
+
+.people-card:hover {
+    border-color: rgba(209, 255, 66, .45);
+    box-shadow: 0 30px 70px rgba(2, 8, 23, .55);
+}
+
+.people-card img {
+    width: 100%;
+    aspect-ratio: 4 / 5;
+    object-fit: cover;
+    display: block;
+    transition: transform .7s cubic-bezier(.2, .7, .25, 1);
+}
+
+.people-card:hover img { transform: scale(1.06); }
+
+.people-card figcaption {
+    position: absolute;
+    left: 10px; right: 10px; bottom: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 10px 14px;
+    border-radius: 14px;
+    background: rgba(2, 8, 23, .68);
+    border: 1px solid rgba(199, 209, 221, .18);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    transform: translateZ(30px);
+}
+
+.pc-name { font-size: 12.5px; font-weight: 800; color: var(--white); }
+.pc-note { font-size: 11.5px; color: var(--lime); font-weight: 600; }
+
+/* ============================================================
+   MOBILE FITNESS (Android / iOS)
+   ============================================================ */
+.auth-body.landing {
+    overflow-x: hidden;
+    overflow-x: clip;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.landing-nav { padding-top: max(18px, env(safe-area-inset-top)); }
+.landing-footer { padding-bottom: max(42px, env(safe-area-inset-bottom)); }
+
+@media (max-width: 900px) {
+    .orb, .aurora { filter: blur(60px); }
+    .aurora { opacity: .3; animation-duration: 80s; }
+    .orb-lime { width: 240px; height: 240px; }
+    .orb-blue { width: 320px; height: 320px; }
+    .phone-shadow { bottom: -20px; height: 34px; }
+    .landing-people { padding-bottom: 56px; }
+    .people-grid {
+        display: flex;
+        gap: 14px;
+        overflow-x: auto;
+        scroll-snap-type: x mandatory;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        padding: 4px 2px 6px;
+    }
+    .people-grid::-webkit-scrollbar { display: none; }
+    .people-card { flex: 0 0 74%; scroll-snap-align: center; }
+    .people-card:nth-child(2) { margin-top: 0; }
+}
+
+@media (max-width: 420px) {
+    .float-chip { font-size: 11px; padding: 7px 11px; }
+    .chip-a { left: 0; }
+    .chip-b { left: -2%; bottom: 8%; }
+    .chip-c { right: 0; }
+    .chip-d { right: -2%; }
+    .hero-eyebrow { font-size: 11px; letter-spacing: .08em; }
+    .landing-nav { padding-left: 14px; padding-right: 14px; gap: 10px; flex-wrap: wrap; }
+    .landing-cta { flex-direction: column; }
+    .landing-cta .btn { width: 100%; justify-content: center; }
+    .landing-nav-links { gap: 12px; }
+}
+
+@media (pointer: coarse) {
+    .landing-nav .btn-sm { min-height: 42px; }
+    .landing-cta .btn { min-height: 48px; }
+    .people-card:hover img { transform: none; }
+}
+
+/* ============================================================
    STATS BAND
    ============================================================ */
 .stats-band {
@@ -2089,7 +2206,7 @@ body.app-body .hero-title.compact span { color: var(--lime); }
 .input {
     width: 100%;
     padding: 12px 14px;
-    font-size: 15px;
+    font-size: 16px;
     color: var(--ink);
     background: var(--white);
     border: 1.5px solid var(--line);
