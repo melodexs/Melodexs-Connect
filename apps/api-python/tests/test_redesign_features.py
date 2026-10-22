@@ -81,3 +81,40 @@ def test_transaction_filtering_and_pagination():
         # invalid filters rejected
         assert client.get(f"/api/transactions/{user_id}", params={"status": "bogus"}).status_code == 400
         assert client.get(f"/api/transactions/{user_id}", params={"type": "bogus"}).status_code == 400
+
+
+def _tiny_png_dataurl():
+    """Smallest valid 1x1 PNG as a data URL."""
+    import base64
+    import zlib
+    def chunk(tag, data):
+        c = tag + data
+        return len(data).to_bytes(4, "big") + c + (zlib.crc32(c) & 0xFFFFFFFF).to_bytes(4, "big")
+    ihdr = chunk(b"IHDR", (1).to_bytes(4, "big") + (1).to_bytes(4, "big") + bytes([8, 6, 0, 0, 0]))
+    idat = chunk(b"IDAT", zlib.compress(b"\x00\xff\xff\xff\xff"))
+    iend = chunk(b"IEND", b"")
+    raw = b"\x89PNG\r\n\x1a\n" + ihdr + idat + iend
+    return "data:image/png;base64," + base64.b64encode(raw).decode()
+
+
+def test_profile_image_lifecycle():
+    with TestClient(main.app) as stranger:
+        # unauthenticated rejected
+        assert stranger.post("/api/profile-image", json={"image": _tiny_png_dataurl()}).status_code == 401
+    with TestClient(main.app) as client:
+        _, user_id = account(client)
+        # bad format rejected without a write
+        assert client.post("/api/profile-image", json={"image": "data:image/gif;base64,AAAA"}).status_code == 400
+        # valid upload round-trips through /api/user/{id}
+        ok = client.post("/api/profile-image", json={"image": _tiny_png_dataurl()})
+        assert ok.status_code == 200 and ok.json()["success"] is True
+        me = client.get(f"/api/user/{user_id}").json()["user"]
+        assert me["profile_image"].startswith("data:image/png;base64,")
+        # oversized payload rejected (~300KB)
+        import base64 as b64
+        big = "data:image/png;base64," + b64.b64encode(b"\xff" * 300_000).decode()
+        assert client.post("/api/profile-image", json={"image": big}).status_code == 400
+        # removal sets it back to None
+        assert client.post("/api/profile-image", json={"image": None}).status_code == 200
+        me = client.get(f"/api/user/{user_id}").json()["user"]
+        assert me["profile_image"] is None

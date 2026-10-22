@@ -64,6 +64,13 @@ def init_schema():
                 finished_at {timestamp_type}, outcome TEXT NOT NULL,
                 added INTEGER NOT NULL DEFAULT 0, updated INTEGER NOT NULL DEFAULT 0,
                 unavailable INTEGER NOT NULL DEFAULT 0, errors TEXT)"""))
+        # Customer profile picture (small base64 data URL; None = initials).
+        if engine.dialect.name != "sqlite":
+            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image TEXT"))
+        else:
+            user_cols = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(users)")}
+            if "profile_image" not in user_cols:
+                conn.exec_driver_sql("ALTER TABLE users ADD COLUMN profile_image TEXT")
         # Multi-provider platform registry. WiseSub is enabled by default;
         # additional providers stay disabled until an admin enables them.
         conn.execute(text(f"""CREATE TABLE IF NOT EXISTS providers (

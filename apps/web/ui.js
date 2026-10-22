@@ -133,9 +133,12 @@
         const initials = (user.name || "M").trim().split(/\s+/).map(w => w[0]).slice(0, 2).join("").toUpperCase();
         const appbar = document.getElementById("appbar");
         if (appbar) {
+            const avatarInner = user.profile_image
+                ? '<img class="avatar-photo" alt="Profile picture" src="' + user.profile_image + '">'
+                : UI.esc(initials || "M");
             appbar.innerHTML =
                 '<a class="appbar-user" href="/purchase-pin.html" aria-label="Account and profile">' +
-                '<span class="appbar-avatar">' + UI.esc(initials || "M") + '<span class="online-dot"></span></span>' +
+                '<span class="appbar-avatar">' + avatarInner + '<span class="online-dot"></span></span>' +
                 '<span class="appbar-phone" id="appbarPhone">' + UI.esc(UI.formatPhone(user.phone) || "Add phone number") +
                 '<span class="chev">▾</span></span></a>' +
                 '<div class="appbar-actions"><button class="icon-btn" id="logoutBtn" aria-label="Sign out" title="Sign out">' +
