@@ -1230,12 +1230,12 @@ table.data-table tr:hover td { background: #F7FAFE; }
     gap: 7px;
     font-size: 13.5px;
     font-weight: 700;
-    color: var(--bluegray);
+    color: var(--white);
     text-decoration: none;
     padding: 8px 14px;
     border-radius: 999px;
-    border: 1px solid rgba(199, 209, 221, .25);
-    background: rgba(10, 34, 66, .4);
+    border: 1px solid rgba(199, 209, 221, .35);
+    background: rgba(10, 34, 66, .75);
     transition: color .2s ease, border-color .2s ease, background .2s ease;
 }
 
