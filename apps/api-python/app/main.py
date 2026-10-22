@@ -2,6 +2,8 @@ import hashlib
 import json
 import logging
 import math
+import base64
+import binascii
 import re
 import secrets
 import time
@@ -146,7 +148,8 @@ def startup():
 
 
 def user_row(db, user_id: int, include_secret=False):
-    cols = "id,name,email,phone,balance,virtual_account_number,virtual_bank_name,kyc_status,is_admin,created_at"
+    cols = ("id,name,email,phone,balance,virtual_account_number,virtual_bank_name,"
+            "kyc_status,is_admin,created_at,profile_image")
     if include_secret:
         cols += ",password,purchase_pin"
     return q(db, f"SELECT {cols} FROM users WHERE id=:id", {"id": user_id}).mappings().first()
@@ -155,7 +158,7 @@ def user_row(db, user_id: int, include_secret=False):
 def public_user(row):
     if not row:
         return None
-    return {"id": row["id"], "name": row["name"], "email": row["email"], "phone": row["phone"], "balance": float(row["balance"] or 0), "virtual_account_number": row["virtual_account_number"], "virtual_bank_name": row["virtual_bank_name"], "kyc_status": row["kyc_status"], "is_admin": row["is_admin"], "created_at": row["created_at"], "has_purchase_pin": bool(row.get("purchase_pin")) if hasattr(row, "get") else False}
+    return {"id": row["id"], "name": row["name"], "email": row["email"], "phone": row["phone"], "balance": float(row["balance"] or 0), "virtual_account_number": row["virtual_account_number"], "virtual_bank_name": row["virtual_bank_name"], "kyc_status": row["kyc_status"], "is_admin": row["is_admin"], "created_at": row["created_at"], "profile_image": row.get("profile_image") if hasattr(row, "get") else None, "has_purchase_pin": bool(row.get("purchase_pin")) if hasattr(row, "get") else False}
 
 
 def nigeria_phone(phone: str) -> bool:
@@ -333,6 +336,41 @@ def list_favorites(request: Request):
     with db_session() as db:
         rows = q(db, "SELECT id,label,phone,network,created_at FROM favorite_recipients WHERE user_id=:id ORDER BY id DESC", {"id": user_id}).mappings().all()
     return {"success": True, "favorites": [dict(x) for x in rows]}
+
+
+@app.post("/api/profile-image")
+def set_profile_image(request: Request, body: dict):
+    """Set or remove the authenticated user's profile picture.
+
+    Accepts {image: "data:image/jpeg;base64,..." } produced by the client-side
+    canvas resizer, or {image: null} to remove the photo. The decoded payload
+    is capped server-side; anything malformed is rejected without a write.
+    """
+    user_id = require_user(request)
+    if not isinstance(body, dict):
+        raise HTTPException(400, "Invalid request")
+    image = body.get("image")
+    if image is None or (isinstance(image, str) and not image.strip()):
+        with db_session() as db:
+            q(db, "UPDATE users SET profile_image=NULL WHERE id=:id", {"id": user_id})
+        return {"success": True, "message": "Profile picture removed", "profile_image": None}
+    if not isinstance(image, str):
+        raise HTTPException(400, "Profile picture must be an image string")
+    match = re.fullmatch(r"data:image/(jpeg|png|webp);base64,([A-Za-z0-9+/]+={0,2})", image.strip())
+    if not match:
+        raise HTTPException(400, "Unsupported image format. Use a JPEG, PNG or WebP picture.")
+    try:
+        decoded = base64.b64decode(match.group(2), validate=True)
+    except (ValueError, binascii.Error):
+        raise HTTPException(400, "Profile picture data is malformed")
+    if not decoded:
+        raise HTTPException(400, "Profile picture is empty")
+    # ~250 KB decoded cap keeps the row small; the frontend resizes to 256x256.
+    if len(decoded) > 250_000:
+        raise HTTPException(400, "Profile picture is too large. Please use a smaller image.")
+    with db_session() as db:
+        q(db, "UPDATE users SET profile_image=:img WHERE id=:id", {"id": user_id, "img": image.strip()})
+    return {"success": True, "message": "Profile picture updated", "profile_image": image.strip()}
 
 
 @app.post("/api/favorites")

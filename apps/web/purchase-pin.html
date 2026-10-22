@@ -29,6 +29,15 @@
                 <h2 class="card-title" id="profileTitle">Account Profile</h2>
                 <span class="status-badge successful" id="accountStatus">Active</span>
             </div>
+            <div class="avatar-row">
+                <div class="avatar-big" id="avatarBig" aria-label="Your profile picture">…</div>
+                <div class="avatar-actions">
+                    <label class="btn btn-secondary btn-sm" for="avatarInput">Change photo</label>
+                    <input type="file" id="avatarInput" accept="image/*" class="visually-hidden">
+                    <button type="button" class="btn btn-ghost btn-sm hidden" id="removePhotoBtn">Remove photo</button>
+                    <p class="avatar-hint">Square photos look best. We resize the picture for you.</p>
+                </div>
+            </div>
             <dl class="profile-grid">
                 <div class="profile-item"><dt>Full name</dt><dd id="profileName">—</dd></div>
                 <div class="profile-item"><dt>Phone number</dt><dd id="profilePhone">—</dd></div>
@@ -128,6 +137,101 @@
             allowOnlyDigits(input);
         });
 
+        function renderAvatar(u) {
+            const box = document.getElementById("avatarBig");
+            const removeBtn = document.getElementById("removePhotoBtn");
+            if (!box) return;
+            if (u.profile_image) {
+                box.innerHTML = '<img class="avatar-photo" alt="Your profile picture" src="' + u.profile_image + '">';
+                if (removeBtn) removeBtn.classList.remove("hidden");
+            } else {
+                const initials = (u.name || "M").trim().split(/\s+/).map(w => w[0]).slice(0, 2).join("").toUpperCase();
+                box.textContent = initials || "M";
+                if (removeBtn) removeBtn.classList.add("hidden");
+            }
+        }
+
+        /* Resize on the client to a 256x256 JPEG cover-crop, then upload. */
+        function resizeToDataUrl(file) {
+            return new Promise((resolve, reject) => {
+                if (!file.type || !file.type.startsWith("image/")) {
+                    reject(new Error("Please choose an image file."));
+                    return;
+                }
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const size = 256;
+                        const canvas = document.createElement("canvas");
+                        canvas.width = size; canvas.height = size;
+                        const ctx = canvas.getContext("2d");
+                        const scale = Math.max(size / img.width, size / img.height);
+                        const w = img.width * scale, h = img.height * scale;
+                        ctx.fillStyle = "#FFFFFF";
+                        ctx.fillRect(0, 0, size, size);
+                        ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+                        let dataUrl = canvas.toDataURL("image/jpeg", 0.88);
+                        if (dataUrl.length > 320_000) dataUrl = canvas.toDataURL("image/jpeg", 0.7);
+                        resolve(dataUrl);
+                    };
+                    img.onerror = () => reject(new Error("That file could not be read as an image."));
+                    img.src = reader.result;
+                };
+                reader.onerror = () => reject(new Error("That file could not be read."));
+                reader.readAsDataURL(file);
+            });
+        }
+
+        async function uploadAvatar(file) {
+            const ui = window.MELODEXS_UI;
+            try {
+                const dataUrl = await resizeToDataUrl(file);
+                const response = await fetch("/api/profile-image", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({ image: dataUrl })
+                });
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    throw new Error(data.message || "Could not update your picture.");
+                }
+                const stored = JSON.parse(localStorage.getItem("cheapdataUser") || "{}");
+                stored.profile_image = data.profile_image;
+                localStorage.setItem("cheapdataUser", JSON.stringify(stored));
+                renderAvatar(stored);
+                ui.mountChrome("profile");
+                ui.toast("Profile picture updated.", "success");
+            } catch (error) {
+                ui.toast(error.message || "Could not update your picture.", "error");
+            }
+        }
+
+        async function removeAvatar() {
+            const ui = window.MELODEXS_UI;
+            const confirmed = await ui.confirm("Remove photo", "Remove your profile picture?", "Remove");
+            if (!confirmed) return;
+            try {
+                const response = await fetch("/api/profile-image", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({ image: null })
+                });
+                const data = await response.json();
+                if (!response.ok || !data.success) throw new Error(data.message || "Could not remove the picture.");
+                const stored = JSON.parse(localStorage.getItem("cheapdataUser") || "{}");
+                stored.profile_image = null;
+                localStorage.setItem("cheapdataUser", JSON.stringify(stored));
+                renderAvatar(stored);
+                ui.mountChrome("profile");
+                ui.toast("Profile picture removed.", "info");
+            } catch (error) {
+                ui.toast(error.message || "Could not remove the picture.", "error");
+            }
+        }
+
         async function loadUser() {
             try {
                 const response = await fetch(`/api/user/${user.id}`, { credentials: "include" });
@@ -142,6 +246,7 @@
                 document.getElementById("profileName").textContent = freshUser.name || "—";
                 document.getElementById("profilePhone").textContent = window.MELODEXS_UI.formatPhone(freshUser.phone);
                 document.getElementById("profileEmail").textContent = freshUser.email || "—";
+                renderAvatar(freshUser);
                 document.getElementById("profileCreated").textContent = freshUser.created_at
                     ? new Date(freshUser.created_at).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })
                     : "—";
@@ -227,6 +332,13 @@
                 button.textContent = "Update PIN";
             }
         });
+
+        document.getElementById("avatarInput").addEventListener("change", function (event) {
+            const file = event.target.files && event.target.files[0];
+            event.target.value = "";
+            if (file) uploadAvatar(file);
+        });
+        document.getElementById("removePhotoBtn").addEventListener("click", removeAvatar);
 
         document.getElementById("logoutButton").addEventListener("click", function () {
             window.MELODEXS_UI.logoutWithConfirm();

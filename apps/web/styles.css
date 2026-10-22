@@ -53,6 +53,50 @@ body {
     min-height: 100vh;
 }
 
+/* =========================
+   APP SCREEN BACKGROUND
+   Reference: vibrant electric-blue dashboard surface (#0251B0)
+   with a subtle depth gradient; white content cards float on top.
+   ========================= */
+body.app-body {
+    background:
+        radial-gradient(900px 420px at 85% -8%, rgba(209, 255, 66, 0.10), transparent 55%),
+        linear-gradient(178deg, #0A5AC5 0%, var(--blue) 42%, #034899 100%);
+    background-attachment: fixed;
+    color: var(--ink);
+    min-height: 100dvh;
+    padding-bottom: calc(84px + env(safe-area-inset-bottom));
+}
+
+@media (min-width: 900px) {
+    body.app-body { padding-bottom: 48px; }
+}
+
+/* Headings that sit directly on the blue surface stay white. */
+body.app-body .hero-greeting,
+body.app-body .hero-sub,
+body.app-body .hero-title {
+    color: var(--white);
+}
+
+/* Bare section headings rendered directly on the blue surface. */
+body.app-body main > h2,
+body.app-body .screen > h2 {
+    color: var(--white);
+    font-size: 19px;
+    font-weight: 800;
+    margin: 26px 0 12px;
+}
+
+/* Small "See All" links on blue stay lime for contrast. */
+body.app-body main .see-all,
+body.app-body .see-all {
+    color: var(--lime);
+    font-weight: 600;
+    font-size: 13px;
+    text-decoration: none;
+}
+
 body.auth-body {
     background:
         radial-gradient(1200px 600px at 80% -10%, rgba(2, 81, 176, 0.35), transparent 60%),
@@ -1325,3 +1369,155 @@ table.data-table tr:hover td { background: #F7FAFE; }
     line-height: 1;
 }
 .chip-remove:hover { background: rgba(180, 35, 24, .12); }
+
+/* =========================
+   PROFILE PICTURE
+   ========================= */
+.avatar-photo {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+    display: block;
+}
+
+.appbar-avatar .avatar-photo { border: 2px solid rgba(255, 255, 255, 0.85); }
+
+.avatar-row {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    padding: 4px 0 14px;
+}
+
+.avatar-big {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: var(--lime);
+    color: var(--navy);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 26px;
+    font-weight: 800;
+    flex-shrink: 0;
+    overflow: hidden;
+}
+
+.avatar-big .avatar-photo { border: none; }
+.avatar-actions { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.avatar-hint { font-size: 12px; color: var(--muted); margin: 0; }
+.visually-hidden {
+    position: absolute;
+    width: 1px; height: 1px;
+    margin: -1px; padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap; border: 0;
+}
+
+/* ============================================================
+   PROFILE PAGE COMPONENTS (purchase-pin.html)
+   ============================================================ */
+body.app-body .hero { padding: 6px 2px 18px; }
+.hero-compact { padding-bottom: 14px; }
+.hero-hello { font-size: 17px; color: var(--white); opacity: 0.94; }
+body.app-body .hero-title.compact { font-size: 26px; margin-top: 2px; }
+body.app-body .hero-title.compact span { color: var(--lime); }
+
+.card-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 700;
+    border-radius: 999px;
+    padding: 4px 11px;
+    background: var(--success-bg);
+    color: var(--success);
+}
+
+.profile-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 14px 22px;
+    margin: 0;
+}
+
+.profile-item dt {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.profile-item dd { margin: 3px 0 0; font-weight: 600; color: var(--ink); }
+
+.form-label {
+    display: block;
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--ink);
+    margin-bottom: 6px;
+}
+
+.input {
+    width: 100%;
+    padding: 12px 14px;
+    font-size: 15px;
+    color: var(--ink);
+    background: var(--white);
+    border: 1.5px solid var(--line);
+    border-radius: 12px;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.input:focus {
+    border-color: var(--blue);
+    box-shadow: 0 0 0 3px rgba(2, 81, 176, 0.15);
+}
+
+.pin-input {
+    text-align: center;
+    letter-spacing: 0.4em;
+    font-size: 20px;
+    font-weight: 700;
+}
+
+.pin-form { max-width: 420px; }
+
+.pin-state { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
+
+.message {
+    margin-top: 14px;
+    padding: 11px 14px;
+    border-radius: 12px;
+    font-size: 13.5px;
+    font-weight: 600;
+}
+
+.message.error { background: var(--danger-bg); color: var(--danger); }
+.message.success { background: var(--success-bg); color: var(--success); }
+
+.btn-secondary {
+    background: var(--white);
+    color: var(--blue);
+    border: 1.5px solid var(--blue);
+}
+
+.btn-secondary:hover { background: #EEF4FF; }
+
+.content-pad { height: 20px; }
+
+.section-hint { font-size: 12.5px; color: var(--muted); margin-top: 6px; }
