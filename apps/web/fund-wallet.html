@@ -1,842 +1,227 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta name="api-base-url" content="">
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-<title>Fund Wallet - MELODEXS CONNECT</title>
-
-<style>
-    * {
-        box-sizing: border-box;
-        margin: 0;
-        padding: 0;
-        font-family: Arial, sans-serif;
-    }
-
-    body {
-        background: #F5F8FC;
-        color: #222;
-        min-height: 100vh;
-    }
-
-    .header {
-        background: #0251B0;
-        color: white;
-        padding: 18px 20px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-    }
-
-    .logo {
-        font-size: 22px;
-        font-weight: bold;
-    }
-
-    .back {
-        color: white;
-        text-decoration: none;
-        font-size: 14px;
-    }
-
-    .container {
-        width: 100%;
-        max-width: 600px;
-        margin: 40px auto;
-        padding: 0 15px;
-    }
-
-    .card {
-        background: white;
-        border-radius: 14px;
-        padding: 30px 25px;
-        box-shadow: 0 5px 25px rgba(0,0,0,0.08);
-    }
-
-    h1 {
-        font-size: 26px;
-        margin-bottom: 10px;
-    }
-
-    .subtitle {
-        color: #666;
-        line-height: 1.5;
-        margin-bottom: 25px;
-    }
-
-    .balance-box {
-        background: #0251B0;
-        color: white;
-        border-radius: 12px;
-        padding: 20px;
-        margin-bottom: 25px;
-    }
-
-    .balance-label {
-        font-size: 14px;
-        opacity: 0.9;
-        margin-bottom: 8px;
-    }
-
-    .balance {
-        font-size: 30px;
-        font-weight: bold;
-    }
-
-    .message {
-        display: none;
-        padding: 12px 15px;
-        border-radius: 8px;
-        margin-bottom: 20px;
-        font-size: 14px;
-        line-height: 1.4;
-    }
-
-    .message.success {
-        display: block;
-        background: #EEF5FF;
-        color: #0251B0;
-        border: 1px solid #C7D1DD;
-    }
-
-    .message.error {
-        display: block;
-        background: #fff0f0;
-        color: #b00020;
-        border: 1px solid #f0b5bd;
-    }
-
-    .message.info {
-        display: block;
-        background: #eef6ff;
-        color: #145a9c;
-        border: 1px solid #bfdaf5;
-    }
-
-    label {
-        display: block;
-        font-weight: bold;
-        margin-bottom: 8px;
-    }
-
-    .amount-input {
-        width: 100%;
-        padding: 15px;
-        font-size: 18px;
-        border: 1px solid #ccc;
-        border-radius: 8px;
-        outline: none;
-    }
-
-    .amount-input:focus {
-        border-color: #0251B0;
-    }
-
-    .quick-amounts {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 10px;
-        margin: 15px 0 22px;
-    }
-
-    .quick-btn {
-        border: 1px solid #0251B0;
-        background: white;
-        color: #0251B0;
-        padding: 11px 5px;
-        border-radius: 7px;
-        cursor: pointer;
-        font-weight: bold;
-    }
-
-    .quick-btn:hover {
-        background: #0251B0;
-        color: white;
-    }
-
-    .fund-btn {
-        width: 100%;
-        border: none;
-        background: #0251B0;
-        color: white;
-        padding: 16px;
-        border-radius: 8px;
-        font-size: 16px;
-        font-weight: bold;
-        cursor: pointer;
-    }
-
-    .fund-btn:hover {
-        background: #01428F;
-    }
-
-    .fund-btn:disabled {
-        background: #999;
-        cursor: not-allowed;
-    }
-
-    .info {
-        margin-top: 25px;
-        background: #f5f7f6;
-        border-radius: 8px;
-        padding: 15px;
-        color: #555;
-        font-size: 13px;
-        line-height: 1.6;
-    }
-
-    .loader {
-        display: none;
-        text-align: center;
-        padding: 20px 0;
-        color: #555;
-    }
-
-    @media (max-width: 500px) {
-        .container {
-            margin: 20px auto;
-        }
-
-        .card {
-            padding: 24px 20px;
-        }
-
-        .quick-amounts {
-            grid-template-columns: repeat(2, 1fr);
-        }
-
-        h1 {
-            font-size: 23px;
-        }
-
-        .balance {
-            font-size: 26px;
-        }
-    }
-</style>
-
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Fund Wallet | MELODEXS CONNECT</title>
+    <link rel="stylesheet" href="/styles.css">
     <script src="api.js"></script>
+    <script src="ui.js" defer></script>
     <meta name="theme-color" content="#0251B0">
     <link rel="manifest" href="/manifest.webmanifest">
     <script src="/pwa.js" defer></script>
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
     <link rel="icon" type="image/png" href="/icons/melodexs-connect-192.png">
 </head>
 
 <body>
 
-<header class="header">
+<header class="appbar" id="appbar"></header>
+<nav class="desktop-tabs" id="desktop-tabs" aria-label="Primary"></nav>
 
-    <div class="logo">
-        MELODEXS CONNECT
-    </div>
+<main class="page page-narrow">
 
-    <a href="dashboard.html" class="back">
-        ← Dashboard
-    </a>
+    <h1 class="fw-bold" style="font-size:22px">Top Up Balance</h1>
+    <p class="muted small">Secure wallet funding via Paystack</p>
 
-</header>
+    <section class="balance-card mt-2" aria-label="Wallet balance">
+        <div class="wallet-chip" aria-hidden="true">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0251B0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></svg>
+        </div>
+        <div class="balance-main">
+            <div class="balance-label">Wallet Balance</div>
+            <div class="balance-amount" id="balance">₦0</div>
+        </div>
+    </section>
 
-
-<main class="container">
-
-    <div class="card">
-
-        <h1>Fund Your Wallet</h1>
-
-        <p class="subtitle">
-            Add money to your MELODEXS CONNECT wallet securely and use it
-            to purchase data and airtime.
-        </p>
-
-
-        <div class="balance-box">
-
-            <div class="balance-label">
-                Current Wallet Balance
-            </div>
-
-            <div class="balance" id="balance">
-                ₦0.00
-            </div>
-
+    <section class="card mt-2">
+        <div class="state-box hidden" id="verifyState">
+            <div class="spinner" style="margin:0 auto 10px"></div>
+            <h3 id="verifyTitle">Verifying payment…</h3>
+            <p id="verifyText">Please wait while we confirm your payment.</p>
         </div>
 
-
-        <div id="message" class="message"></div>
-
-        <div id="loader" class="loader">
-            Checking payment...
-        </div>
-
-
-        <form id="fundForm">
-
-            <label for="amount">
-                Amount to Fund
-            </label>
-
-            <input
-                type="number"
-                id="amount"
-                class="amount-input"
-                placeholder="Enter amount"
-                min="100"
-                max="500000"
-                step="1"
-                required
-            >
-
-
-            <div class="quick-amounts">
-
-                <button
-                    type="button"
-                    class="quick-btn"
-                    data-amount="500"
-                >
-                    ₦500
-                </button>
-
-                <button
-                    type="button"
-                    class="quick-btn"
-                    data-amount="1000"
-                >
-                    ₦1,000
-                </button>
-
-                <button
-                    type="button"
-                    class="quick-btn"
-                    data-amount="2000"
-                >
-                    ₦2,000
-                </button>
-
-                <button
-                    type="button"
-                    class="quick-btn"
-                    data-amount="5000"
-                >
-                    ₦5,000
-                </button>
-
-                <button
-                    type="button"
-                    class="quick-btn"
-                    data-amount="10000"
-                >
-                    ₦10,000
-                </button>
-
-                <button
-                    type="button"
-                    class="quick-btn"
-                    data-amount="20000"
-                >
-                    ₦20,000
-                </button>
-
+        <form id="fundForm" novalidate>
+            <div class="card-title mb-2">Amount to fund</div>
+            <div class="field">
+                <label for="amount">Amount (₦100 – ₦500,000)</label>
+                <input id="amount" type="number" inputmode="numeric" min="100" max="500000" step="1" placeholder="e.g. 5000" required>
+                <div class="hint">Your wallet is credited only after Paystack confirms the payment on the server.</div>
             </div>
 
+            <div class="amount-grid mb-2" role="group" aria-label="Quick amounts">
+                <button type="button" class="amount-btn quick-btn" data-amount="1000">₦1,000</button>
+                <button type="button" class="amount-btn quick-btn" data-amount="2000">₦2,000</button>
+                <button type="button" class="amount-btn quick-btn" data-amount="5000">₦5,000</button>
+                <button type="button" class="amount-btn quick-btn" data-amount="10000">₦10,000</button>
+                <button type="button" class="amount-btn quick-btn" data-amount="20000">₦20,000</button>
+                <button type="button" class="amount-btn quick-btn" data-amount="50000">₦50,000</button>
+            </div>
 
-            <button
-                type="submit"
-                class="fund-btn"
-                id="fundButton"
-            >
-                Continue to Payment
-            </button>
+            <div id="message" class="hidden" role="alert"></div>
 
+            <button type="submit" class="btn btn-lime btn-block btn-lg" id="fundButton">Continue to Payment</button>
+            <p class="small muted mt-1 text-center">🔒 Payments are processed securely by Paystack. MELODEXS CONNECT never stores your card details.</p>
         </form>
-
-
-        <div class="info">
-
-            <strong>Secure Payment</strong><br>
-
-            Your payment will be processed securely through Paystack.
-            MELODEXS CONNECT will only credit your wallet after the payment
-            has been successfully verified.
-
-        </div>
-
-    </div>
+    </section>
 
 </main>
 
+<nav class="bottom-nav" id="bottom-nav" aria-label="Primary"></nav>
 
 <script>
-
-    const user = JSON.parse(
-        localStorage.getItem("cheapdataUser")
-    );
-
-    const amountInput =
-        document.getElementById("amount");
-
-    const balanceDisplay =
-        document.getElementById("balance");
-
-    const fundForm =
-        document.getElementById("fundForm");
-
-    const fundButton =
-        document.getElementById("fundButton");
-
-    const messageBox =
-        document.getElementById("message");
-
-    const loader =
-        document.getElementById("loader");
-
-
-    /*
-     * Require login
-     */
-
-    if (!user || !user.id) {
-
-        window.location.href = "login.html";
-
-    }
-
-
-    /*
-     * Display messages
-     */
-
-    function showMessage(text, type) {
-
-        messageBox.textContent = text;
-
-        messageBox.className =
-            `message ${type}`;
-
-    }
-
-
-    /*
-     * Format Naira
-     */
-
-    function formatNaira(amount) {
-
-        return "₦" +
-            Number(amount || 0).toLocaleString(
-                "en-NG",
-                {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2
-                }
-            );
-
-    }
-
-
-    /*
-     * Load wallet balance
-     */
-
-    async function loadBalance() {
-
-        try {
-
-            const response = await fetch(
-                `/api/user/${user.id}`
-            );
-
-            const data =
-                await response.json();
-
-            if (
-                response.ok &&
-                data.success &&
-                data.user
-            ) {
-
-                balanceDisplay.textContent =
-                    formatNaira(data.user.balance);
-
-            }
-
-        } catch (error) {
-
-            console.error(
-                "Unable to load balance:",
-                error
-            );
-
-        }
-
-    }
-
-
-    /*
-     * Quick amount buttons
-     */
-
-    document
-        .querySelectorAll(".quick-btn")
-        .forEach(button => {
-
-            button.addEventListener(
-                "click",
-                () => {
-
-                    amountInput.value =
-                        button.dataset.amount;
-
-                    amountInput.focus();
-
-                }
-            );
-
-        });
-
-
-    /*
-     * Start Paystack payment
-     */
-
-    fundForm.addEventListener(
-        "submit",
-        async function(event) {
-
-            event.preventDefault();
-
-            const amount =
-                Number(amountInput.value);
-
-
-            if (
-                !Number.isInteger(amount) ||
-                amount < 100
-            ) {
-
-                showMessage(
-                    "Please enter an amount of at least ₦100.",
-                    "error"
-                );
-
-                return;
-
-            }
-
-
-            if (amount > 500000) {
-
-                showMessage(
-                    "The maximum funding amount is ₦500,000.",
-                    "error"
-                );
-
-                return;
-
-            }
-
-
-            fundButton.disabled = true;
-
-            fundButton.textContent =
-                "Preparing Payment...";
-
-            messageBox.className =
-                "message";
-
-            messageBox.textContent = "";
-
-
-            try {
-
-                const response =
-                    await fetch(
-                        "/api/fund-wallet",
-                        {
-                            method: "POST",
-
-                            headers: {
-                                "Content-Type":
-                                    "application/json"
-                            },
-
-                            body: JSON.stringify({
-                                amount: amount
-                            })
-                        }
-                    );
-
-
-                const data =
-                    await response.json();
-
-
-                if (
-                    !response.ok ||
-                    !data.success
-                ) {
-
-                    showMessage(
-                        data.message ||
-                        "Unable to start payment.",
-                        "error"
-                    );
-
-                    fundButton.disabled = false;
-
-                    fundButton.textContent =
-                        "Continue to Payment";
-
-                    return;
-
-                }
-
-
-                /*
-                 * Redirect to Paystack
-                 */
-
-                if (data.authorization_url) {
-
-                    window.location.href =
-                        data.authorization_url;
-
-                    return;
-
-                }
-
-
-                showMessage(
-                    "Payment link was not returned by the server.",
-                    "error"
-                );
-
-
-                fundButton.disabled = false;
-
-                fundButton.textContent =
-                    "Continue to Payment";
-
-
-            } catch (error) {
-
-                console.error(
-                    "Payment initialization error:",
-                    error
-                );
-
-
-                showMessage(
-                    "Unable to connect to the server. Please try again.",
-                    "error"
-                );
-
-
-                fundButton.disabled = false;
-
-                fundButton.textContent =
-                    "Continue to Payment";
-
-            }
-
-        }
-    );
-
-
-    /*
-     * Verify payment when Paystack
-     * redirects the customer back.
-     */
-
-    async function verifyReturnedPayment() {
-
-        const params =
-            new URLSearchParams(
-                window.location.search
-            );
-
-        const reference =
-            params.get("reference");
-
-
-        if (!reference) {
-
-            return;
-
-        }
-
-
-        /*
-         * Remove reference from the URL
-         * after reading it.
-         */
-
-        window.history.replaceState(
-            {},
-            document.title,
-            window.location.pathname
-        );
-
-
-        fundForm.style.display = "none";
-
-        loader.style.display = "block";
-
-        showMessage(
-            "Payment received. Verifying your payment...",
-            "info"
-        );
-
-
-        try {
-
-            const response =
-                await fetch(
-                    "/api/fund-wallet/verify",
-                    {
-                        method: "POST",
-
-                        headers: {
-                            "Content-Type":
-                                "application/json"
-                        },
-
-                        body: JSON.stringify({
-                            reference: reference
-                        })
-                    }
-                );
-
-
-            const data =
-                await response.json();
-
-
-            loader.style.display = "none";
-
-
-            if (
-                response.ok &&
-                data.success
-            ) {
-
-                showMessage(
-                    data.message ||
-                    "Payment verified successfully. Your wallet has been funded.",
-                    "success"
-                );
-
-
-                /*
-                 * Update displayed balance
-                 */
-
-                if (
-                    data.user &&
-                    typeof data.user.balance !==
-                        "undefined"
-                ) {
-
-                    balanceDisplay.textContent =
-                        formatNaira(
-                            data.user.balance
-                        );
-
-                } else {
-
-                    await loadBalance();
-
-                }
-
-
-                /*
-                 * Allow another funding
-                 * after successful payment.
-                 */
-
-                setTimeout(() => {
-
-                    fundForm.style.display =
-                        "block";
-
-                    fundButton.disabled =
-                        false;
-
-                    fundButton.textContent =
-                        "Continue to Payment";
-
-                    amountInput.value = "";
-
-                }, 2500);
-
-
-            } else {
-
-                showMessage(
-                    data.message ||
-                    "Payment could not be verified. Your wallet was not credited.",
-                    "error"
-                );
-
-
-                fundForm.style.display =
-                    "block";
-
-                fundButton.disabled =
-                    false;
-
-                fundButton.textContent =
-                    "Continue to Payment";
-
-            }
-
-
-        } catch (error) {
-
-            console.error(
-                "Payment verification error:",
-                error
-            );
-
-
-            loader.style.display =
-                "none";
-
-
-            showMessage(
-                "We could not verify the payment right now. Please check your transaction history before trying again.",
-                "error"
-            );
-
-
-            fundForm.style.display =
-                "block";
-
-            fundButton.disabled =
-                false;
-
-            fundButton.textContent =
-                "Continue to Payment";
-
-        }
-
-    }
-
-
-    /*
-     * Initial page load
-     */
-
+document.addEventListener("DOMContentLoaded", () => {
+    window.MELODEXS_UI.mountChrome("wallet");
+    start();
+});
+
+let user;
+
+function start() {
+    user = window.MELODEXS_UI.currentUser();
+    if (!user || !user.id) { window.location.href = "/login.html"; return; }
     loadBalance();
-
+    wireForm();
     verifyReturnedPayment();
+}
 
+function showMessage(text, type) {
+    const UI = window.MELODEXS_UI;
+    const messageBox = document.getElementById("message");
+    messageBox.textContent = text;
+    messageBox.className = type === "success" ? "form-success" : type === "info" ? "form-error" : "form-error";
+    messageBox.classList.remove("hidden");
+    if (type === "success") UI.toast(text, "success");
+    if (type === "error") UI.toast(text, "error");
+}
+
+function formatNaira(amount) {
+    return window.MELODEXS_UI.formatNaira(amount);
+}
+
+async function loadBalance() {
+    try {
+        const response = await fetch("/api/user/" + user.id, { credentials: "include" });
+        const data = await response.json();
+        if (response.ok && data.success && data.user) {
+            user = { ...data.user, has_purchase_pin: data.has_purchase_pin };
+            localStorage.setItem("cheapdataUser", JSON.stringify(user));
+            document.getElementById("balance").textContent = formatNaira(data.user.balance);
+        }
+    } catch (error) { /* cached balance */ }
+}
+
+function wireForm() {
+    const amountInput = document.getElementById("amount");
+    const fundForm = document.getElementById("fundForm");
+    const fundButton = document.getElementById("fundButton");
+
+    document.querySelectorAll(".quick-btn").forEach(button => {
+        button.addEventListener("click", () => {
+            document.querySelectorAll(".quick-btn").forEach(b => b.classList.remove("active"));
+            button.classList.add("active");
+            amountInput.value = button.dataset.amount;
+            amountInput.focus();
+        });
+    });
+
+    fundForm.addEventListener("submit", async function (event) {
+        event.preventDefault();
+        const amount = Number(amountInput.value);
+        if (!Number.isInteger(amount) || amount < 100) { showMessage("Please enter an amount of at least ₦100.", "error"); return; }
+        if (amount > 500000) { showMessage("The maximum funding amount is ₦500,000.", "error"); return; }
+        fundButton.disabled = true;
+        fundButton.textContent = "Preparing Payment…";
+        document.getElementById("message").classList.add("hidden");
+        try {
+            const response = await fetch("/api/fund-wallet", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({ amount: amount })
+            });
+            const data = await response.json();
+            if (!response.ok || !data.success) {
+                showMessage(data.message || "Unable to start payment.", "error");
+                fundButton.disabled = false;
+                fundButton.textContent = "Continue to Payment";
+                return;
+            }
+            if (data.authorization_url) {
+                window.location.href = data.authorization_url;
+                return;
+            }
+            showMessage("Payment link was not returned by the server.", "error");
+            fundButton.disabled = false;
+            fundButton.textContent = "Continue to Payment";
+        } catch (error) {
+            showMessage("Unable to connect to the server. Please try again.", "error");
+            fundButton.disabled = false;
+            fundButton.textContent = "Continue to Payment";
+        }
+    });
+}
+
+async function verifyReturnedPayment() {
+    const UI = window.MELODEXS_UI;
+    const params = new URLSearchParams(window.location.search);
+    const reference = params.get("reference");
+    if (!reference) return;
+
+    window.history.replaceState({}, document.title, window.location.pathname);
+    document.getElementById("fundForm").classList.add("hidden");
+    document.getElementById("verifyState").classList.remove("hidden");
+    document.getElementById("verifyTitle").textContent = "Verifying payment…";
+    document.getElementById("verifyText").textContent = "Please wait while we confirm your payment.";
+
+    try {
+        const response = await fetch("/api/fund-wallet/verify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ reference: reference })
+        });
+        const data = await response.json();
+        if (response.ok && data.success) {
+            document.getElementById("verifyTitle").textContent = "Payment verified 🎉";
+            document.getElementById("verifyText").textContent = data.message || "Payment verified successfully. Your wallet has been funded.";
+            UI.toast("Wallet funded successfully.", "success");
+            if (data.user && typeof data.user.balance !== "undefined") {
+                document.getElementById("balance").textContent = formatNaira(data.user.balance);
+            } else {
+                await loadBalance();
+            }
+            setTimeout(() => {
+                document.getElementById("verifyState").classList.add("hidden");
+                document.getElementById("fundForm").classList.remove("hidden");
+                const fundButton = document.getElementById("fundButton");
+                fundButton.disabled = false;
+                fundButton.textContent = "Continue to Payment";
+                document.getElementById("amount").value = "";
+            }, 2500);
+        } else {
+            document.getElementById("verifyState").classList.add("hidden");
+            document.getElementById("fundForm").classList.remove("hidden");
+            showMessage(data.message || "Payment could not be verified. Your wallet was not credited.", "error");
+            const fundButton = document.getElementById("fundButton");
+            fundButton.disabled = false;
+            fundButton.textContent = "Continue to Payment";
+        }
+    } catch (error) {
+        document.getElementById("verifyState").classList.add("hidden");
+        document.getElementById("fundForm").classList.remove("hidden");
+        showMessage("We could not verify the payment right now. Please check your transaction history before trying again.", "error");
+        const fundButton = document.getElementById("fundButton");
+        fundButton.disabled = false;
+        fundButton.textContent = "Continue to Payment";
+    }
+}
 </script>
 
 </body>
+
 </html>

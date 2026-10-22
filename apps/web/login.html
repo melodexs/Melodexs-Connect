@@ -1,420 +1,111 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta name="api-base-url" content="">
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-    <title>Login - MELODEXS CONNECT</title>
-
-    <style>
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
-
-        body {
-            font-family: Arial, sans-serif;
-            background: #F5F8FC;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
-
-        header {
-            background: white;
-            padding: 18px 7%;
-            border-bottom: 1px solid #e5e7eb;
-        }
-
-        .logo {
-            color: #0251B0;
-            font-size: 25px;
-            font-weight: bold;
-            text-decoration: none;
-        }
-
-        .container {
-            width: 100%;
-            max-width: 450px;
-            margin: 60px auto;
-            padding: 0 20px;
-        }
-
-        .login-card {
-            background: white;
-            padding: 35px;
-            border-radius: 14px;
-            box-shadow: 0 5px 25px rgba(0, 0, 0, 0.08);
-        }
-
-        h1 {
-            text-align: center;
-            margin-bottom: 10px;
-            color: #111827;
-        }
-
-        .subtitle {
-            text-align: center;
-            color: #6b7280;
-            margin-bottom: 30px;
-        }
-
-        label {
-            display: block;
-            margin-bottom: 7px;
-            font-weight: bold;
-            color: #374151;
-        }
-
-        input {
-            width: 100%;
-            padding: 13px;
-            border: 1px solid #d1d5db;
-            border-radius: 8px;
-            font-size: 15px;
-            outline: none;
-            margin-bottom: 16px;
-        }
-
-        input:focus {
-            border-color: #0251B0;
-        }
-
-        .password-container {
-            position: relative;
-        }
-
-        .password-container input {
-            margin-bottom: 0;
-        }
-
-        .forgot-password {
-            display: block;
-            text-align: right;
-            margin-top: 8px;
-            margin-bottom: 20px;
-            color: #0251B0;
-            text-decoration: none;
-            font-size: 14px;
-            font-weight: bold;
-        }
-
-        .forgot-password:hover {
-            text-decoration: underline;
-        }
-
-        button {
-            width: 100%;
-            padding: 14px;
-            border: none;
-            border-radius: 8px;
-            background: #0251B0;
-            color: white;
-            font-size: 16px;
-            font-weight: bold;
-            cursor: pointer;
-        }
-
-        button:hover {
-            background: #0251B0;
-        }
-
-        button:disabled {
-            background: #9ca3af;
-            cursor: not-allowed;
-        }
-
-        .message {
-            margin-top: 15px;
-            padding: 12px;
-            border-radius: 8px;
-            display: none;
-            text-align: center;
-            font-size: 14px;
-        }
-
-        .error {
-            background: #fee2e2;
-            color: #b91c1c;
-        }
-
-        .success {
-            background: #EAF8C7;
-            color: #0251B0;
-        }
-
-        .register-text {
-            text-align: center;
-            margin-top: 25px;
-            color: #6b7280;
-        }
-
-        .register-text a {
-            color: #0251B0;
-            font-weight: bold;
-            text-decoration: none;
-        }
-
-        .register-text a:hover {
-            text-decoration: underline;
-        }
-
-        .back-home {
-            display: block;
-            text-align: center;
-            margin-top: 20px;
-            color: #6b7280;
-            text-decoration: none;
-            font-size: 14px;
-        }
-
-        .back-home:hover {
-            color: #0251B0;
-        }
-
-        footer {
-            margin-top: auto;
-            background: #111827;
-            color: white;
-            text-align: center;
-            padding: 20px;
-            font-size: 14px;
-        }
-
-        @media (max-width: 500px) {
-            .container {
-                margin: 35px auto;
-            }
-
-            .login-card {
-                padding: 25px 20px;
-            }
-        }
-    </style>
-    <script src="api.js"></script>
-    <meta name="theme-color" content="#0251B0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Login | MELODEXS CONNECT</title>
+    <link rel="stylesheet" href="styles.css">
     <link rel="manifest" href="/manifest.webmanifest">
-    <script src="/pwa.js" defer></script>
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="theme-color" content="#0251B0">
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
-    <link rel="icon" type="image/png" href="/icons/melodexs-connect-192.png">
 </head>
 
-<body>
+<body class="auth-body">
+    <nav class="landing-nav" aria-label="Main">
+        <a class="landing-logo" href="/"><span class="logo-mark">M</span>MELODEXS CONNECT</a>
+    </nav>
 
-<header>
-    <a href="/" class="logo" aria-label="MELODEXS CONNECT">
-        <span class="logo-main">MELODEXS</span>
-        <span class="logo-connect">CONNECT</span>
-    </a>
-</header>
+    <header class="auth-hero">
+        <h1>Welcome back to <span class="auth-accent">MELODEXS CONNECT</span></h1>
+        <p>Sign in to buy affordable data, airtime and more.</p>
+    </header>
 
-<div class="container">
+    <main class="auth-card" aria-labelledby="authTitle">
+        <h2 class="form-label" id="authTitle">Sign in to your account</h2>
 
-    <div class="login-card">
-
-        <h1>Welcome Back</h1>
-
-        <p class="subtitle">
-            Login to your MELODEXS CONNECT account
-        </p>
-
-        <form id="loginForm">
-
-            <label for="email">
-                Email Address
+        <form id="loginForm" novalidate>
+            <label class="field">
+                <span class="field-label">Email address</span>
+                <input id="email" class="input" type="email" autocomplete="email" placeholder="you@example.com" required>
             </label>
-
-            <input
-                type="email"
-                id="email"
-                name="email"
-                placeholder="Enter your email"
-                autocomplete="email"
-                required
-            >
-
-            <label for="password">
-                Password
+            <label class="field">
+                <span class="field-label">Password</span>
+                <input id="password" class="input" type="password" autocomplete="current-password" placeholder="Your password" required>
             </label>
-
-            <div class="password-container">
-                <input
-                    type="password"
-                    id="password"
-                    name="password"
-                    placeholder="Enter your password"
-                    autocomplete="current-password"
-                    required
-                >
-            </div>
-
-            <a
-                href="/forgot-password.html"
-                class="forgot-password"
-            >
-                Forgot Password?
-            </a>
-
-            <button type="submit" id="loginButton">
-                Login
-            </button>
-
-            <div id="message" class="message"></div>
-
+            <button type="submit" class="btn btn-primary btn-block" id="loginButton">Login</button>
         </form>
 
-        <p class="register-text">
-            Don't have an account?
-            <a href="/register.html">
-                Create Account
-            </a>
+        <p class="message" id="message" role="status" aria-live="polite" hidden></p>
+
+        <p class="auth-alt">
+            <a href="/forgot-password.html">Forgot password?</a>
         </p>
+        <p class="auth-alt">
+            New to MELODEXS CONNECT?
+            <a href="/register.html">Create an account</a>
+        </p>
+    </main>
 
-        <a href="/" class="back-home">
-            ← Back to Homepage
-        </a>
+    <script src="api.js"></script>
+    <script src="/pwa.js" defer></script>
+    <script>
+        const loginForm = document.getElementById("loginForm");
+        const loginButton = document.getElementById("loginButton");
+        const message = document.getElementById("message");
 
-    </div>
-
-</div>
-
-<footer>
-    © 2026 MELODEXS CONNECT. All rights reserved.
-</footer>
-
-<script>
-    const loginForm = document.getElementById("loginForm");
-    const loginButton = document.getElementById("loginButton");
-    const message = document.getElementById("message");
-
-    function showMessage(text, type) {
-        message.textContent = text;
-        message.className = "message " + type;
-        message.style.display = "block";
-    }
-
-    loginForm.addEventListener("submit", async function (event) {
-
-        event.preventDefault();
-
-        const email = document
-            .getElementById("email")
-            .value
-            .trim()
-            .toLowerCase();
-
-        const password = document
-            .getElementById("password")
-            .value;
-
-        message.style.display = "none";
-        message.textContent = "";
-
-        loginButton.disabled = true;
-        loginButton.textContent = "Logging in...";
-
-        try {
-
-            const response = await fetch("/api/login", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "Accept": "application/json"
-                },
-                credentials: "include",
-                body: JSON.stringify({
-                    email: email,
-                    password: password
-                })
-            });
-
-            /*
-             * Read the response as text first.
-             * This prevents:
-             * "JSON.parse: unexpected character..."
-             */
-            const responseText = await response.text();
-
-            let data;
-
-            try {
-                data = JSON.parse(responseText);
-            } catch (jsonError) {
-
-                console.error(
-                    "Server returned non-JSON response:",
-                    responseText
-                );
-
-                throw new Error(
-                    "The server returned an invalid response. " +
-                    "Please make sure the MELODEXS CONNECT server is running correctly."
-                );
-            }
-
-            if (!response.ok || !data.success) {
-
-                throw new Error(
-                    data.message || "Invalid email or password."
-                );
-            }
-
-            /*
-             * Save logged-in user locally.
-             */
-            if (data.user) {
-
-                localStorage.setItem(
-                    "cheapdataUser",
-                    JSON.stringify(data.user)
-                );
-
-                /*
-                 * Also keep the user ID separately.
-                 */
-                if (data.user.id) {
-                    localStorage.setItem(
-                        "cheapdataUserId",
-                        String(data.user.id)
-                    );
-                }
-            }
-
-            showMessage(
-                "Login successful! Redirecting...",
-                "success"
-            );
-
-            /*
-             * Give the session cookie a moment to be stored
-             * before going to the dashboard.
-             */
-            setTimeout(function () {
-                window.location.href = "/dashboard.html";
-            }, 700);
-
-        } catch (error) {
-
-            console.error("Login error:", error);
-
-            showMessage(
-                error.message ||
-                "Unable to login. Please try again.",
-                "error"
-            );
-
-        } finally {
-
-            loginButton.disabled = false;
-            loginButton.textContent = "Login";
+        function showMessage(text, type) {
+            message.textContent = text;
+            message.className = "message " + type;
+            message.hidden = false;
         }
 
-    });
-</script>
-
+        loginForm.addEventListener("submit", async function (event) {
+            event.preventDefault();
+            const email = document.getElementById("email").value.trim().toLowerCase();
+            const password = document.getElementById("password").value;
+            message.hidden = true;
+            message.textContent = "";
+            loginButton.disabled = true;
+            loginButton.textContent = "Signing in…";
+            try {
+                const response = await fetch("/api/login", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "Accept": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({ email: email, password: password })
+                });
+                // Read as text first so a non-JSON response never breaks parsing.
+                const responseText = await response.text();
+                let data;
+                try {
+                    data = JSON.parse(responseText);
+                } catch (jsonError) {
+                    throw new Error("The server returned an invalid response. Please try again in a moment.");
+                }
+                if (!response.ok || !data.success) {
+                    throw new Error(data.message || "Invalid email or password.");
+                }
+                if (data.user) {
+                    localStorage.setItem("cheapdataUser", JSON.stringify(data.user));
+                    if (data.user.id) {
+                        localStorage.setItem("cheapdataUserId", String(data.user.id));
+                    }
+                }
+                showMessage("Login successful! Redirecting…", "success");
+                // Give the session cookie a moment before redirecting.
+                setTimeout(function () {
+                    window.location.href = "/dashboard.html";
+                }, 700);
+            } catch (error) {
+                showMessage(error.message || "Unable to login. Please try again.", "error");
+            } finally {
+                loginButton.disabled = false;
+                loginButton.textContent = "Login";
+            }
+        });
+    </script>
 </body>
+
 </html>

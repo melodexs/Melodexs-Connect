@@ -1,981 +1,300 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta name="api-base-url" content="">
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-    <title>Buy Airtime - MELODEXS CONNECT</title>
-
-    <style>
-
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-            font-family: Arial, sans-serif;
-        }
-
-        body {
-            background: #F5F8FC;
-            color: #111827;
-        }
-
-        header {
-            background: #0251B0;
-            color: white;
-            padding: 18px 20px;
-        }
-
-        header h1 {
-            font-size: 24px;
-        }
-
-        .container {
-            max-width: 700px;
-            margin: 30px auto;
-            padding: 20px;
-        }
-
-        .back {
-            display: inline-block;
-            margin-bottom: 20px;
-            color: #0251B0;
-            text-decoration: none;
-            font-weight: bold;
-        }
-
-        .card {
-            background: white;
-            padding: 25px;
-            border-radius: 15px;
-            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.08);
-        }
-
-        h2 {
-            margin-bottom: 20px;
-        }
-
-        .balance {
-            background: #EEF5FF;
-            padding: 15px;
-            border-radius: 10px;
-            margin-bottom: 25px;
-            color: #0251B0;
-            font-weight: bold;
-        }
-
-        label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: bold;
-        }
-
-        input {
-            width: 100%;
-            padding: 14px;
-            border: 1px solid #d1d5db;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            font-size: 16px;
-            outline: none;
-        }
-
-        input:focus {
-            border-color: #0251B0;
-        }
-
-        .pin-input {
-            letter-spacing: 8px;
-            text-align: center;
-            font-weight: bold;
-        }
-
-        .pin-note {
-            color: #6b7280;
-            font-size: 13px;
-            margin-top: -12px;
-            margin-bottom: 20px;
-        }
-
-        .networks {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 10px;
-            margin-bottom: 25px;
-        }
-
-        .network {
-            padding: 13px 5px;
-            border: 2px solid #ddd;
-            background: white;
-            border-radius: 8px;
-            cursor: pointer;
-            font-weight: bold;
-        }
-
-        .network:hover {
-            border-color: #0251B0;
-        }
-
-        .network.active {
-            border-color: #0251B0;
-            background: #EEF5FF;
-            color: #0251B0;
-        }
-
-        .quick-amounts {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 10px;
-            margin-bottom: 20px;
-        }
-
-        .amount-btn {
-            padding: 12px 5px;
-            border: 2px solid #ddd;
-            background: white;
-            border-radius: 8px;
-            cursor: pointer;
-            font-weight: bold;
-        }
-
-        .amount-btn:hover {
-            border-color: #0251B0;
-        }
-
-        .summary {
-            background: #f3f4f6;
-            padding: 18px;
-            border-radius: 10px;
-            margin-top: 10px;
-            line-height: 1.9;
-        }
-
-        .summary-row {
-            display: flex;
-            justify-content: space-between;
-            gap: 20px;
-        }
-
-        .summary-row strong {
-            color: #0251B0;
-        }
-
-        .buy-btn {
-            width: 100%;
-            margin-top: 20px;
-            padding: 15px;
-            border: none;
-            border-radius: 10px;
-            background: #0251B0;
-            color: white;
-            font-size: 17px;
-            font-weight: bold;
-            cursor: pointer;
-        }
-
-        .buy-btn:hover {
-            background: #01428F;
-        }
-
-        .buy-btn:disabled {
-            background: #9ca3af;
-            cursor: not-allowed;
-        }
-
-        .message {
-            margin-top: 15px;
-            padding: 12px;
-            border-radius: 8px;
-            display: none;
-            line-height: 1.6;
-        }
-
-        .success {
-            display: block;
-            background: #EAF8C7;
-            color: #0251B0;
-        }
-
-        .error {
-            display: block;
-            background: #fee2e2;
-            color: #991b1b;
-        }
-
-        @media (max-width: 600px) {
-
-            .networks {
-                grid-template-columns: repeat(2, 1fr);
-            }
-
-            .quick-amounts {
-                grid-template-columns: repeat(2, 1fr);
-            }
-
-        }
-
-    </style>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Buy Airtime | MELODEXS CONNECT</title>
+    <link rel="stylesheet" href="/styles.css">
     <script src="api.js"></script>
+    <script src="ui.js" defer></script>
     <meta name="theme-color" content="#0251B0">
     <link rel="manifest" href="/manifest.webmanifest">
     <script src="/pwa.js" defer></script>
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
     <link rel="icon" type="image/png" href="/icons/melodexs-connect-192.png">
 </head>
 
 <body>
 
-<header>
-    <h1>MELODEXS CONNECT</h1>
-</header>
+<header class="appbar" id="appbar"></header>
+<nav class="desktop-tabs" id="desktop-tabs" aria-label="Primary"></nav>
 
-<div class="container">
+<main class="page page-narrow">
 
-    <a href="/dashboard.html" class="back">
-        ← Back to Dashboard
-    </a>
+    <h1 class="fw-bold" style="font-size:22px">Buy Airtime</h1>
+    <p class="muted small">Instant airtime top-up for any network</p>
 
-    <div class="card">
-
-        <h2>Buy Airtime</h2>
-
-        <div class="balance">
-            Wallet Balance:
-            <span id="balance">₦0</span>
-        </div>
-
-        <!-- PHONE NUMBER -->
-
-        <label>
-            Phone Number
-        </label>
-
-        <input
-            type="tel"
-            id="phone"
-            placeholder="08012345678"
-            maxlength="11"
-            inputmode="numeric"
-        >
-
-        <!-- NETWORK -->
-
-        <label>
-            Select Network
-        </label>
-
-        <div class="networks">
-
-            <button
-                type="button"
-                class="network active"
-                onclick="selectNetwork('MTN', this)"
-            >
-                MTN
-            </button>
-
-            <button
-                type="button"
-                class="network"
-                onclick="selectNetwork('Airtel', this)"
-            >
-                Airtel
-            </button>
-
-            <button
-                type="button"
-                class="network"
-                onclick="selectNetwork('Glo', this)"
-            >
-                Glo
-            </button>
-
-            <button
-                type="button"
-                class="network"
-                onclick="selectNetwork('9mobile', this)"
-            >
-                9mobile
-            </button>
-
-        </div>
-
-        <!-- AIRTIME AMOUNT -->
-
-        <label>
-            Airtime Amount
-        </label>
-
-        <input
-            type="number"
-            id="amount"
-            placeholder="Enter amount"
-            min="50"
-            max="50000"
-            oninput="updateSummary()"
-        >
-
-        <!-- QUICK AMOUNTS -->
-
-        <div class="quick-amounts">
-
-            <button
-                type="button"
-                class="amount-btn"
-                onclick="setAmount(100)"
-            >
-                ₦100
-            </button>
-
-            <button
-                type="button"
-                class="amount-btn"
-                onclick="setAmount(200)"
-            >
-                ₦200
-            </button>
-
-            <button
-                type="button"
-                class="amount-btn"
-                onclick="setAmount(500)"
-            >
-                ₦500
-            </button>
-
-            <button
-                type="button"
-                class="amount-btn"
-                onclick="setAmount(1000)"
-            >
-                ₦1,000
-            </button>
-
-        </div>
-
-        <!-- PURCHASE PIN -->
-
-        <label>
-            Purchase PIN
-        </label>
-
-        <input
-            type="password"
-            id="purchasePin"
-            class="pin-input"
-            placeholder="••••"
-            maxlength="4"
-            inputmode="numeric"
-            autocomplete="off"
-        >
-
-        <div class="pin-note">
-            Enter your 4-digit Purchase PIN to authorize this purchase.
-        </div>
-
-        <!-- SUMMARY -->
-
-        <div class="summary">
-
-            <strong>Order Summary</strong>
-
-            <div class="summary-row">
-                <span>Network:</span>
-
-                <strong id="summaryNetwork">
-                    MTN
-                </strong>
-            </div>
-
-            <div class="summary-row">
-                <span>Phone:</span>
-
-                <strong id="summaryPhone">
-                    Not entered
-                </strong>
-            </div>
-
-            <div class="summary-row">
-                <span>Amount:</span>
-
-                <strong id="summaryAmount">
-                    ₦0
-                </strong>
-            </div>
-
-        </div>
-
-        <!-- BUY BUTTON -->
-
-        <button
-            type="button"
-            id="buyButton"
-            class="buy-btn"
-            onclick="purchaseAirtime()"
-            disabled
-        >
-            Enter Airtime Amount
-        </button>
-
-        <!-- MESSAGE -->
-
-        <div
-            id="message"
-            class="message"
-        ></div>
-
+    <div class="card mt-2">
+        <div class="confirm-row"><span class="k">Wallet balance</span><span class="v" id="balance">₦0</span></div>
     </div>
 
-</div>
+    <div class="card mt-2">
+        <div class="field">
+            <label for="phone">Recipient phone number</label>
+            <input id="phone" type="tel" inputmode="numeric" autocomplete="tel" placeholder="e.g. 08012345678" maxlength="14">
+        </div>
+        <div id="favoritesRow" class="hidden">
+            <label class="small fw-bold muted">Saved recipients</label>
+            <div class="chip-row mt-1" id="favoritesList"></div>
+        </div>
+
+        <div class="field mt-2">
+            <label>Network</label>
+            <div class="chip-row" id="networks" role="group" aria-label="Network"></div>
+        </div>
+
+        <div class="field mt-2">
+            <label for="amount">Amount (₦50 – ₦50,000)</label>
+            <div class="amount-grid" id="amountGrid" role="group" aria-label="Quick amounts"></div>
+            <input id="amount" type="number" inputmode="numeric" min="50" max="50000" step="1" placeholder="Custom amount" class="mt-2" style="width:100%;padding:13px 14px;border:1.5px solid var(--line);border-radius:12px;font-size:15px">
+        </div>
+
+        <div class="field">
+            <label for="purchasePin">Purchase PIN</label>
+            <input id="purchasePin" type="password" inputmode="numeric" maxlength="4" placeholder="4-digit PIN" autocomplete="off">
+        </div>
+
+        <div id="message" class="form-error hidden" role="alert"></div>
+
+        <div class="confirm-row"><span class="k">Recipient</span><span class="v" id="summaryPhone">Not entered</span></div>
+        <div class="confirm-row"><span class="k">Network</span><span class="v" id="summaryNetwork">MTN</span></div>
+        <div class="confirm-row"><span class="k">Amount payable</span><span class="v" id="summaryAmount">₦0</span></div>
+
+        <button class="btn btn-primary btn-block btn-lg mt-2" id="buyButton" disabled>Enter Airtime Amount</button>
+        <button class="btn btn-ghost btn-sm mt-2" id="saveFavoriteBtn" type="button">☆ Save this number</button>
+    </div>
+
+</main>
+
+<div class="modal-backdrop" id="confirm-modal" role="dialog" aria-modal="true"></div>
+
+<nav class="bottom-nav" id="bottom-nav" aria-label="Primary"></nav>
 
 <script>
+document.addEventListener("DOMContentLoaded", () => {
+    window.MELODEXS_UI.mountChrome("plans");
+    start();
+});
 
-    // =========================
-    // LOGIN CHECK
-    // =========================
+let user;
+let selectedNetwork = "MTN";
+let airtimeRequestId = "";
+let myFavorites = [];
+const ui = () => window.MELODEXS_UI;
+const QUICK_AMOUNTS = [100, 200, 500, 1000, 2000, 5000];
 
-    const savedUser =
-        localStorage.getItem("cheapdataUser");
+async function start() {
+    const session = await ui().requireSession();
+    if (!session) return;
+    user = ui().currentUser();
+    if (!user) { window.location.href = "/login.html"; return; }
 
-    if (!savedUser) {
+    await loadBalance();
+    await loadFavorites();
 
-        window.location.href =
-            "/login.html";
+    renderNetworks();
+    const grid = document.getElementById("amountGrid");
+    grid.innerHTML = QUICK_AMOUNTS.map(a => '<button type="button" class="amount-btn" data-amount="' + a + '">₦' + a.toLocaleString() + "</button>").join("");
+    grid.querySelectorAll(".amount-btn").forEach(button =>
+        button.addEventListener("click", () => {
+            grid.querySelectorAll(".amount-btn").forEach(b => b.classList.remove("active"));
+            button.classList.add("active");
+            document.getElementById("amount").value = button.dataset.amount;
+            updateSummary();
+        }));
 
+    document.getElementById("phone").addEventListener("input", updateSummary);
+    document.getElementById("amount").addEventListener("input", () => {
+        document.querySelectorAll(".amount-btn").forEach(b => b.classList.remove("active"));
+        updateSummary();
+    });
+    document.getElementById("purchasePin").addEventListener("input", function () { this.value = this.value.replace(/\D/g, "").slice(0, 4); });
+    document.getElementById("buyButton").addEventListener("click", purchaseAirtime);
+    document.getElementById("saveFavoriteBtn").addEventListener("click", saveFavorite);
+}
+
+async function loadBalance() {
+    try {
+        const response = await fetch("/api/user/" + user.id, { credentials: "include" });
+        const data = await response.json();
+        if (data.success) {
+            user = { ...data.user, has_purchase_pin: data.has_purchase_pin };
+            localStorage.setItem("cheapdataUser", JSON.stringify(user));
+            document.getElementById("balance").textContent = ui().formatNaira(user.balance);
+        }
+    } catch (error) { /* cached balance */ }
+}
+
+function renderNetworks() {
+    const container = document.getElementById("networks");
+    container.innerHTML = ui().NETWORKS.map(n =>
+        '<button type="button" class="chip network ' + (n.slug === selectedNetwork ? "active" : "") + '" data-network="' + n.slug + '">' +
+        '<span class="chip-dot" style="background:' + n.color + '"></span>' + n.slug + "</button>").join("");
+    container.querySelectorAll(".network").forEach(button =>
+        button.addEventListener("click", () => {
+            selectedNetwork = button.dataset.network;
+            container.querySelectorAll(".network").forEach(b => b.classList.remove("active"));
+            button.classList.add("active");
+            document.getElementById("summaryNetwork").textContent = selectedNetwork;
+        }));
+}
+
+async function loadFavorites() {
+    try {
+        const response = await fetch("/api/favorites", { credentials: "include" });
+        const data = await response.json();
+        if (!data.success) return;
+        myFavorites = data.favorites || [];
+        renderFavorites();
+    } catch (error) { /* optional */ }
+}
+
+function renderFavorites() {
+    const row = document.getElementById("favoritesRow");
+    const list = document.getElementById("favoritesList");
+    if (!myFavorites.length) { row.classList.add("hidden"); return; }
+    row.classList.remove("hidden");
+    list.innerHTML = "";
+    myFavorites.forEach(fav => {
+        const wrap = document.createElement("span");
+        wrap.className = "chip-wrap";
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "chip";
+        chip.innerHTML = '<span aria-hidden="true">★</span> ' + ui().esc(fav.label || fav.phone);
+        chip.title = fav.network ? fav.network + " · " + fav.phone : fav.phone;
+        chip.addEventListener("click", () => {
+            document.getElementById("phone").value = fav.phone;
+            if (fav.network && fav.network !== selectedNetwork) {
+                const btn = document.querySelector('.network[data-network="' + fav.network + '"]');
+                if (btn) btn.click();
+            }
+            updateSummary();
+            ui().toast("Recipient filled. Review and confirm your purchase.", "info");
+        });
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "chip-remove";
+        remove.setAttribute("aria-label", "Remove " + (fav.label || fav.phone) + " from favorites");
+        remove.innerHTML = "&#10005;";
+        remove.addEventListener("click", async () => {
+            const confirmed = await ui().confirm("Remove favorite?", (fav.label || fav.phone) + " will be removed from your saved recipients.", "Remove");
+            if (!confirmed) return;
+            try {
+                const response = await fetch("/api/favorites/" + fav.id, { method: "DELETE", credentials: "include" });
+                if (!response.ok) throw new Error();
+                ui().toast("Favorite removed.", "success");
+                await loadFavorites();
+            } catch (error) {
+                ui().toast("Could not remove this favorite.", "error");
+            }
+        });
+        wrap.appendChild(chip);
+        wrap.appendChild(remove);
+        list.appendChild(wrap);
+    });
+}
+
+async function saveFavorite() {
+    const phone = document.getElementById("phone").value.trim();
+    if (!/^0[7-9][0-1][0-9]{8}$/.test(phone)) { showMessage("Enter a valid recipient number before saving it.", "error"); return; }
+    try {
+        const response = await fetch("/api/favorites", {
+            method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+            body: JSON.stringify({ phone: phone, network: selectedNetwork, label: "" })
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.message || "Could not save");
+        ui().toast("Recipient saved.", "success");
+        await loadFavorites();
+    } catch (error) {
+        ui().toast(error.message || "Could not save this recipient.", "error");
     }
+}
 
-    let user;
+function updateSummary() {
+    const phone = document.getElementById("phone").value;
+    const amount = Number(document.getElementById("amount").value);
+    document.getElementById("summaryPhone").textContent = phone || "Not entered";
+    document.getElementById("summaryAmount").textContent = amount ? ui().formatNaira(amount) : "₦0";
+    const buyButton = document.getElementById("buyButton");
+    if (amount >= 50 && amount <= 50000) {
+        buyButton.disabled = false;
+        buyButton.textContent = "Buy Airtime for " + ui().formatNaira(amount);
+    } else {
+        buyButton.disabled = true;
+        buyButton.textContent = "Enter Airtime Amount";
+    }
+}
+
+function showMessage(text, type) {
+    const message = document.getElementById("message");
+    message.textContent = text;
+    message.classList.remove("hidden");
+    message.className = type === "success" ? "form-success" : "form-error";
+    message.scrollIntoView({ behavior: "smooth", block: "center" });
+    ui().toast(text, type === "success" ? "success" : "error");
+}
+
+async function purchaseAirtime() {
+    const phone = document.getElementById("phone").value.trim();
+    const amount = Number(document.getElementById("amount").value);
+    const pin = document.getElementById("purchasePin").value.trim();
+    const buyButton = document.getElementById("buyButton");
+    document.getElementById("message").classList.add("hidden");
+
+    if (!/^0[7-9][0-1][0-9]{8}$/.test(phone)) { showMessage("Please enter a valid Nigerian phone number.", "error"); return; }
+    if (!Number.isFinite(amount) || amount < 50 || amount > 50000) { showMessage("Airtime amount must be between ₦50 and ₦50,000.", "error"); return; }
+    if (!/^\d{4}$/.test(pin)) { showMessage("Please enter your 4-digit Purchase PIN.", "error"); return; }
+    if (Number(user.balance) < amount) { showMessage("Insufficient wallet balance. Top up your wallet first.", "error"); return; }
+
+    const confirmed = await ui().confirm("Confirm airtime purchase", "Buy " + ui().formatNaira(amount) + " " + selectedNetwork + " airtime for " + phone + "?", "Pay " + ui().formatNaira(amount));
+    if (!confirmed) return;
+
+    buyButton.disabled = true;
+    buyButton.textContent = "Processing…";
+    if (!airtimeRequestId) airtimeRequestId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : Date.now() + "-" + Math.random().toString(16).slice(2);
 
     try {
-
-        user =
-            JSON.parse(savedUser);
-
-    } catch (error) {
-
-        localStorage.removeItem(
-            "cheapdataUser"
-        );
-
-        window.location.href =
-            "/login.html";
-
-    }
-
-
-    // =========================
-    // VARIABLES
-    // =========================
-
-    let selectedNetwork = "MTN";
-
-
-    // =========================
-    // LOAD BALANCE
-    // =========================
-
-    async function loadBalance() {
-
-        try {
-
-            const response =
-                await fetch(
-                    `/api/user/${user.id}`
-                );
-
-            const data =
-                await response.json();
-
-            if (data.success) {
-
-                user =
-                    data.user;
-
-                localStorage.setItem(
-                    "cheapdataUser",
-                    JSON.stringify(user)
-                );
-
-                document
-                    .getElementById("balance")
-                    .textContent =
-                    `₦${Number(user.balance).toLocaleString()}`;
-
-            }
-
-        } catch (error) {
-
-            console.error(
-                "Balance error:",
-                error
-            );
-
-        }
-
-    }
-
-    loadBalance();
-
-
-    // =========================
-    // SELECT NETWORK
-    // =========================
-
-    function selectNetwork(
-        network,
-        button
-    ) {
-
-        selectedNetwork =
-            network;
-
-        document
-            .querySelectorAll(".network")
-            .forEach(btn => {
-
-                btn.classList.remove(
-                    "active"
-                );
-
-            });
-
-        button.classList.add(
-            "active"
-        );
-
-        document
-            .getElementById(
-                "summaryNetwork"
-            )
-            .textContent =
-            network;
-
-    }
-
-
-    // =========================
-    // SET QUICK AMOUNT
-    // =========================
-
-    function setAmount(amount) {
-
-        document
-            .getElementById("amount")
-            .value =
-            amount;
-
-        updateSummary();
-
-    }
-
-
-    // =========================
-    // PHONE SUMMARY
-    // =========================
-
-    document
-        .getElementById("phone")
-        .addEventListener(
-            "input",
-            updateSummary
-        );
-
-
-    // =========================
-    // UPDATE SUMMARY
-    // =========================
-
-    function updateSummary() {
-
-        const phone =
-            document
-                .getElementById("phone")
-                .value;
-
-        const amount =
-            Number(
-                document
-                    .getElementById("amount")
-                    .value
-            );
-
-        document
-            .getElementById(
-                "summaryPhone"
-            )
-            .textContent =
-            phone ||
-            "Not entered";
-
-        document
-            .getElementById(
-                "summaryAmount"
-            )
-            .textContent =
-            amount
-                ? `₦${amount.toLocaleString()}`
-                : "₦0";
-
-        const buyButton =
-            document.getElementById(
-                "buyButton"
-            );
-
-        if (
-            amount >= 50 &&
-            amount <= 50000
-        ) {
-
-            buyButton.disabled =
-                false;
-
-            buyButton.textContent =
-                `Buy Airtime for ₦${amount.toLocaleString()}`;
-
-        } else {
-
-            buyButton.disabled =
-                true;
-
-            buyButton.textContent =
-                "Enter Airtime Amount";
-
-        }
-
-    }
-
-
-    // =========================
-    // PURCHASE PIN INPUT
-    // =========================
-
-    document
-        .getElementById("purchasePin")
-        .addEventListener(
-            "input",
-            function () {
-
-                this.value =
-                    this.value
-                        .replace(/\D/g, "")
-                        .slice(0, 4);
-
-            }
-        );
-
-
-    // =========================
-    // SHOW MESSAGE
-    // =========================
-
-    function showMessage(
-        text,
-        type
-    ) {
-
-        const message =
-            document.getElementById(
-                "message"
-            );
-
-        message.textContent =
-            text;
-
-        message.className =
-            `message ${type}`;
-
-        message.style.display =
-            "block";
-
-    }
-
-
-    // =========================
-    // PURCHASE AIRTIME
-    // =========================
-
-    async function purchaseAirtime() {
-
-        const phone =
-            document
-                .getElementById("phone")
-                .value
-                .trim();
-
-        const amount =
-            Number(
-                document
-                    .getElementById("amount")
-                    .value
-            );
-
-        const pin =
-            document
-                .getElementById(
-                    "purchasePin"
-                )
-                .value
-                .trim();
-
-        const buyButton =
-            document.getElementById(
-                "buyButton"
-            );
-
-        const message =
-            document.getElementById(
-                "message"
-            );
-
-
-        // Clear previous message
-
-        message.className =
-            "message";
-
-        message.style.display =
-            "none";
-
-
-        // =========================
-        // VALIDATE PHONE
-        // =========================
-
-        if (
-            !/^0[7-9][0-1][0-9]{8}$/.test(
-                phone
-            )
-        ) {
-
-            showMessage(
-                "Please enter a valid Nigerian phone number.",
-                "error"
-            );
-
-            return;
-
-        }
-
-
-        // =========================
-        // VALIDATE AMOUNT
-        // =========================
-
-        if (
-            !Number.isFinite(amount) ||
-            amount < 50 ||
-            amount > 50000
-        ) {
-
-            showMessage(
-                "Airtime amount must be between ₦50 and ₦50,000.",
-                "error"
-            );
-
-            return;
-
-        }
-
-
-        // =========================
-        // VALIDATE PIN
-        // =========================
-
-        if (
-            !/^\d{4}$/.test(pin)
-        ) {
-
-            showMessage(
-                "Please enter your 4-digit Purchase PIN.",
-                "error"
-            );
-
-            return;
-
-        }
-
-
-        // =========================
-        // CHECK BALANCE
-        // =========================
-
-        if (
-            Number(user.balance) <
-            amount
-        ) {
-
-            showMessage(
-                "Insufficient wallet balance.",
-                "error"
-            );
-
-            return;
-
-        }
-
-
-        // =========================
-        // CONFIRM PURCHASE
-        // =========================
-
-        const confirmed =
-            confirm(
-                `Buy ₦${amount.toLocaleString()} ${selectedNetwork} airtime for ${phone}?`
-            );
-
-        if (!confirmed) {
-
-            return;
-
-        }
-
-
-        // =========================
-        // PROCESSING
-        // =========================
-
-        buyButton.disabled =
-            true;
-
-        buyButton.textContent =
-            "Processing...";
-
-
-        try {
-
-            const response =
-                await fetch(
-                    "/api/purchase-airtime",
-                    {
-                        method: "POST",
-
-                        headers: {
-                            "Content-Type":
-                                "application/json"
-                        },
-
-                        body: JSON.stringify({
-
-                            network:
-                                selectedNetwork,
-
-                            phone:
-                                phone,
-
-                            amount:
-                                amount,
-
-                            pin:
-                                pin
-
-                        })
-                    }
-                );
-
-
-            const data =
-                await response.json();
-
-
-            // =========================
-            // SERVER ERROR
-            // =========================
-
-            if (
-                !response.ok ||
-                !data.success
-            ) {
-
-                showMessage(
-                    data.message ||
-                    "Airtime purchase failed.",
-                    "error"
-                );
-
-                buyButton.disabled =
-                    false;
-
-                buyButton.textContent =
-                    `Buy Airtime for ₦${amount.toLocaleString()}`;
-
+        const response = await fetch("/api/purchase-airtime", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ network: selectedNetwork, phone: phone, amount: amount, pin: pin, requestId: airtimeRequestId })
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+            if (response.status === 202) {
+                showMessage(data.message || "Purchase is awaiting provider confirmation. Please do not retry it.", "error");
+                buyButton.textContent = "Purchase Pending";
                 return;
-
             }
-
-
-            // =========================
-            // UPDATE BALANCE
-            // =========================
-
-            user.balance =
-                data.balance;
-
-            localStorage.setItem(
-                "cheapdataUser",
-                JSON.stringify(user)
-            );
-
-
-            document
-                .getElementById(
-                    "balance"
-                )
-                .textContent =
-                `₦${Number(data.balance).toLocaleString()}`;
-
-
-            // =========================
-            // SUCCESS MESSAGE
-            // =========================
-
-            showMessage(
-                `Airtime purchase successful! ${data.network} airtime of ₦${Number(data.amount).toLocaleString()} sent to ${data.phone}. Reference: ${data.reference}`,
-                "success"
-            );
-
-
-            buyButton.textContent =
-                "Purchase Successful";
-
-
-            // Clear PIN
-
-            document
-                .getElementById(
-                    "purchasePin"
-                )
-                .value = "";
-
-
-        } catch (error) {
-
-            console.error(
-                "Airtime error:",
-                error
-            );
-
-
-            showMessage(
-                "Unable to connect to the server. Please try again.",
-                "error"
-            );
-
-
-            buyButton.disabled =
-                false;
-
-            buyButton.textContent =
-                `Buy Airtime for ₦${amount.toLocaleString()}`;
-
+            showMessage(data.message || "Airtime purchase failed.", "error");
+            buyButton.disabled = false;
+            airtimeRequestId = "";
+            buyButton.textContent = "Buy Airtime for " + ui().formatNaira(amount);
+            return;
         }
-
+        user.balance = data.balance;
+        localStorage.setItem("cheapdataUser", JSON.stringify(user));
+        document.getElementById("balance").textContent = ui().formatNaira(data.balance);
+        showMessage("Airtime purchase successful! " + data.network + " airtime of " + ui().formatNaira(data.amount) + " sent to " + data.phone + ". Reference: " + data.reference, "success");
+        buyButton.textContent = "Purchase Successful";
+        airtimeRequestId = "";
+        document.getElementById("purchasePin").value = "";
+        ui().toast("Airtime sent to " + data.phone, "success");
+    } catch (error) {
+        showMessage("Unable to connect to the server. Please try again. If the purchase was submitted, it is being confirmed safely — check your wallet history before retrying.", "error");
+        buyButton.disabled = false;
+        buyButton.textContent = "Buy Airtime for " + ui().formatNaira(amount);
     }
-
+}
 </script>
 
 </body>
+
 </html>

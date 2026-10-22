@@ -12,7 +12,7 @@ from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 import httpx
-from fastapi import FastAPI, Request, Response, HTTPException
+from fastapi import FastAPI, Query, Request, Response, HTTPException
 from fastapi.responses import JSONResponse, FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -326,8 +326,65 @@ def profile(request: Request, user_id: str):
     return {"success": True, "user": result, "has_purchase_pin": has_pin}
 
 
+@app.get("/api/favorites")
+def list_favorites(request: Request):
+    """Saved recipient numbers for the authenticated user only."""
+    user_id = require_user(request)
+    with db_session() as db:
+        rows = q(db, "SELECT id,label,phone,network,created_at FROM favorite_recipients WHERE user_id=:id ORDER BY id DESC", {"id": user_id}).mappings().all()
+    return {"success": True, "favorites": [dict(x) for x in rows]}
+
+
+@app.post("/api/favorites")
+def add_favorite(request: Request, body: dict):
+    user_id = require_user(request)
+    phone = str(body.get("phone") or "").strip()
+    network = str(body.get("network") or "").strip().upper()
+    label = str(body.get("label") or "").strip()
+    if not phone or not nigeria_phone(phone):
+        raise HTTPException(400, "Please enter a valid Nigerian phone number")
+    if network not in {"MTN", "Airtel", "Glo", "9mobile"}:
+        raise HTTPException(400, "Invalid network")
+    if len(label) > 60:
+        label = label[:60]
+    with db_session() as db:
+        existing = q(db, "SELECT id FROM favorite_recipients WHERE user_id=:id AND phone=:phone", {"id": user_id, "phone": phone}).first()
+        if existing:
+            raise HTTPException(409, "This number is already saved")
+        count = q(db, "SELECT COUNT(*) FROM favorite_recipients WHERE user_id=:id", {"id": user_id}).scalar()
+        if int(count) >= 20:
+            raise HTTPException(400, "You can save up to 20 recipients. Remove one first.")
+        q(db, "INSERT INTO favorite_recipients(user_id,label,phone,network) VALUES(:id,:label,:phone,:network)",
+          {"id": user_id, "label": label or None, "phone": phone, "network": network})
+    return {"success": True, "message": "Recipient saved"}
+
+
+@app.delete("/api/favorites/{favorite_id}")
+def delete_favorite(request: Request, favorite_id: str):
+    user_id = require_user(request)
+    try:
+        favorite = int(favorite_id)
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Invalid favorite ID")
+    if favorite <= 0:
+        raise HTTPException(400, "Invalid favorite ID")
+    with db_session() as db:
+        deleted = q(db, "DELETE FROM favorite_recipients WHERE id=:fid AND user_id=:id", {"fid": favorite, "id": user_id})
+    if deleted.rowcount != 1:
+        raise HTTPException(404, "Saved recipient not found")
+    return {"success": True, "message": "Recipient removed"}
+
+
 @app.get("/api/transactions/{user_id}")
-def transactions(request: Request, user_id: str):
+def transactions(request: Request, user_id: str, type: str | None = None,
+                 status: str | None = None, search: str | None = Query(None, alias="q"),
+                 limit: int = 0, offset: int = 0):
+    """Transaction history with optional server-side filtering.
+
+    All parameters are optional and backward compatible: without them the
+    full history is returned exactly as before. `type`/`status` are
+    exact matches; `q` searches descriptions and references.
+    """
     current_id = require_user(request)
     try:
         requested_id = int(user_id)
@@ -340,9 +397,35 @@ def transactions(request: Request, user_id: str):
             is_admin = q(auth_db, "SELECT is_admin FROM users WHERE id=:id", {"id": current_id}).scalar()
         if is_admin != 1:
             raise HTTPException(403, "You can only view your own transactions")
+    conditions = ["user_id=:id"]
+    params: dict = {"id": requested_id}
+    if type:
+        if type not in {"credit", "debit"}:
+            raise HTTPException(400, "Invalid transaction type")
+        conditions.append("type=:type")
+        params["type"] = type
+    if status:
+        if status not in {"successful", "pending", "failed"}:
+            raise HTTPException(400, "Invalid transaction status")
+        conditions.append("status=:status")
+        params["status"] = status
+    if search:
+        needle = f"%{search.strip()}%"
+        conditions.append("(LOWER(description) LIKE :q OR LOWER(COALESCE(reference,'')) LIKE :q)")
+        params["q"] = needle.lower()
+    if limit < 0 or limit > 500:
+        limit = 0
+    if offset < 0:
+        offset = 0
+    where = " AND ".join(conditions)
     with db_session() as db:
-        rows = q(db, "SELECT id,type,amount,status,reference,description,created_at FROM transactions WHERE user_id=:id ORDER BY id DESC", {"id": requested_id}).mappings().all()
-    return {"success": True, "transactions": [dict(x) for x in rows]}
+        total = q(db, f"SELECT COUNT(*) FROM transactions WHERE {where}", params).scalar()
+        sql = f"SELECT id,type,amount,status,reference,description,created_at FROM transactions WHERE {where} ORDER BY id DESC"
+        if limit:
+            sql += " LIMIT :limit OFFSET :offset"
+            params.update({"limit": limit, "offset": offset})
+        rows = q(db, sql, params).mappings().all()
+    return {"success": True, "transactions": [dict(x) for x in rows], "total": int(total)}
 
 
 @app.get("/api/data-categories")

@@ -1,537 +1,349 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="api-base-url" content="">
-    <title>Buy Data - MELODEXS CONNECT</title>
-
-    <style>
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-            font-family: Arial, sans-serif;
-        }
-
-        body {
-            background: #F5F8FC;
-            color: #111827;
-        }
-
-        header {
-            background: #0251B0;
-            color: white;
-            padding: 18px 20px;
-        }
-
-        header h1 {
-            font-size: 24px;
-        }
-
-        .container {
-            max-width: 700px;
-            margin: 30px auto;
-            padding: 20px;
-        }
-
-        .card {
-            background: white;
-            padding: 25px;
-            border-radius: 15px;
-            box-shadow: 0 5px 20px rgba(0,0,0,0.08);
-        }
-
-        h2 {
-            margin-bottom: 20px;
-        }
-
-        .balance {
-            background: #EEF5FF;
-            padding: 15px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-            color: #0251B0;
-            font-weight: bold;
-        }
-
-        label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: bold;
-        }
-
-        input {
-            width: 100%;
-            padding: 13px;
-            border: 1px solid #d1d5db;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            font-size: 16px;
-        }
-
-        .pin-input {
-            letter-spacing: 8px;
-            text-align: center;
-            font-weight: bold;
-        }
-
-        .pin-note {
-            color: #6b7280;
-            font-size: 13px;
-            margin-top: -12px;
-            margin-bottom: 20px;
-        }
-
-        .networks {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 10px;
-            margin-bottom: 25px;
-        }
-
-        .network {
-            padding: 12px 5px;
-            border: 2px solid #ddd;
-            background: white;
-            border-radius: 8px;
-            cursor: pointer;
-            font-weight: bold;
-        }
-
-        .network.active {
-            border-color: #0251B0;
-            background: #EEF5FF;
-            color: #0251B0;
-        }
-
-        .plans {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 12px;
-        }
-
-        .plan {
-            padding: 18px;
-            border: 2px solid #ddd;
-            background: white;
-            border-radius: 10px;
-            cursor: pointer;
-            text-align: center;
-        }
-
-        .plan:hover {
-            border-color: #0251B0;
-        }
-
-        .plan.active {
-            border-color: #0251B0;
-            background: #EEF5FF;
-        }
-
-        .category-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; }
-        .category { border:1px solid #C7D1DD; border-radius:10px; background:#fff; color:#0251B0; padding:16px; font-weight:700; cursor:pointer; text-align:left; }
-        .category:hover { border-color:#0251B0; background:#EEF5FF; }
-        .step-back { border:0; background:transparent; color:#0251B0; font-weight:700; padding:0 0 12px; cursor:pointer; }
-
-        .plan strong {
-            display: block;
-            font-size: 20px;
-            margin-bottom: 8px;
-        }
-
-        .price {
-            color: #0251B0;
-            font-weight: bold;
-            font-size: 18px;
-        }
-
-        .summary {
-            background: #f3f4f6;
-            padding: 18px;
-            border-radius: 10px;
-            margin-top: 25px;
-            line-height: 1.8;
-        }
-
-        .buy-btn {
-            width: 100%;
-            margin-top: 20px;
-            padding: 15px;
-            border: none;
-            border-radius: 10px;
-            background: #0251B0;
-            color: white;
-            font-size: 17px;
-            font-weight: bold;
-            cursor: pointer;
-        }
-
-        .buy-btn:hover {
-            background: #01428F;
-        }
-
-        .buy-btn:disabled {
-            background: #9ca3af;
-            cursor: not-allowed;
-        }
-
-        .message {
-            margin-top: 15px;
-            padding: 12px;
-            border-radius: 8px;
-            display: none;
-        }
-
-        .success {
-            display: block;
-            background: #EAF8C7;
-            color: #0251B0;
-        }
-
-        .error {
-            display: block;
-            background: #fee2e2;
-            color: #991b1b;
-        }
-
-        .back {
-            display: inline-block;
-            margin-bottom: 20px;
-            color: #0251B0;
-            text-decoration: none;
-            font-weight: bold;
-        }
-
-        @media (max-width: 600px) {
-            .networks {
-                grid-template-columns: repeat(2, 1fr);
-            }
-
-            .plans {
-                grid-template-columns: repeat(2, 1fr);
-            }
-        }
-    </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Buy Data | MELODEXS CONNECT</title>
+    <link rel="stylesheet" href="/styles.css">
     <script src="api.js"></script>
+    <script src="ui.js" defer></script>
     <meta name="theme-color" content="#0251B0">
     <link rel="manifest" href="/manifest.webmanifest">
     <script src="/pwa.js" defer></script>
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
     <link rel="icon" type="image/png" href="/icons/melodexs-connect-192.png">
 </head>
 
 <body>
 
-<header>
-    <h1>MELODEXS CONNECT</h1>
-</header>
+<header class="appbar" id="appbar"></header>
+<nav class="desktop-tabs" id="desktop-tabs" aria-label="Primary"></nav>
 
-<div class="container">
+<main class="page page-narrow">
 
-    <a href="/dashboard.html" class="back">
-        ← Back to Dashboard
-    </a>
+    <h1 class="fw-bold" style="font-size:22px">Buy Data</h1>
+    <p class="muted small">Affordable and reliable data plans</p>
 
-    <div class="card">
-
-        <h2>Buy Data</h2>
-
-        <div class="balance">
-            Wallet Balance:
-            <span id="balance">₦0</span>
-        </div>
-
-        <!-- PHONE -->
-
-        <label>Phone Number</label>
-
-        <input
-            type="tel"
-            id="phone"
-            placeholder="08012345678"
-            maxlength="11"
-            inputmode="numeric"
-        >
-
-        <!-- NETWORK -->
-
-        <label>Select Network</label>
-
-        <div class="networks">
-
-            <button
-                type="button"
-                class="network active"
-                onclick="selectNetwork('MTN', this)"
-            >
-                MTN
-            </button>
-
-            <button
-                type="button"
-                class="network"
-                onclick="selectNetwork('Airtel', this)"
-            >
-                Airtel
-            </button>
-
-            <button
-                type="button"
-                class="network"
-                onclick="selectNetwork('Glo', this)"
-            >
-                Glo
-            </button>
-
-            <button
-                type="button"
-                class="network"
-                onclick="selectNetwork('9mobile', this)"
-            >
-                9mobile
-            </button>
-
-        </div>
-
-        <section id="categoryStep" hidden>
-            <label>Choose a bundle category</label>
-            <div id="categories" class="category-grid"></div>
-        </section>
-
-        <!-- DATA PLANS -->
-
-        <section id="planStep" hidden>
-        <button type="button" class="step-back" onclick="backToCategories()">← Back to categories</button>
-        <label id="planHeading">Available plans</label>
-
-        <div id="plans" class="plans">
-            <div style="grid-column:1/-1;text-align:center;color:#6b7280;padding:20px;">Select a category to view plans.</div>
-        </div>
-        </section>
-
-        <!-- PURCHASE PIN -->
-
-        <label style="margin-top: 25px;">
-            Purchase PIN
-        </label>
-
-        <input
-            type="password"
-            id="purchasePin"
-            class="pin-input"
-            placeholder="••••"
-            maxlength="4"
-            inputmode="numeric"
-            autocomplete="off"
-        >
-
-        <div class="pin-note">
-            Enter your 4-digit Purchase PIN to authorize this purchase.
-        </div>
-
-        <!-- SUMMARY -->
-
-        <div class="summary">
-
-            <strong>Order Summary</strong>
-
-            <div>
-                Network:
-                <span id="summaryNetwork">MTN</span>
-            </div>
-
-            <div>
-                Plan:
-                <span id="summaryPlan">Not selected</span>
-            </div>
-
-            <div>
-                Phone:
-                <span id="summaryPhone">Not entered</span>
-            </div>
-
-            <div>
-                Amount:
-                <strong id="summaryAmount">₦0</strong>
-            </div>
-
-        </div>
-
-        <!-- BUY BUTTON -->
-
-        <button
-            type="button"
-            id="buyButton"
-            class="buy-btn"
-            onclick="purchaseData()"
-            disabled
-        >
-            Select a Data Plan
-        </button>
-
-        <!-- MESSAGE -->
-
-        <div
-            id="message"
-            class="message"
-        ></div>
-
+    <div class="card mt-2">
+        <div class="confirm-row"><span class="k">Wallet balance</span><span class="v" id="balance">₦0</span></div>
     </div>
 
+    <!-- STEP 1: NETWORK -->
+    <div class="section-head"><h2>1 · Select network</h2></div>
+    <div class="chip-row" id="networks" role="group" aria-label="Network"></div>
+
+    <!-- STEP 2: CATEGORY -->
+    <div id="categoryStep">
+        <div class="section-head"><h2>2 · Select category</h2></div>
+        <div class="plans-grid" id="categories"></div>
+    </div>
+
+    <!-- STEP 3: PLAN -->
+    <div id="planStep" class="hidden">
+        <div class="section-head">
+            <h2 id="planHeading">3 · Select plan</h2>
+            <button class="filter-chip" id="backToCategories" type="button">‹ Categories</button>
+        </div>
+        <div class="plans-grid" id="plans"></div>
+    </div>
+
+    <!-- STEP 4/5: RECIPIENT + CONFIRMATION -->
+    <div class="section-head"><h2>Recipient &amp; confirm</h2></div>
+    <div class="card">
+        <div class="field">
+            <label for="phone">Recipient phone number</label>
+            <input id="phone" type="tel" inputmode="numeric" autocomplete="tel" placeholder="e.g. 08012345678" maxlength="14">
+            <div class="hint">The number that will receive the data bundle.</div>
+        </div>
+        <div id="favoritesRow" class="hidden">
+            <label class="small fw-bold muted">Saved recipients</label>
+            <div class="chip-row mt-1" id="favoritesList"></div>
+        </div>
+
+        <div class="field mt-2">
+            <label for="purchasePin">Purchase PIN</label>
+            <input id="purchasePin" type="password" inputmode="numeric" maxlength="4" placeholder="4-digit PIN" autocomplete="off">
+        </div>
+
+        <div id="message" class="form-error hidden" role="alert"></div>
+
+        <div class="confirm-row"><span class="k">Plan</span><span class="v" id="summaryPlan">Not selected</span></div>
+        <div class="confirm-row"><span class="k">Network</span><span class="v" id="summaryNetwork">MTN</span></div>
+        <div class="confirm-row"><span class="k">Amount payable</span><span class="v" id="summaryAmount">₦0</span></div>
+
+        <div class="row mt-2" style="gap:10px">
+            <button class="btn btn-primary btn-block btn-lg" id="buyButton" disabled>Select a Data Plan</button>
+            <button class="btn btn-ghost btn-sm" id="saveFavoriteBtn" type="button" title="Save this recipient">☆ Save number</button>
+        </div>
+        <p class="small muted mt-1 text-center" id="hintLine">Pick a plan above to continue.</p>
+    </div>
+
+</main>
+
+<!-- CONFIRM MODAL -->
+<div class="modal-backdrop" id="confirm-modal" role="dialog" aria-modal="true"></div>
+
+<!-- PURCHASE PROGRESS MODAL -->
+<div class="modal-backdrop" id="progress-modal" role="dialog" aria-modal="true">
+    <div class="modal text-center">
+        <div class="modal-head"><h3 id="progressTitle">Processing purchase…</h3><button class="modal-close" id="progressClose" aria-label="Close">✕</button></div>
+        <div id="progressBody" class="text-center" style="padding:10px 0 16px">
+            <div class="spinner" style="margin:0 auto 14px"></div>
+            <p class="muted small">Confirming with the provider. Please keep this open.</p>
+        </div>
+        <button class="btn btn-ghost btn-block" id="progressDone">Done</button>
+    </div>
 </div>
 
+<nav class="bottom-nav" id="bottom-nav" aria-label="Primary"></nav>
+
 <script>
+document.addEventListener("DOMContentLoaded", () => {
+    window.MELODEXS_UI.mountChrome("plans");
+    start();
+});
 
-    // =========================
-    // LOGIN CHECK
-    // =========================
+let user;
+let selectedNetwork = "MTN";
+let selectedPlan = "";
+let selectedPrice = 0;
+let selectedValidity = "";
+let availablePlans = [];
+let selectedCategory = "";
+let purchaseRequestId = "";
+let myFavorites = [];
 
-    const savedUser =
-        localStorage.getItem("cheapdataUser");
+const UI = () => window.MELODEXS_UI;
 
-    if (!savedUser) {
-        window.location.href = "/login.html";
-    }
+async function start() {
+    const ui = UI();
+    const session = await ui.requireSession();
+    if (!session) return;
+    user = ui.currentUser();
+    if (!user) { window.location.href = "/login.html"; return; }
 
-    let user;
+    // Repeat-purchase prefill (from wallet history "buy again"): values are
+    // only prefilled; everything is revalidated and reconfirmed before submit.
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("network")) selectedNetwork = params.get("network");
+    if (params.get("phone")) document.getElementById("phone").value = params.get("phone");
 
-    try {
-
-        user = JSON.parse(savedUser);
-
-    } catch (error) {
-
-        localStorage.removeItem("cheapdataUser");
-
-        window.location.href = "/login.html";
-    }
-
-    // =========================
-    // VARIABLES
-    // =========================
-
-    let selectedNetwork = "MTN";
-    let selectedPlan = "";
-    let selectedPrice = 0;
-    let selectedValidity = "";
-    let availablePlans = [];
-    let selectedCategory = "";
-    let purchaseRequestId = "";
-
-    // =========================
-    // LOAD BALANCE
-    // =========================
-
-    async function loadBalance() {
-
-        try {
-
-            const response =
-                await fetch(`/api/user/${user.id}`);
-
-            const data =
-                await response.json();
-
-            if (data.success) {
-
-                user = data.user;
-
-                localStorage.setItem(
-                    "cheapdataUser",
-                    JSON.stringify(user)
-                );
-
-                document.getElementById("balance")
-                    .textContent =
-                    `₦${Number(user.balance).toLocaleString()}`;
-            }
-
-        } catch (error) {
-
-            console.error(
-                "Balance error:",
-                error
-            );
-        }
-    }
-
-    loadBalance();
+    renderNetworks();
+    await loadBalance();
+    await loadFavorites();
     loadPlans();
 
-    // =========================
-    // LOAD PLANS FROM SERVER
-    // =========================
+    document.getElementById("backToCategories").addEventListener("click", backToCategories);
+    document.getElementById("buyButton").addEventListener("click", purchaseData);
+    document.getElementById("saveFavoriteBtn").addEventListener("click", saveFavorite);
+    document.getElementById("progressDone").addEventListener("click", () => ui.closeModal("progress-modal"));
+    document.getElementById("progressClose").addEventListener("click", () => ui.closeModal("progress-modal"));
 
-    async function loadPlans() {
-        const container = document.getElementById("categories");
-        try {
-            if (!window.MELODEXS_CATEGORIZED_CATALOG) {
-                const legacyResponse = await fetch("/api/data-plans");
-                const legacyData = await legacyResponse.json();
-                if (!legacyResponse.ok || !legacyData.success) throw new Error(legacyData.message || "Could not load data plans");
-                availablePlans = legacyData.plans || [];
-                document.getElementById("categoryStep").hidden = true;
-                document.getElementById("planStep").hidden = false;
-                document.getElementById("planHeading").textContent = "Select Data Plan";
-                await renderPlans();
-                return;
-            }
-            const response = await fetch(`/api/data-categories?network=${encodeURIComponent(selectedNetwork)}`);
-            const data = await response.json();
-            if (!response.ok || !data.success) throw new Error(data.message || "Could not load data categories");
-            const categories = data.categories || [];
-            document.getElementById("categoryStep").hidden = false;
-            document.getElementById("planStep").hidden = true;
-            container.innerHTML = categories.length ? categories.map(item => `<button type="button" class="category" data-category="${escapeHtml(item.category)}">${escapeHtml(item.category)}<br><small>${Number(item.plan_count)} available</small></button>`).join("") : `<div style="grid-column:1/-1;color:#6b7280;padding:16px">No bundle categories are currently available for ${escapeHtml(selectedNetwork)}.</div>`;
-            container.querySelectorAll(".category").forEach(button => button.addEventListener("click", () => selectCategory(button.dataset.category)));
-        } catch (error) {
-            console.error("Plans error:", error);
-            document.getElementById("categoryStep").hidden = false;
-            container.innerHTML = `<div style="grid-column:1/-1;color:#991b1b;padding:16px;">${escapeHtml(error.message)} <button type="button" onclick="loadPlans()">Retry</button></div>`;
-        }
+    // repeat prefill: try to auto-select the category/plan after catalog loads
+    const repeatPlan = params.get("plan");
+    if (repeatPlan) {
+        setTimeout(() => tryRepeatPrefill(repeatPlan), 900);
     }
+}
 
-    function escapeHtml(value) {
-        if (value === null || value === undefined) {
-            return "";
+function renderNetworks() {
+    const container = document.getElementById("networks");
+    container.innerHTML = UI().NETWORKS.map(n =>
+        '<button type="button" class="chip network ' + (n.slug === selectedNetwork ? "active" : "") + '" data-network="' + n.slug + '">' +
+        '<span class="chip-dot" style="background:' + n.color + '"></span>' + n.slug + "</button>").join("");
+    container.querySelectorAll(".network").forEach(button =>
+        button.addEventListener("click", () => selectNetwork(button.dataset.network, button)));
+    document.getElementById("summaryNetwork").textContent = selectedNetwork;
+}
+
+async function tryRepeatPrefill(repeatPlan) {
+    const ui = UI();
+    // Look through every category of the prefilled network for the plan.
+    try {
+        const response = await fetch("/api/data-plans?network=" + encodeURIComponent(selectedNetwork), { credentials: "include" });
+        const data = await response.json();
+        const match = (data.plans || []).find(p => p.plan === repeatPlan);
+        if (!match) {
+            ui.toast("The previously purchased plan is no longer available. Choose a new plan.", "info");
+            return;
         }
-
-        return String(value)
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/"/g, "&quot;")
-            .replace(/'/g, "&#039;");
-    }
-
-    async function selectCategory(category) {
-        selectedCategory = category;
-        document.getElementById("categoryStep").hidden = true;
-        document.getElementById("planStep").hidden = false;
-        document.getElementById("planHeading").textContent = `${selectedNetwork} · ${category}`;
+        selectedCategory = match.category || selectedCategory;
+        document.getElementById("categoryStep").classList.add("hidden");
+        document.getElementById("planStep").classList.remove("hidden");
+        document.getElementById("planHeading").textContent = selectedNetwork + " · " + selectedCategory;
         await renderPlans();
-    }
+        const planBtn = document.querySelector('.plan[data-plan="' + CSS.escape(repeatPlan) + '"]');
+        if (planBtn) planBtn.click();
+        ui.toast("Repeat purchase loaded. Review the price and confirm before buying.", "info");
+    } catch (error) { /* prefill is best-effort only */ }
+}
 
-    function backToCategories() {
-        selectedPlan = ""; selectedPrice = 0; selectedValidity = ""; selectedCategory = "";
-        purchaseRequestId = "";
-        document.getElementById("planStep").hidden = true;
-        document.getElementById("categoryStep").hidden = false;
-        document.getElementById("buyButton").disabled = true;
-        document.getElementById("summaryPlan").textContent = "Not selected";
-        document.getElementById("summaryAmount").textContent = "₦0";
-    }
+async function loadBalance() {
+    const ui = UI();
+    try {
+        const response = await fetch("/api/user/" + user.id, { credentials: "include" });
+        const data = await response.json();
+        if (data.success) {
+            user = { ...data.user, has_purchase_pin: data.has_purchase_pin };
+            localStorage.setItem("cheapdataUser", JSON.stringify(user));
+            document.getElementById("balance").textContent = ui.formatNaira(user.balance);
+        }
+    } catch (error) { /* balance shown from cache */ }
+}
 
-    async function renderPlans() {
-        const container = document.getElementById("plans");
-        container.innerHTML = `<div style="grid-column:1/-1;text-align:center;color:#6b7280;padding:20px;">Loading available plans…</div>`;
-        try {
+async function loadFavorites() {
+    const ui = UI();
+    try {
+        const response = await fetch("/api/favorites", { credentials: "include" });
+        const data = await response.json();
+        if (!data.success) return;
+        myFavorites = data.favorites || [];
+        renderFavorites();
+    } catch (error) { /* favorites are optional */ }
+}
+
+function renderFavorites() {
+    const ui = UI();
+    const row = document.getElementById("favoritesRow");
+    const list = document.getElementById("favoritesList");
+    if (!myFavorites.length) { row.classList.add("hidden"); return; }
+    row.classList.remove("hidden");
+    list.innerHTML = "";
+    myFavorites.forEach(fav => {
+        const wrap = document.createElement("span");
+        wrap.className = "chip-wrap";
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "chip";
+        chip.innerHTML = '<span aria-hidden="true">★</span> ' + ui.esc(fav.label || fav.phone);
+        chip.title = fav.network ? fav.network + " · " + fav.phone : fav.phone;
+        // Selecting a favorite only fills the recipient field; it never
+        // submits a purchase by itself.
+        chip.addEventListener("click", () => {
+            document.getElementById("phone").value = fav.phone;
+            ui.toast("Recipient filled. Review and confirm your purchase.", "info");
+        });
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "chip-remove";
+        remove.setAttribute("aria-label", "Remove " + (fav.label || fav.phone) + " from favorites");
+        remove.innerHTML = "&#10005;";
+        remove.addEventListener("click", async () => {
+            const confirmed = await ui.confirm("Remove favorite?", (fav.label || fav.phone) + " will be removed from your saved recipients.", "Remove");
+            if (!confirmed) return;
+            try {
+                const response = await fetch("/api/favorites/" + fav.id, { method: "DELETE", credentials: "include" });
+                if (!response.ok) throw new Error();
+                ui.toast("Favorite removed.", "success");
+                await loadFavorites();
+            } catch (error) {
+                ui.toast("Could not remove this favorite.", "error");
+            }
+        });
+        wrap.appendChild(chip);
+        wrap.appendChild(remove);
+        list.appendChild(wrap);
+    });
+}
+
+async function saveFavorite() {
+    const ui = UI();
+    const phone = document.getElementById("phone").value.trim();
+    if (!/^0[7-9][0-1][0-9]{8}$/.test(phone)) {
+        showMessage("Enter a valid recipient number before saving it.", "error");
+        return;
+    }
+    try {
+        const response = await fetch("/api/favorites", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ phone: phone, network: selectedNetwork, label: "" })
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.message || "Could not save");
+        ui.toast("Recipient saved.", "success");
+        await loadFavorites();
+    } catch (error) {
+        ui.toast(error.message || "Could not save this recipient.", "error");
+    }
+}
+
+function showMessage(text, kind) {
+    const message = document.getElementById("message");
+    message.textContent = text;
+    message.classList.remove("hidden");
+    message.className = kind === "success" ? "form-success" : "form-error";
+    message.scrollIntoView({ behavior: "smooth", block: "center" });
+    UI().toast(text, kind === "success" ? "success" : "error");
+}
+
+async function loadPlans() {
+    const ui = UI();
+    const container = document.getElementById("categories");
+    try {
+        if (!window.MELODEXS_CATEGORIZED_CATALOG) {
+            const legacyResponse = await fetch("/api/data-plans", { credentials: "include" });
+            const legacyData = await legacyResponse.json();
+            if (!legacyResponse.ok || !legacyData.success) throw new Error(legacyData.message || "Could not load data plans");
+            availablePlans = legacyData.plans || [];
+            document.getElementById("categoryStep").classList.add("hidden");
+            document.getElementById("planStep").classList.remove("hidden");
+            document.getElementById("planHeading").textContent = "Select Data Plan";
+            await renderPlans();
+            return;
+        }
+        const response = await fetch("/api/data-categories?network=" + encodeURIComponent(selectedNetwork), { credentials: "include" });
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.message || "Could not load data categories");
+        const categories = data.categories || [];
+        document.getElementById("categoryStep").classList.remove("hidden");
+        document.getElementById("planStep").classList.add("hidden");
+        container.innerHTML = categories.length
+            ? categories.map(item =>
+                '<button type="button" class="plan-card" data-category="' + ui.esc(item.category) + '" style="justify-content:center;text-align:center">' +
+                '<span class="plan-size">' + ui.esc(item.category) + "</span>" +
+                '<span class="plan-validity">' + Number(item.plan_count) + " available</span></button>").join("")
+            : '<div class="state-box" style="grid-column:1/-1"><div class="state-emoji">📦</div><h3>No categories available</h3><p>There are currently no bundle categories for ' + ui.esc(selectedNetwork) + ".</p></div>";
+        container.querySelectorAll("[data-category]").forEach(button =>
+            button.addEventListener("click", () => selectCategory(button.dataset.category)));
+    } catch (error) {
+        document.getElementById("categoryStep").classList.remove("hidden");
+        container.innerHTML = '<div class="state-box" style="grid-column:1/-1"><div class="state-emoji">📡</div><h3>' + ui.esc(error.message) + '</h3><p><button class="btn btn-primary btn-sm mt-2" type="button" onclick="loadPlans()">Retry</button></p></div>';
+    }
+}
+
+async function selectCategory(category) {
+    selectedCategory = category;
+    document.getElementById("categoryStep").classList.add("hidden");
+    document.getElementById("planStep").classList.remove("hidden");
+    document.getElementById("planHeading").textContent = selectedNetwork + " · " + category;
+    await renderPlans();
+}
+
+function backToCategories() {
+    selectedPlan = ""; selectedPrice = 0; selectedValidity = ""; selectedCategory = "";
+    purchaseRequestId = "";
+    document.getElementById("planStep").classList.add("hidden");
+    document.getElementById("categoryStep").classList.remove("hidden");
+    document.getElementById("buyButton").disabled = true;
+    document.getElementById("buyButton").textContent = "Select a Data Plan";
+    document.getElementById("summaryPlan").textContent = "Not selected";
+    document.getElementById("summaryAmount").textContent = "₦0";
+}
+
+async function renderPlans() {
+    const ui = UI();
+    const container = document.getElementById("plans");
+    container.innerHTML = '<div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>';
+    try {
         let plans;
         if (window.MELODEXS_CATEGORIZED_CATALOG) {
-            const response = await fetch(`/api/data-plans?network=${encodeURIComponent(selectedNetwork)}&category=${encodeURIComponent(selectedCategory)}`);
+            const response = await fetch("/api/data-plans?network=" + encodeURIComponent(selectedNetwork) + "&category=" + encodeURIComponent(selectedCategory), { credentials: "include" });
             const data = await response.json();
             if (!response.ok || !data.success) throw new Error(data.message || "Could not load plans");
             availablePlans = data.plans || [];
@@ -539,476 +351,202 @@
         } else {
             plans = availablePlans.filter(item => item.network === selectedNetwork);
         }
-        selectedPlan = "";
-        selectedPrice = 0;
-        selectedValidity = "";
+        selectedPlan = ""; selectedPrice = 0; selectedValidity = "";
         document.getElementById("summaryPlan").textContent = "Not selected";
         document.getElementById("summaryAmount").textContent = "₦0";
         document.getElementById("buyButton").disabled = true;
         document.getElementById("buyButton").textContent = "Select a Data Plan";
-
         if (!plans.length) {
-            container.innerHTML = `<div style="grid-column:1/-1;text-align:center;color:#6b7280;padding:20px;">There are currently no available plans in ${escapeHtml(selectedCategory)} for ${escapeHtml(selectedNetwork)}.</div>`;
+            container.innerHTML = '<div class="state-box" style="grid-column:1/-1"><div class="state-emoji">📦</div><h3>No plans available</h3><p>There are currently no available plans in ' + ui.esc(selectedCategory) + " for " + ui.esc(selectedNetwork) + ".</p></div>";
             return;
         }
-
         container.innerHTML = plans.map(item => {
-            /*
-             * WiseSub plan names can contain a provider denomination,
-             * for example: N100 100MB - 24 hrs.
-             *
-             * That N100 is part of the provider plan name, not the
-             * customer's selling price. Remove only that leading
-             * denomination from the customer-facing label while
-             * keeping the original item.plan for the purchase request.
-             */
-            const customerPlanName = String(item.plan || "")
-                .replace(/\bN\s*[\d,]+(?:\.\d+)?\b\s*/gi, "")
-                .trim();
-
+            /* WiseSub plan names can contain a provider denomination
+             * ("N100 100MB - 24 hrs"). That N100 is part of the provider
+             * plan name, not the customer's selling price. */
+            const customerPlanName = String(item.plan || "").replace(/\bN\s*[\d,]+(?:\.\d+)?\b\s*/gi, "").trim();
             const displayPlan = customerPlanName || item.plan;
-
-            /*
-             * Show the secondary validity label only when the plan title
-             * does not already contain it (e.g. "MTN 4GB - (2 days)"
-             * must not repeat "2 Days" underneath).
-             */
             const validityLabel = String(item.validity || "").trim();
-            const titleHasValidity = validityLabel &&
-                displayPlan.toLowerCase().includes(validityLabel.toLowerCase());
-
-            return `
-                <button type="button" class="plan" data-plan="${escapeHtml(item.plan)}" data-price="${Number(item.selling_price)}" data-validity="${escapeHtml(item.validity || "")}">
-                    <strong>${escapeHtml(displayPlan)}</strong>
-                    ${validityLabel && !titleHasValidity ? `<small>${escapeHtml(validityLabel)}</small>` : ""}
-                    <span class="price">₦${Number(item.selling_price).toLocaleString("en-NG")}</span>
-                </button>
-            `;
+            const titleHasValidity = validityLabel && displayPlan.toLowerCase().includes(validityLabel.toLowerCase());
+            return '<button type="button" class="plan-card plan" data-plan="' + ui.esc(item.plan) + '" data-price="' + Number(item.selling_price) + '" data-validity="' + ui.esc(item.validity || "") + '">' +
+                '<span class="plan-top"><span class="plan-network">' + ui.esc(item.network) + "</span>" +
+                (item.category ? '<span class="pill">' + ui.esc(item.category) + "</span>" : "") + "</span>" +
+                '<span class="plan-size">' + ui.esc(displayPlan) + "</span>" +
+                (validityLabel && !titleHasValidity ? '<span class="plan-validity">⏱ ' + ui.esc(validityLabel) + "</span>" : "") +
+                '<span class="plan-bottom"><span class="plan-price">' + ui.esc(ui.formatNaira(item.selling_price)) + "</span>" +
+                '<span class="badge badge-success"><span class="dot"></span>Available</span></span></button>';
         }).join("");
+        container.querySelectorAll(".plan").forEach(button =>
+            button.addEventListener("click", () => selectPlan(button.dataset.plan, Number(button.dataset.price), button, button.dataset.validity)));
+    } catch (error) {
+        container.innerHTML = '<div class="state-box" style="grid-column:1/-1"><div class="state-emoji">📡</div><h3>' + ui.esc(error.message) + '</h3><p><button class="btn btn-primary btn-sm mt-2" type="button" onclick="renderPlans()">Retry</button></p></div>';
+    }
+}
 
-        container.querySelectorAll(".plan").forEach(button => {
-            button.addEventListener("click", () => {
-                selectPlan(
-                    button.dataset.plan,
-                    Number(button.dataset.price),
-                    button,
-                    button.dataset.validity
-                );
-            });
+function selectNetwork(network, button) {
+    selectedNetwork = network;
+    selectedPlan = ""; selectedPrice = 0; selectedValidity = "";
+    selectedCategory = ""; purchaseRequestId = "";
+    document.getElementById("summaryPlan").textContent = "Not selected";
+    document.getElementById("summaryAmount").textContent = "₦0";
+    document.getElementById("buyButton").disabled = true;
+    document.querySelectorAll(".network").forEach(btn => btn.classList.remove("active"));
+    button.classList.add("active");
+    document.getElementById("summaryNetwork").textContent = network;
+    if (!window.MELODEXS_CATEGORIZED_CATALOG) { loadPlans(); return; }
+    document.getElementById("categoryStep").classList.add("hidden");
+    document.getElementById("planStep").classList.add("hidden");
+    loadPlans();
+}
+
+function selectPlan(plan, price, button, validity = "") {
+    selectedPlan = plan;
+    selectedPrice = price;
+    selectedValidity = validity;
+    purchaseRequestId = "";
+    document.querySelectorAll(".plan").forEach(btn => btn.classList.remove("active"));
+    button.classList.add("active");
+    document.getElementById("summaryPlan").textContent = [selectedCategory, plan, validity].filter(Boolean).join(" · ");
+    document.getElementById("summaryAmount").textContent = window.MELODEXS_UI.formatNaira(selectedPrice);
+    const buyButton = document.getElementById("buyButton");
+    buyButton.disabled = false;
+    buyButton.textContent = "Buy " + plan + " for " + window.MELODEXS_UI.formatNaira(selectedPrice);
+    document.getElementById("hintLine").textContent = "Enter the recipient number and PIN, then confirm.";
+}
+
+function updateSelectedPrice(currentPlan) {
+    selectedPrice = Number(currentPlan.selling_price);
+    document.getElementById("summaryAmount").textContent = window.MELODEXS_UI.formatNaira(selectedPrice);
+    document.getElementById("buyButton").textContent = "Buy " + selectedPlan + " for " + window.MELODEXS_UI.formatNaira(selectedPrice);
+}
+
+async function purchaseData() {
+    const ui = UI();
+    const phone = document.getElementById("phone").value.trim();
+    const pin = document.getElementById("purchasePin").value.trim();
+    const buyButton = document.getElementById("buyButton");
+    document.getElementById("message").classList.add("hidden");
+
+    if (!/^0[7-9][0-1][0-9]{8}$/.test(phone)) { showMessage("Please enter a valid Nigerian phone number.", "error"); return; }
+    if (!selectedPlan || !selectedPrice) { showMessage("Please select a data plan.", "error"); return; }
+    if (!/^\d{4}$/.test(pin)) { showMessage("Please enter your 4-digit Purchase PIN.", "error"); return; }
+    if (Number(user.balance) < selectedPrice) { showMessage("Insufficient wallet balance. Top up your wallet first.", "error"); return; }
+
+    // Confirm from the latest approved catalog price, not the value from the
+    // initial plan list. The server checks the same expected price again
+    // under the plan row lock after this confirmation.
+    let currentPlan;
+    try {
+        const currentResponse = await fetch(window.MELODEXS_CATEGORIZED_CATALOG
+            ? "/api/data-plans?network=" + encodeURIComponent(selectedNetwork) + "&category=" + encodeURIComponent(selectedCategory)
+            : "/api/data-plans", { credentials: "include" });
+        const currentData = await currentResponse.json();
+        currentPlan = (currentData.plans || []).find(item => item.plan === selectedPlan && item.network === selectedNetwork && (!window.MELODEXS_CATEGORIZED_CATALOG || item.category === selectedCategory));
+        if (currentResponse.ok && !currentPlan) {
+            if (window.MELODEXS_CATEGORIZED_CATALOG) backToCategories();
+            await loadPlans();
+            showMessage("This plan is no longer available. Choose another plan.", "error");
+            return;
+        }
+        if (!currentResponse.ok) throw new Error("Could not refresh current plan details.");
+        if (Math.abs(Number(currentPlan.selling_price) - selectedPrice) >= 0.005) {
+            updateSelectedPrice(currentPlan);
+            showMessage("The plan price changed. Review the updated price and confirm again.", "error");
+            return;
+        }
+    } catch (error) {
+        showMessage("Could not refresh current plan details. Please retry before purchasing.", "error");
+        return;
+    }
+
+    const confirmed = await ui.confirm(
+        "Confirm purchase",
+        "Buy " + selectedPlan + " (" + selectedNetwork + (selectedCategory ? " · " + selectedCategory : "") + (selectedValidity ? " · " + selectedValidity : "") + ") for " + phone + " for " + ui.formatNaira(selectedPrice) + "?",
+        "Pay " + ui.formatNaira(selectedPrice)
+    );
+    if (!confirmed) return;
+
+    buyButton.disabled = true;
+    buyButton.textContent = "Processing…";
+    ui.openModal("progress-modal");
+
+    try {
+        if (!purchaseRequestId) purchaseRequestId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : Date.now() + "-" + Math.random().toString(16).slice(2);
+        const response = await fetch("/api/purchase-data", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({
+                network: selectedNetwork,
+                plan: selectedPlan,
+                phone: phone,
+                amount: selectedPrice,
+                expectedPrice: selectedPrice,
+                requestId: purchaseRequestId,
+                pin: pin
+            })
         });
-        } catch (error) {
-            container.innerHTML = `<div style="grid-column:1/-1;color:#991b1b;padding:16px;">${escapeHtml(error.message)} <button type="button" onclick="renderPlans()">Retry</button></div>`;
-        }
-    }
+        const data = await response.json();
 
-    // =========================
-    // SELECT NETWORK
-    // =========================
-
-    function selectNetwork(network, button) {
-
-        selectedNetwork = network;
-        selectedPlan = "";
-        selectedPrice = 0;
-        selectedValidity = "";
-        selectedCategory = "";
-        purchaseRequestId = "";
-        document.getElementById("summaryPlan").textContent = "Not selected";
-        document.getElementById("summaryAmount").textContent = "₦0";
-        document.getElementById("buyButton").disabled = true;
-
-        document
-            .querySelectorAll(".network")
-            .forEach(btn => {
-                btn.classList.remove("active");
-            });
-
-        button.classList.add("active");
-
-        document.getElementById(
-            "summaryNetwork"
-        ).textContent = network;
-
-        selectedCategory = "";
-        if (!window.MELODEXS_CATEGORIZED_CATALOG) {
-            loadPlans();
-            return;
-        }
-        document.getElementById("categoryStep").hidden = true;
-        document.getElementById("planStep").hidden = true;
-        loadPlans();
-    }
-
-    // =========================
-    // SELECT PLAN
-    // =========================
-
-    function selectPlan(plan, price, button, validity = "") {
-
-        selectedPlan = plan;
-        selectedPrice = price;
-        selectedValidity = validity;
-        purchaseRequestId = "";
-
-        document
-            .querySelectorAll(".plan")
-            .forEach(btn => {
-                btn.classList.remove("active");
-            });
-
-        button.classList.add("active");
-
-        document.getElementById(
-            "summaryPlan"
-        ).textContent = [selectedCategory, plan, validity].filter(Boolean).join(" · ");
-
-        document.getElementById(
-            "summaryAmount"
-        ).textContent =
-            `₦${price.toLocaleString()}`;
-
-        const buyButton =
-            document.getElementById("buyButton");
-
-        buyButton.disabled = false;
-
-        buyButton.textContent =
-            `Buy ${plan} for ₦${price.toLocaleString()}`;
-
-        updatePhoneSummary();
-    }
-
-    function updateSelectedPrice(item) {
-        selectedPlan = item.plan;
-        selectedPrice = Number(item.selling_price);
-        selectedValidity = item.validity || "";
-        document.getElementById("summaryPlan").textContent = [selectedCategory, item.plan, selectedValidity].filter(Boolean).join(" · ");
-        document.getElementById("summaryAmount").textContent = `₦${selectedPrice.toLocaleString("en-NG")}`;
-        const button = document.getElementById("buyButton");
-        button.disabled = false;
-        button.textContent = `Confirm updated price: ₦${selectedPrice.toLocaleString("en-NG")}`;
-    }
-
-    // =========================
-    // PHONE SUMMARY
-    // =========================
-
-    document
-        .getElementById("phone")
-        .addEventListener(
-            "input",
-            updatePhoneSummary
-        );
-
-    function updatePhoneSummary() {
-
-        const phone =
-            document.getElementById("phone")
-                .value;
-
-        document.getElementById(
-            "summaryPhone"
-        ).textContent =
-            phone || "Not entered";
-    }
-
-    // =========================
-    // PIN INPUT
-    // =========================
-
-    document
-        .getElementById("purchasePin")
-        .addEventListener(
-            "input",
-            function () {
-
-                this.value =
-                    this.value
-                        .replace(/\D/g, "")
-                        .slice(0, 4);
-            }
-        );
-
-    // =========================
-    // SHOW MESSAGE
-    // =========================
-
-    function showMessage(text, type) {
-
-        const message =
-            document.getElementById("message");
-
-        message.textContent = text;
-
-        message.className =
-            `message ${type}`;
-
-        message.style.display = "block";
-    }
-
-    // =========================
-    // PURCHASE DATA
-    // =========================
-
-    async function purchaseData() {
-
-        const phone =
-            document.getElementById("phone")
-                .value
-                .trim();
-
-        const pin =
-            document.getElementById("purchasePin")
-                .value
-                .trim();
-
-        const buyButton =
-            document.getElementById("buyButton");
-
-        // Clear previous message
-
-        const message =
-            document.getElementById("message");
-
-        message.className = "message";
-        message.style.display = "none";
-
-        // =========================
-        // VALIDATE PHONE
-        // =========================
-
-        if (!/^0[7-9][0-1][0-9]{8}$/.test(phone)) {
-
-            showMessage(
-                "Please enter a valid Nigerian phone number.",
-                "error"
-            );
-
-            return;
-        }
-
-        // =========================
-        // VALIDATE PLAN
-        // =========================
-
-        if (!selectedPlan || !selectedPrice) {
-
-            showMessage(
-                "Please select a data plan.",
-                "error"
-            );
-
-            return;
-        }
-
-        // =========================
-        // VALIDATE PIN
-        // =========================
-
-        if (!/^\d{4}$/.test(pin)) {
-
-            showMessage(
-                "Please enter your 4-digit Purchase PIN.",
-                "error"
-            );
-
-            return;
-        }
-
-        // =========================
-        // CHECK BALANCE
-        // =========================
-
-        if (Number(user.balance) < selectedPrice) {
-
-            showMessage(
-                "Insufficient wallet balance.",
-                "error"
-            );
-
-            return;
-        }
-
-        // Confirm from the latest approved catalog price, not the value from
-        // the initial plan list. The server checks the same expected price
-        // again under the plan row lock after this confirmation.
-        try {
-            const currentResponse = await fetch(window.MELODEXS_CATEGORIZED_CATALOG ? `/api/data-plans?network=${encodeURIComponent(selectedNetwork)}&category=${encodeURIComponent(selectedCategory)}` : "/api/data-plans");
-            const currentData = await currentResponse.json();
-            const currentPlan = (currentData.plans || []).find(item => item.plan === selectedPlan && item.network === selectedNetwork && (!window.MELODEXS_CATEGORIZED_CATALOG || item.category === selectedCategory));
-            if (currentResponse.ok && !currentPlan) {
-                if (window.MELODEXS_CATEGORIZED_CATALOG) backToCategories();
-                await loadPlans();
-                showMessage("This plan is no longer available. Choose another plan.", "error");
+        if (!response.ok || !data.success) {
+            if (response.status === 202) {
+                showMessage(data.message || "Purchase is awaiting provider confirmation. Please do not retry it.", "error");
+                buyButton.disabled = true;
+                buyButton.textContent = "Purchase Pending";
+                showProgress("pending", data.message || "Your purchase is being confirmed with the provider. Do not retry it. Track it from your wallet.", data.reference);
                 return;
             }
-            if (!currentResponse.ok) throw new Error("Could not refresh current plan details.");
-            if (Math.abs(Number(currentPlan.selling_price) - selectedPrice) >= 0.005) {
-                updateSelectedPrice(currentPlan);
-                showMessage("The plan price changed. Review the updated price and confirm again.", "error");
+            if (response.status === 409 && data.message && data.message.includes("price changed")) {
+                if (window.MELODEXS_CATEGORIZED_CATALOG) await renderPlans(); else await loadPlans();
+                showMessage("The plan price changed. Select the current plan and confirm its new price.", "error");
+                showProgress("failed", "The price changed before we could complete your purchase. Nothing was charged.");
                 return;
             }
-        } catch (error) {
-            showMessage("Could not refresh current plan details. Please retry before purchasing.", "error");
-            return;
-        }
-
-        // =========================
-        // CONFIRM PURCHASE
-        // =========================
-
-        const confirmed = confirm(
-            `Buy ${selectedPlan} ${selectedNetwork} data${selectedCategory ? ` (${selectedCategory})` : ""}${selectedValidity ? ` · ${selectedValidity}` : ""} for ${phone} for ₦${selectedPrice.toLocaleString()}?`
-        );
-
-        if (!confirmed) {
-            return;
-        }
-
-        // =========================
-        // PROCESSING
-        // =========================
-
-        buyButton.disabled = true;
-
-        buyButton.textContent =
-            "Processing...";
-
-        try {
-
-            if (!purchaseRequestId) purchaseRequestId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-
-            const response =
-                await fetch(
-                    "/api/purchase-data",
-                    {
-                        method: "POST",
-
-                        headers: {
-                            "Content-Type":
-                                "application/json"
-                        },
-
-                        body: JSON.stringify({
-
-                            network:
-                                selectedNetwork,
-
-                            plan:
-                                selectedPlan,
-
-                            phone:
-                                phone,
-
-                            amount:
-                                selectedPrice,
-
-                            expectedPrice:
-                                selectedPrice,
-
-                            requestId:
-                                purchaseRequestId,
-
-                            pin:
-                                pin
-                        })
-                    }
-                );
-
-            const data =
-                await response.json();
-
-            // =========================
-            // SERVER ERROR
-            // =========================
-
-            if (!response.ok || !data.success) {
-
-                if (response.status === 202) {
-                    showMessage(data.message || "Purchase is awaiting provider confirmation. Please do not retry it.", "error");
-                    buyButton.disabled = true;
-                    buyButton.textContent = "Purchase Pending";
-                    return;
-                }
-
-                if (response.status === 409 && data.message && data.message.includes("price changed")) {
-                    if (window.MELODEXS_CATEGORIZED_CATALOG) await renderPlans();
-                    else await loadPlans();
-                    showMessage("The plan price changed. Select the current plan and confirm its new price.", "error");
-                    return;
-                }
-
-                showMessage(
-                    data.message ||
-                    "Purchase failed.",
-                    "error"
-                );
-
-                buyButton.disabled = false;
-                purchaseRequestId = "";
-
-                buyButton.textContent =
-                    `Buy ${selectedPlan} for ₦${selectedPrice.toLocaleString()}`;
-
-                return;
-            }
-
-            // =========================
-            // UPDATE BALANCE
-            // =========================
-
-            user.balance =
-                data.balance;
-
-            localStorage.setItem(
-                "cheapdataUser",
-                JSON.stringify(user)
-            );
-
-            document.getElementById(
-                "balance"
-            ).textContent =
-                `₦${Number(data.balance).toLocaleString()}`;
-
-            // =========================
-            // SUCCESS
-            // =========================
-
-            showMessage(
-                `Purchase successful! ${data.network} ${data.plan} sent to ${data.phone}. Reference: ${data.reference}`,
-                "success"
-            );
-
-            buyButton.textContent =
-                "Purchase Successful";
-            purchaseRequestId = "";
-
-            // Clear PIN
-
-            document.getElementById(
-                "purchasePin"
-            ).value = "";
-
-        } catch (error) {
-
-            console.error(
-                "Purchase error:",
-                error
-            );
-
-            showMessage(
-                error.message === "Could not refresh current plan details." ? "Could not refresh current plan details. Please retry before purchasing." : "Unable to connect to the server. If the request may have reached the server, do not submit it again until its status is checked.",
-                "error"
-            );
-
+            showMessage(data.message || "Purchase failed.", "error");
+            showProgress("failed", data.message || "Purchase failed. Nothing was charged.");
             buyButton.disabled = false;
-
-            buyButton.textContent =
-                `Buy ${selectedPlan} for ₦${selectedPrice.toLocaleString()}`;
+            purchaseRequestId = "";
+            buyButton.textContent = "Buy " + selectedPlan + " for " + window.MELODEXS_UI.formatNaira(selectedPrice);
+            return;
         }
-    }
 
+        user.balance = data.balance;
+        localStorage.setItem("cheapdataUser", JSON.stringify(user));
+        document.getElementById("balance").textContent = window.MELODEXS_UI.formatNaira(data.balance);
+        showMessage("Purchase successful! " + data.network + " " + data.plan + " sent to " + data.phone + ". Reference: " + data.reference, "success");
+        buyButton.textContent = "Purchase Successful";
+        purchaseRequestId = "";
+        document.getElementById("purchasePin").value = "";
+        showProgress("success", "Your " + data.network + " data purchase was successful. Reference: " + data.reference, data.reference);
+    } catch (error) {
+        showMessage("Network error. Please check your connection. If the purchase was submitted, it is being confirmed safely — do not retry immediately.", "error");
+        showProgress("pending", "We could not reach the server. If your purchase was submitted it is being confirmed safely. Check your wallet history before retrying.");
+        buyButton.disabled = false;
+        buyButton.textContent = "Buy " + selectedPlan + " for " + window.MELODEXS_UI.formatNaira(selectedPrice);
+    }
+}
+
+function showProgress(state, text, reference) {
+    const ui = window.MELODEXS_UI;
+    const title = document.getElementById("progressTitle");
+    const body = document.getElementById("progressBody");
+    document.getElementById("progressDone").classList.remove("hidden");
+    if (state === "success") {
+        title.textContent = "Purchase successful 🎉";
+        body.innerHTML = '<div style="font-size:38px;margin-bottom:6px">✅</div><p style="margin-bottom:6px">' + ui.esc(text) + "</p>" +
+            (reference ? '<a class="btn btn-lime btn-sm mt-2" href="/wallet.html?ref=' + encodeURIComponent(reference) + '">View receipt</a>' : "");
+    } else if (state === "pending") {
+        title.textContent = "Purchase pending";
+        body.innerHTML = '<div style="font-size:38px;margin-bottom:6px">⏳</div><p style="margin-bottom:6px">' + ui.esc(text) + "</p>" +
+            (reference ? '<a class="btn btn-ghost btn-sm mt-2" href="/wallet.html?ref=' + encodeURIComponent(reference) + '">Track transaction</a>' : "");
+    } else {
+        title.textContent = "Purchase not completed";
+        body.innerHTML = '<div style="font-size:38px;margin-bottom:6px">⚠️</div><p style="margin-bottom:6px">' + ui.esc(text) + "</p>";
+    }
+    ui.openModal("progress-modal");
+}
 </script>
 
 </body>
+
 </html>
