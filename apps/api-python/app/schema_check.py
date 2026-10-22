@@ -61,7 +61,7 @@ EXPECTED_CONSTRAINTS = {
 }
 GENERATED_ID_COLUMNS = {"users": "id", "data_plans": "id", "data_plan_sync_runs": "id", "transactions": "id", "favorite_recipients": "id"}
 EXPECTED_NOT_NULL = {
-    "users": {"id", "name", "email", "phone", "password", "balance", "kyc_status", "is_admin", "created_at"},
+    "users": {"id", "name", "email", "password", "balance", "kyc_status", "is_admin", "created_at"},
     "data_plans": {"id", "network", "plan", "provider_cost", "selling_price", "active", "provider_available", "created_at", "updated_at"},
     "data_plan_sync_runs": {"id", "started_at", "outcome", "added", "updated", "unavailable"},
     "transactions": {"id", "user_id", "type", "amount", "status", "created_at"},

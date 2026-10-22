@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     # PostgreSQL DATABASE_URL used by the existing API.
     database_url: str | None = None
     session_secret: str = "dev-only-insecure-secret"
+    # Google Sign-In (Identity Services). Empty until the owner registers an
+    # OAuth client and the ID is set in the deploy environment; the frontend
+    # hides the Continue-with-Google button while this is unset.
+    google_client_id: str = ""
     cheapdata_public_url: str = "https://melodexs-connect.onrender.com"
     paystack_secret_key: str | None = None
     wisesub_base_url: str = WISESUB_LIVE_BASE_URL
