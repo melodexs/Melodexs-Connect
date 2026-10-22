@@ -1058,10 +1058,11 @@ h1, h2, h3 { line-height: 1.2; }
     text-align: center;
     margin-top: 16px;
     font-size: 13.5px;
-    color: rgba(255, 255, 255, 0.8);
+    color: var(--muted);
 }
 
-.auth-alt a { color: var(--lime); font-weight: 700; }
+.auth-alt a { color: var(--blue-700); font-weight: 700; }
+.auth-alt a:hover { color: var(--blue-800); text-decoration: underline; }
 
 .auth-back {
     display: inline-block;
