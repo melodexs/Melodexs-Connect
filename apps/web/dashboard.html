@@ -108,6 +108,20 @@
             <span class="tile-label">Electricity</span>
             <span class="tile-badge">Coming soon</span>
         </button>
+        <button class="service-tile" type="button" id="cableTile" aria-disabled="true">
+            <span class="tile-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#0251B0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="15" rx="2"/><path d="M17 2l-5 5-5-5"/></svg>
+            </span>
+            <span class="tile-label">TV Subscription</span>
+            <span class="tile-badge">Coming soon</span>
+        </button>
+        <button class="service-tile" type="button" id="educationTile" aria-disabled="true">
+            <span class="tile-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#0251B0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10L12 5 2 10l10 5 10-5z"/><path d="M6 11v5c0 1.7 2.7 3 6 3s6-1.3 6-3v-5"/></svg>
+            </span>
+            <span class="tile-label">Result PINs</span>
+            <span class="tile-badge">Coming soon</span>
+        </button>
     </section>
 
     <!-- DATA PLANS CARD -->
@@ -200,11 +214,49 @@ async function start() {
 
     document.getElementById("adminSection").style.display = Number(user.is_admin) === 1 ? "block" : "none";
 
-    document.getElementById("electricityTile").addEventListener("click", () => {
-        UI.toast("Electricity payments are coming soon. No provider is configured yet.", "info");
-    });
+    setupBillerTiles();
 
     await renderDataOverview(user.id);
+}
+
+/* Biller services (electricity, TV, result PINs) light up automatically
+   once the ISQUAREDATA provider is enabled and configured; until then
+   the tiles stay "coming soon" and never charge anyone. */
+function setupBillerTiles() {
+    const UI = window.MELODEXS_UI;
+    const tiles = [
+        { id: "electricityTile", available: false, url: "/buy-electricity.html", label: "Electricity payments" },
+        { id: "cableTile", available: false, url: "/buy-cable.html", label: "TV subscriptions" },
+        { id: "educationTile", available: false, url: "/buy-education.html", label: "Result checker PINs" }
+    ];
+    const wire = (available) => {
+        tiles.forEach(tile => {
+            const element = document.getElementById(tile.id);
+            if (!element) return;
+            element.onclick = () => {
+                if (available) window.location.href = tile.url;
+                else UI.toast(tile.label + " are coming soon. We are rolling them out shortly.", "info");
+            };
+        });
+    };
+    wire(false);
+    fetch("/api/billers", { credentials: "include" })
+        .then(response => response.ok ? response.json() : null)
+        .then(data => {
+            if (!data) return;
+            const available = !!(data.electricity || data.cable || data.education);
+            wire(available);
+            if (available) {
+                tiles.forEach(tile => {
+                    const element = document.getElementById(tile.id);
+                    if (!element) return;
+                    if (data[tile.id === "electricityTile" ? "electricity" : tile.id === "cableTile" ? "cable" : "education"]) {
+                        element.querySelector(".tile-badge") ? element.querySelector(".tile-badge").remove() : null;
+                    }
+                });
+            }
+        })
+        .catch(() => { /* stay coming soon */ });
 }
 
 /* Data overview: honest, based on the latest data purchase.

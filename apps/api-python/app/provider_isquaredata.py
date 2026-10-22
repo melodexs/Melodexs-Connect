@@ -410,6 +410,286 @@ class IsquareDataAdapter(ProviderAdapter):
                                  message="ISQUAREDATA balance response missing wallet_balance")
         return BalanceResult(supported=True, balance=balance, currency="NGN")
 
+    # ------------------------------------------------------------------
+    # BILLER SERVICES (electricity, cable TV, education result checkers)
+    #
+    # Verified contracts (Postman collection, 2026-10-22):
+    #   GET  /electricity/services/                      -> [{id, name}]
+    #   GET  /electricity/verify-card/?service=..&meter_type=..&meter_number=..
+    #   POST /electricity/buy/                           -> webhook/requery semantics
+    #   GET  /cable/services/                            -> [{id, name, plans:[{id, name, amount}]}]
+    #   POST /cable/verify-smartcard/                    -> {plan_id, smartcard}
+    #   POST /cable/buy/                                -> webhook/requery semantics
+    #   GET  /education/services/                       -> [{id, name, api_amount, is_active}]
+    #   POST /education/buy/                            -> SYNCHRONOUS body with status + PIN remark
+    #
+    # Purchase semantics: electricity/cable bodies are documented to be
+    # confirmed via webhook (same conservative PENDING posture as data);
+    # the education endpoint documents a synchronous response carrying
+    # status plus the delivered PIN in `remark`, so a documented
+    # status="success" response IS final for education (the PIN would be
+    # lost otherwise); "failed" stays UNCERTAIN (refunds are still only
+    # ever applied through the signed webhook / requery double-confirm).
+    # ------------------------------------------------------------------
+
+    async def _biller_get(self, path: str, params: dict | None = None) -> tuple[int, object]:
+        self._require_configured()
+        try:
+            async with httpx.AsyncClient(timeout=ISQUARE_TIMEOUT,
+                                         follow_redirects=False) as client:
+                response = await client.get(f"{ISQUARE_BASE_URL}{path}",
+                                            headers=self._headers(), params=params)
+        except httpx.HTTPError as exc:
+            return 0, f"ISQUAREDATA request failed: {type(exc).__name__}"
+        return response.status_code, _safe_json(response)
+
+    async def _biller_post(self, path: str, payload: dict) -> tuple[int, object]:
+        self._require_configured()
+        try:
+            async with httpx.AsyncClient(timeout=ISQUARE_TIMEOUT,
+                                         follow_redirects=False) as client:
+                response = await client.post(f"{ISQUARE_BASE_URL}{path}",
+                                             headers=self._headers(), json=payload)
+        except httpx.HTTPError as exc:
+            return 0, f"ISQUAREDATA request failed: {type(exc).__name__}"
+        return response.status_code, _safe_json(response)
+
+    # ----- electricity -----
+
+    async def fetch_electricity_services(self) -> list[dict]:
+        """Distribution companies: [{id, name}]."""
+        code, body = await self._biller_get("/electricity/services/")
+        if code != 200 or not isinstance(body, list):
+            raise RuntimeError("ISQUAREDATA electricity service list is unavailable")
+        services = []
+        for item in body:
+            if not isinstance(item, dict):
+                continue
+            try:
+                sid = int(item.get("id"))
+            except (TypeError, ValueError):
+                continue
+            name = str(item.get("name") or "").strip()
+            if name:
+                services.append({"id": sid, "name": name})
+        return services
+
+    async def verify_meter(self, *, service_id: int, meter_type: str,
+                            meter_number: str) -> dict:
+        """Meter lookup: {"status": bool, "customer_name": str|None, "message": str|None}."""
+        params = {"service": int(service_id), "meter_type": str(meter_type).strip(),
+                  "meter_number": str(meter_number).strip()}
+        code, body = await self._biller_get("/electricity/verify-card/", params)
+        if code == 0:
+            return {"status": False, "customer_name": None,
+                    "message": "The electricity provider is unreachable right now"}
+        if code == 200 and isinstance(body, dict) and body.get("status") is True:
+            return {"status": True,
+                    "customer_name": str(body.get("customer_name") or "").strip() or None,
+                    "message": None}
+        message = "Invalid meter number. Please check and try again"
+        if isinstance(body, dict):
+            message = str(body.get("error") or body.get("detail") or message).strip()
+        return {"status": False, "customer_name": None, "message": message}
+
+    async def submit_electricity_purchase(self, *, service_id: int,
+                                          meter_type: str, meter_number: str,
+                                          amount, phone: str,
+                                          reference: str) -> PurchaseResult:
+        if not _valid_reference(reference):
+            return PurchaseResult(outcome=PurchaseOutcome.UNCERTAIN,
+                                  message="Invalid reference for ISQUAREDATA purchase")
+        payload = {
+            "service_id": int(service_id),
+            "meter_type": str(meter_type).strip(),
+            "meter_number": str(meter_number).strip(),
+            "amount": str(amount),
+            "phone_number": str(phone).strip(),
+            "reference": str(reference).strip(),
+            "disable_validation": False,
+        }
+        webhook_url = (settings.isquaredata_webhook_url or "").strip()
+        if webhook_url:
+            payload["webhook_url"] = webhook_url
+        code, body = await self._biller_post("/electricity/buy/", payload)
+        return _biller_purchase_result(code, body, "electricity")
+
+    # ----- cable TV -----
+
+    async def fetch_cable_services(self) -> list[dict]:
+        """Cable operators with plan lists: [{id, name, plans:[{id, name, amount}]}]."""
+        code, body = await self._biller_get("/cable/services/")
+        if code != 200 or not isinstance(body, list):
+            raise RuntimeError("ISQUAREDATA cable service list is unavailable")
+        services = []
+        for item in body:
+            if not isinstance(item, dict):
+                continue
+            try:
+                sid = int(item.get("id"))
+            except (TypeError, ValueError):
+                continue
+            name = str(item.get("name") or "").strip()
+            if not name or not item.get("is_active", True):
+                continue
+            plans = []
+            for plan in item.get("plans") or []:
+                if not isinstance(plan, dict):
+                    continue
+                amount = _decimal(plan.get("amount"))
+                plan_name = str(plan.get("name") or "").strip()
+                if amount is None or not plan_name:
+                    continue
+                plans.append({"id": plan.get("id"), "name": plan_name,
+                              "amount": amount})
+            if plans:
+                services.append({"id": sid, "name": name, "plans": plans})
+        return services
+
+    async def verify_smartcard(self, *, plan_id, smartcard: str) -> dict:
+        """Smartcard lookup: {"status": bool, "customer_name": str|None, "message": str|None}."""
+        payload = {"plan_id": plan_id, "smartcard": str(smartcard).strip()}
+        code, body = await self._biller_post("/cable/verify-smartcard/", payload)
+        if code == 0:
+            return {"status": False, "customer_name": None,
+                    "message": "The TV provider is unreachable right now"}
+        if code in (200, 201) and isinstance(body, dict) and body.get("status") is True:
+            return {"status": True,
+                    "customer_name": str(body.get("customer_name") or "").strip() or None,
+                    "message": None}
+        message = "Invalid smartcard number. Please check and try again"
+        if isinstance(body, dict):
+            message = str(body.get("error") or body.get("detail") or message).strip()
+        return {"status": False, "customer_name": None, "message": message}
+
+    async def submit_cable_purchase(self, *, service_id: int, plan_id,
+                                    smartcard: str, phone: str, amount,
+                                    subscription_type: str,
+                                    reference: str) -> PurchaseResult:
+        if not _valid_reference(reference):
+            return PurchaseResult(outcome=PurchaseOutcome.UNCERTAIN,
+                                  message="Invalid reference for ISQUAREDATA purchase")
+        payload = {
+            "service": int(service_id),
+            "plan": plan_id,
+            "smartcard": str(smartcard).strip(),
+            "phone_number": str(phone).strip(),
+            "subscription_type": str(subscription_type).strip(),
+            "amount": amount,
+            "reference": str(reference).strip(),
+            "disable_validation": False,
+        }
+        webhook_url = (settings.isquaredata_webhook_url or "").strip()
+        if webhook_url:
+            payload["webhook_url"] = webhook_url
+        code, body = await self._biller_post("/cable/buy/", payload)
+        return _biller_purchase_result(code, body, "cable TV")
+
+    # ----- education result checkers -----
+
+    async def fetch_education_services(self) -> list[dict]:
+        """Result-checker PIN services: [{id, name, api_amount, is_active}]."""
+        code, body = await self._biller_get("/education/services/")
+        if code != 200 or not isinstance(body, list):
+            raise RuntimeError("ISQUAREDATA education service list is unavailable")
+        services = []
+        for item in body:
+            if not isinstance(item, dict):
+                continue
+            try:
+                sid = int(item.get("id"))
+            except (TypeError, ValueError):
+                continue
+            name = str(item.get("name") or "").strip()
+            amount = _decimal(item.get("api_amount"))
+            if not name or amount is None:
+                continue
+            services.append({"id": sid, "name": name, "api_amount": amount,
+                             "is_active": bool(item.get("is_active", True))})
+        return services
+
+    async def submit_education_purchase(self, *, service_id: int, quantity: int,
+                                        phone: str, email: str,
+                                        reference: str) -> PurchaseResult:
+        """Synchronous purchase: a documented status body carries the PIN.
+
+        status="success"/"credited" finalizes (the remark holds the
+        delivered PIN, which would otherwise be lost); "failed" stays
+        UNCERTAIN because refunds are not documented and remain gated
+        behind the signed webhook / requery double-confirmation.
+        """
+        if not _valid_reference(reference):
+            return PurchaseResult(outcome=PurchaseOutcome.UNCERTAIN,
+                                  message="Invalid reference for ISQUAREDATA purchase")
+        payload = {
+            "service_id": int(service_id),
+            "quantity": int(quantity),
+            "phone_number": str(phone).strip(),
+            "email_address": str(email).strip(),
+            "reference": str(reference).strip(),
+        }
+        webhook_url = (settings.isquaredata_webhook_url or "").strip()
+        if webhook_url:
+            payload["webhook_url"] = webhook_url
+        code, body = await self._biller_post("/education/buy/", payload)
+        if code == 0 or code >= 500 or code in (401, 403, 404, 429):
+            return PurchaseResult(outcome=PurchaseOutcome.UNCERTAIN,
+                                  message=_biller_error_message(code, body, "education"))
+        if code >= 400:
+            return PurchaseResult(outcome=PurchaseOutcome.UNCERTAIN,
+                                  message=_biller_error_message(code, body, "education"))
+        if isinstance(body, dict):
+            status = str(body.get("status") or "").strip().lower()
+            if status in ("success", "credited"):
+                remark = str(body.get("remark") or "").strip()
+                message = "Education PIN purchase confirmed" + (f"; {remark}" if remark else "")
+                return PurchaseResult(outcome=PurchaseOutcome.SUCCESSFUL,
+                                      provider_reference=reference,
+                                      message=message)
+            if status == "failed":
+                return PurchaseResult(outcome=PurchaseOutcome.UNCERTAIN,
+                                      message="ISQUAREDATA reported the purchase as failed; "
+                                              "outcome requires reconciliation")
+        return PurchaseResult(outcome=PurchaseOutcome.PENDING,
+                              message="ISQUAREDATA accepted the request; outcome pending reconciliation")
+
+
+def _safe_json(response) -> object:
+    try:
+        return response.json()
+    except ValueError:
+        return None
+
+
+def _biller_error_message(code: int, body, label: str) -> str:
+    detail = None
+    if isinstance(body, dict):
+        detail = str(body.get("error") or body.get("detail") or "").strip()
+    elif isinstance(body, list) and body:
+        detail = str(body[0])[:120]
+    if code == 0:
+        return f"ISQUAREDATA {label} request failed (network/timeout)"
+    if detail:
+        return f"ISQUAREDATA rejected the {label} purchase: {detail[:160]}"
+    return f"ISQUAREDATA rejected the {label} purchase (HTTP {code})"
+
+
+def _biller_purchase_result(code: int, body, label: str) -> PurchaseResult:
+    """Shared purchase-response mapping for webhook-confirmed services."""
+    if code == 0 or code >= 500 or code in (401, 403, 404, 429):
+        return PurchaseResult(outcome=PurchaseOutcome.UNCERTAIN,
+                              message=_biller_error_message(code, body, label))
+    if code >= 400:
+        # Field-mapped rejection (e.g. insufficient provider balance):
+        # refunds are NOT documented, so this stays UNCERTAIN and is only
+        # ever resolved through the status requery / gated reconciliation.
+        return PurchaseResult(outcome=PurchaseOutcome.UNCERTAIN,
+                              message=_biller_error_message(code, body, label))
+    # The documented true status arrives via webhook/requery.
+    return PurchaseResult(outcome=PurchaseOutcome.PENDING,
+                          message=f"ISQUAREDATA accepted the {label} request; "
+                                  "outcome pending reconciliation")
+
 def verify_webhook_signature(raw_body: bytes, signature: str, user_key: str) -> bool:
     """Verify x-isquare-signature = HMAC-SHA512(raw body, user key).
 

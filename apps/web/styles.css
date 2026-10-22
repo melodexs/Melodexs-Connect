@@ -397,7 +397,7 @@ h1, h2, h3 { line-height: 1.2; }
 /* ---------- Services grid ---------- */
 .services-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(3, 1fr);
     gap: 12px;
 }
 
