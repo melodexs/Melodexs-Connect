@@ -14,7 +14,11 @@
 </head>
 
 <body class="auth-body landing">
-    <nav class="landing-nav" aria-label="Main">
+
+    <div class="orb orb-lime" aria-hidden="true"></div>
+    <div class="orb orb-blue" aria-hidden="true"></div>
+
+    <nav class="landing-nav" id="landingNav" aria-label="Main">
         <a class="landing-logo" href="/"><span class="logo-mark">M</span>MELODEXS CONNECT</a>
         <div class="landing-nav-links">
             <a href="#features">Features</a>
@@ -25,6 +29,7 @@
 
     <section class="landing-hero">
         <div>
+            <div class="hero-eyebrow"><span class="pulse-dot"></span>Instant VTU for MTN · Airtel · Glo · 9mobile</div>
             <h1>Your data, your airtime,<br><span>delivered instantly.</span></h1>
             <p class="lead">
                 Welcome to MELODEXS CONNECT — your one-stop platform for affordable data,
@@ -35,39 +40,129 @@
                 <a href="/register.html" class="btn btn-primary">Create a free account</a>
                 <a href="/login.html" class="btn btn-outline" style="color:#fff;border-color:rgba(255,255,255,.5);">Sign in</a>
             </div>
+            <div class="hero-trust">
+                <span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Paystack-secured wallet</span>
+                <span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Purchase PIN protection</span>
+                <span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Printable receipts</span>
+            </div>
         </div>
 
         <div class="landing-art" aria-hidden="true">
-            <div class="landing-phone">
-                <div class="landing-balance">
-                    Account Balance
-                    <div class="amount">₦2,450.60</div>
-                    <div style="margin-top:10px;font-size:12px;font-weight:700;">+ Top Up Instantly</div>
+            <div class="scene" id="heroScene">
+                <div class="scene-glow"></div>
+                <div class="scene-ring"></div>
+
+                <div class="landing-phone" id="heroPhone">
+                    <div class="phone-screen">
+                        <div class="screen-head">
+                            <div class="screen-hello">Good morning 👋<strong>Destiny</strong></div>
+                            <div class="screen-avatar">M</div>
+                        </div>
+                        <div class="screen-balance">
+                            <div class="label">Account Balance</div>
+                            <div class="amount">₦2,450.60</div>
+                            <div class="topup">+ Top Up Instantly</div>
+                        </div>
+                        <div class="screen-tiles">
+                            <div class="screen-tile">
+                                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                                Data
+                            </div>
+                            <div class="screen-tile">
+                                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                                Airtime
+                            </div>
+                            <div class="screen-tile">
+                                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
+                                Wallet
+                            </div>
+                            <div class="screen-tile">
+                                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+                                History
+                            </div>
+                        </div>
+                        <div class="screen-plan">
+                            <div>
+                                <div class="p-name">MTN 10GB · 30 days</div>
+                                <div class="p-meta">Delivered in seconds</div>
+                            </div>
+                            <div class="p-price">₦4,508</div>
+                        </div>
+                    </div>
                 </div>
+
+                <span class="float-chip lime chip-a" style="--fd:0s">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                    Fast &amp; Reliable Data
+                </span>
+                <span class="float-chip chip-b" style="--fd:1.2s">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13a10 10 0 0 1 14 0"/><path d="M8.5 16.5a5 5 0 0 1 7 0"/><circle cx="12" cy="19" r="1"/></svg>
+                    Affordable Airtime
+                </span>
+                <span class="float-chip lime chip-c" style="--fd:.6s">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                    Top Up Instantly
+                </span>
+                <span class="float-chip chip-d" style="--fd:1.8s">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                    Secure Transactions
+                </span>
             </div>
-            <span class="float-chip lime chip-a">⚡ Fast & Reliable Data</span>
-            <span class="float-chip chip-b">📶 Affordable Airtime</span>
-            <span class="float-chip chip-c">💳 Top Up Instantly</span>
-            <span class="float-chip lime chip-d">🛡️ Secure Transactions</span>
         </div>
     </section>
 
+    <div class="marquee" aria-hidden="true">
+        <div class="marquee-track" id="marqueeTrack">
+            <span>MTN Data</span><span>Airtel Data</span><span>Glo Data</span><span><em>9mobile Data</em></span><span>SME Bundles</span><span><em>Corporate Plans</em></span><span>Airtime VTU</span><span><em>Instant Delivery</em></span>
+        </div>
+    </div>
+
     <section class="landing-features" id="features">
-        <div class="landing-feature">
+        <div class="landing-feature tilt reveal" style="--d:0s">
+            <div class="feature-icon">
+                <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+            </div>
             <h3>Affordable data plans</h3>
             <p>Browse categorized bundles across MTN, Airtel, Glo and 9mobile with clear prices and validity, powered by trusted providers.</p>
         </div>
-        <div class="landing-feature">
+        <div class="landing-feature tilt reveal" style="--d:.12s">
+            <div class="feature-icon">
+                <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+            </div>
             <h3>Instant airtime</h3>
             <p>Send airtime to any Nigerian number in seconds, with a purchase PIN protecting every transaction.</p>
         </div>
-        <div class="landing-feature">
+        <div class="landing-feature tilt reveal" style="--d:.24s">
+            <div class="feature-icon">
+                <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
+            </div>
             <h3>Secure wallet</h3>
             <p>Fund your wallet with Paystack and spend with confidence. Every transaction is verified on the server before your balance moves.</p>
         </div>
-        <div class="landing-feature">
-            <h3>Full history & receipts</h3>
+        <div class="landing-feature tilt reveal" style="--d:.36s">
+            <div class="feature-icon">
+                <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+            </div>
+            <h3>Full history &amp; receipts</h3>
             <p>Search, filter and revisit every purchase with clear statuses and printable receipts for completed transactions.</p>
+        </div>
+    </section>
+
+    <div class="stats-band">
+        <div class="stat reveal" style="--d:0s"><b>4</b><span>Networks covered</span></div>
+        <div class="stat reveal" style="--d:.1s"><b>2%</b><span>Flat markup, no surprises</span></div>
+        <div class="stat reveal" style="--d:.2s"><b>Seconds</b><span>Delivery time</span></div>
+        <div class="stat reveal" style="--d:.3s"><b>100%</b><span>Of purchases tracked</span></div>
+    </div>
+
+    <section class="landing-cta-card">
+        <div class="cta-glass reveal">
+            <h2>Ready to stay connected?</h2>
+            <p>Create a free account, fund your wallet and buy your next bundle at a price that makes sense.</p>
+            <div class="landing-cta">
+                <a href="/register.html" class="btn btn-primary">Get started free</a>
+                <a href="/login.html" class="btn btn-outline" style="color:#fff;border-color:rgba(255,255,255,.5);">Sign in</a>
+            </div>
         </div>
     </section>
 
@@ -77,6 +172,7 @@
     </footer>
 
     <script src="/pwa.js" defer></script>
+    <script src="/landing.js" defer></script>
 </body>
 
 </html>
