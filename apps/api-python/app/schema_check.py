@@ -4,7 +4,7 @@ from .database import engine
 import re
 
 EXPECTED_COLUMNS = {
-    "users": {"id", "name", "email", "phone", "password", "purchase_pin", "balance", "virtual_account_number", "virtual_bank_name", "kyc_status", "is_admin", "reset_token_hash", "reset_token_expires_at", "created_at"},
+    "users": {"id", "name", "email", "phone", "password", "purchase_pin", "balance", "virtual_account_number", "virtual_bank_name", "kyc_status", "is_admin", "reset_token_hash", "reset_token_expires_at", "created_at", "profile_image"},
     "data_plans": {"id", "plan_name", "network", "plan", "provider_cost", "selling_price", "selling_price_override", "active", "provider_available", "category", "provider_category", "sync_error", "provider", "provider_code", "provider_package_code", "provider_package_name", "data_size", "validity", "source", "status", "last_synced_at", "created_at", "updated_at"},
     "data_plan_sync_runs": {"id", "started_at", "finished_at", "outcome", "added", "updated", "unavailable", "errors"},
     "transactions": {"id", "user_id", "type", "amount", "status", "reference", "description", "idempotency_key", "provider_reference", "provider", "created_at"},
@@ -43,7 +43,7 @@ EXPECTED_TYPES = {
 }
 TEXT_COLUMNS = {
     "name", "email", "phone", "password", "purchase_pin", "virtual_account_number",
-    "virtual_bank_name", "kyc_status", "reset_token_hash", "network", "plan_name",
+    "virtual_bank_name", "kyc_status", "reset_token_hash", "profile_image", "network", "plan_name",
     "plan", "provider", "provider_code", "provider_package_code", "provider_package_name",
     "data_size", "validity", "source", "status", "type", "reference", "description",
     "sid", "sess", "rate_key", "category", "provider_category", "sync_error", "idempotency_key", "provider_reference", "outcome", "errors",
