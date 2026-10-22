@@ -1676,6 +1676,7 @@ table.data-table tr:hover td { background: #F7FAFE; }
     font-weight: 800;
     letter-spacing: -.02em;
     position: relative;
+    color: var(--white);
 }
 
 .cta-glass p { color: var(--bluegray); margin: 14px auto 26px; max-width: 460px; font-size: 15px; line-height: 1.7; position: relative; }
