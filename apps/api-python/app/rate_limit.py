@@ -6,6 +6,7 @@ from .database import engine
 LIMITS = {
     "/api/login": (10, 900),
     "/api/register": (10, 3600),
+    "/api/auth/google": (10, 3600),
     "/api/forgot-password": (5, 900),
     "/api/reset-password": (10, 900),
     "/api/purchase-pin/set": (10, 900),

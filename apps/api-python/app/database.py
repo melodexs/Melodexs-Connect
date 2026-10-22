@@ -38,7 +38,7 @@ def init_schema():
             now = "CURRENT_TIMESTAMP"
         conn.execute(text(f"""CREATE TABLE IF NOT EXISTS users (
             id {auto}, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE,
-            phone TEXT NOT NULL UNIQUE, password TEXT NOT NULL,
+            phone TEXT UNIQUE, password TEXT NOT NULL,
             purchase_pin TEXT, balance {money_type} NOT NULL DEFAULT 0,
             virtual_account_number TEXT, virtual_bank_name TEXT,
             kyc_status TEXT NOT NULL DEFAULT 'pending', is_admin {bool_type} NOT NULL DEFAULT 0,

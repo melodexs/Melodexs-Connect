@@ -44,6 +44,11 @@
             <button type="submit" class="btn btn-primary btn-block" id="loginButton">Login</button>
         </form>
 
+        <div id="googleAuthWrap" class="hidden">
+            <div class="auth-divider" role="separator"><span>or</span></div>
+            <div id="googleBtn" class="google-btn-wrap"></div>
+        </div>
+
         <p class="message" id="message" role="status" aria-live="polite" hidden></p>
 
         <p class="auth-alt">
@@ -112,6 +117,67 @@
                 loginButton.textContent = "Login";
             }
         });
+
+        // ---- Continue with Google -----------------------------------------
+        // The button only renders when the API reports a configured Google
+        // client ID; otherwise this section stays hidden.
+        async function handleGoogleCredential(credential) {
+            try {
+                const response = await fetch("/api/auth/google", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "Accept": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({ credential: credential })
+                });
+                let data;
+                try { data = await response.json(); } catch (jsonError) {
+                    throw new Error("The server returned an invalid response. Please try again in a moment.");
+                }
+                if (!response.ok || !data.success) {
+                    throw new Error(data.message || "Google sign-in failed. Please try again.");
+                }
+                if (data.user) {
+                    localStorage.setItem("cheapdataUser", JSON.stringify(data.user));
+                    if (data.user.id) {
+                        localStorage.setItem("cheapdataUserId", String(data.user.id));
+                    }
+                }
+                showMessage("Signed in with Google! Redirecting…", "success");
+                setTimeout(function () {
+                    window.location.href = "/dashboard.html";
+                }, 700);
+            } catch (error) {
+                showMessage(error.message || "Google sign-in failed. Please try again.", "error");
+            }
+}
+        async function setupGoogleAuth() {
+            try {
+                const response = await fetch("/api/auth/google/config", { headers: { "Accept": "application/json" }, credentials: "include" });
+                const config = await response.json();
+                if (!config.success || !config.enabled || !config.client_id) return;
+                const script = document.createElement("script");
+                script.src = "https://accounts.google.com/gsi/client";
+                script.async = true;
+                script.defer = true;
+                script.onload = function () {
+                    window.google.accounts.id.initialize({
+                        client_id: config.client_id,
+                        callback: function (googleResponse) {
+                            if (googleResponse && googleResponse.credential) {
+                                handleGoogleCredential(googleResponse.credential);
+                            }
+                        }
+                    });
+                    window.google.accounts.id.renderButton(
+                        document.getElementById("googleBtn"),
+                        { theme: "outline", size: "large", shape: "pill", text: "continue_with", logo_alignment: "left", width: 300 }
+                    );
+                    document.getElementById("googleAuthWrap").classList.remove("hidden");
+                };
+                document.head.appendChild(script);
+            } catch (error) { /* stay hidden on any config failure */ }
+        }
+        document.addEventListener("DOMContentLoaded", setupGoogleAuth);
     </script>
 </body>
 

@@ -123,6 +123,7 @@ class SecurityMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(SecurityMiddleware)
 from .admin_routes import router as admin_router
+from .google_auth import verify_google_credential
 app.include_router(admin_router)
 
 
@@ -224,6 +225,35 @@ def login(response: Response, body: dict):
 def logout(request: Request, response: Response):
     clear_session(request, response)
     return {"success": True, "message": "Logged out"}
+
+
+@app.get("/api/auth/google/config")
+def google_auth_config():
+    """The static frontend asks which sign-in options are actually enabled
+    before rendering any third-party button."""
+    enabled = bool(settings.google_client_id)
+    return {"success": True, "enabled": enabled, "client_id": settings.google_client_id or None}
+
+
+@app.post("/api/auth/google")
+def google_auth(response: Response, body: dict):
+    credential = body.get("credential")
+    claims = verify_google_credential(credential)
+    email = claims["email"]
+    with db_session() as db:
+        user = q(db, "SELECT id FROM users WHERE LOWER(email)=:email", {"email": email}).mappings().first()
+        created = False
+        if not user:
+            # Google accounts have no phone yet; users can set one from the
+            # Profile page later. The password column keeps its NOT NULL
+            # contract with an unusable random secret.
+            row = q(db, "INSERT INTO users(name,email,phone,password,balance,kyc_status,is_admin) VALUES(:name,:email,NULL,:password,0,'pending',0) RETURNING id",
+                   {"name": claims["name"], "email": email, "password": password_hash(secrets.token_hex(32))}).mappings().first()
+            user = {"id": int(row["id"])}
+            created = True
+        user = user_row(db, int(user["id"]), True)
+    new_session(response, int(user["id"]))
+    return {"success": True, "message": "Signed in with Google", "user": public_user(user), "created": created}
 
 
 @app.post("/api/forgot-password")

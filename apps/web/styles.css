@@ -2289,3 +2289,7 @@ body.app-body .hero-title.compact span { color: var(--lime); }
 .install-steps b { color: var(--primary); }
 .install-help { margin: 12px 0 0; padding: 12px 14px; border-radius: 10px; background: rgba(2, 81, 176, .08); border: 1px solid rgba(2, 81, 176, .25); color: #10243e; font-size: 13.5px; line-height: 1.55; }
 .install-help.hidden { display: none; }
+/* Continue with Google (login + registration) */
+.auth-divider { display: flex; align-items: center; gap: 12px; margin: 18px 0 14px; color: var(--ink-soft, #C7D1DD); font-size: 13px; }
+.auth-divider::before, .auth-divider::after { content: ""; flex: 1; height: 1px; background: rgba(199, 209, 221, .3); }
+.google-btn-wrap { display: flex; justify-content: center; }
