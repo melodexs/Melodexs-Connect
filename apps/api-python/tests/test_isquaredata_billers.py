@@ -164,11 +164,16 @@ def test_biller_lists_and_prices(client, isquare_enabled):
     email, _ = account(client)
     login(client, email)
     body = client.get("/api/billers/electricity").json()
-    assert body == {"services": [{"id": 19, "name": "IKEDC - Ikeja Electricity"}]}
-    cable = client.get("/api/billers/cable").json()["services"]
+    assert body["success"] is True
+    assert body["services"] == [{"id": 19, "name": "IKEDC - Ikeja Electricity"}]
+    cable = client.get("/api/billers/cable").json()
+    assert cable["success"] is True
+    cable = cable["services"]
     assert {svc["name"] for svc in cable} == {"GOTV", "DSTV"}
     assert client.get("/api/billers").json()["cable"] is True
-    education = client.get("/api/billers/education").json()["services"]
+    education_resp = client.get("/api/billers/education").json()
+    assert education_resp["success"] is True
+    education = education_resp["services"]
     # active only, 2% markup applied to the API cost
     assert [svc["name"] for svc in education] == ["WAEC", "NECO"]
     assert education[0]["selling_price"] == 5406  # ceil(5300 * 1.02)
@@ -194,7 +199,7 @@ def test_meter_and_smartcard_verification(client, isquare_enabled, monkeypatch):
 
     ok = client.get("/api/billers/electricity/verify",
                     params={"service_id": 19, "meter_type": "prepaid", "meter_number": "1111111111111"})
-    assert ok.status_code == 200 and ok.json()["customer_name"] == "ADIGUN SHERIF"
+    assert ok.status_code == 200 and ok.json()["success"] is True and ok.json()["customer_name"] == "ADIGUN SHERIF"
     bad = client.get("/api/billers/electricity/verify",
                      params={"service_id": 19, "meter_type": "prepaid", "meter_number": "0000000000"})
     assert bad.status_code == 400

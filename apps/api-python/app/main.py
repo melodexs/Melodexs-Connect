@@ -824,7 +824,7 @@ async def billers_electricity(request: Request):
         services = await adapter.fetch_electricity_services()
     except Exception:
         raise HTTPException(502, "The electricity service list is unavailable right now. Please try again shortly.")
-    return {"services": services}
+    return {"success": True, "services": services}
 
 
 @app.get("/api/billers/electricity/verify")
@@ -846,7 +846,7 @@ async def billers_electricity_verify(request: Request, service_id: int | None = 
         raise HTTPException(502, "Meter verification is unavailable right now. Please try again shortly.")
     if not outcome.get("status"):
         raise HTTPException(400, outcome.get("message") or "Invalid meter number. Please check and try again")
-    return {"customer_name": outcome.get("customer_name")}
+    return {"success": True, "customer_name": outcome.get("customer_name")}
 
 
 @app.post("/api/purchase-electricity")
@@ -905,7 +905,7 @@ async def billers_cable(request: Request):
         services = await adapter.fetch_cable_services()
     except Exception:
         raise HTTPException(502, "The TV subscription service list is unavailable right now. Please try again shortly.")
-    return {"services": services}
+    return {"success": True, "services": services}
 
 
 @app.post("/api/billers/cable/verify")
@@ -926,7 +926,7 @@ async def billers_cable_verify(request: Request, body: dict):
         raise HTTPException(502, "Smartcard verification is unavailable right now. Please try again shortly.")
     if not outcome.get("status"):
         raise HTTPException(400, outcome.get("message") or "Invalid smartcard number. Please check and try again")
-    return {"customer_name": outcome.get("customer_name")}
+    return {"success": True, "customer_name": outcome.get("customer_name")}
 
 
 @app.post("/api/purchase-cable")
@@ -998,7 +998,7 @@ async def billers_education(request: Request):
     services = [sv for sv in services if sv.get("is_active")]
     for sv in services:
         sv["selling_price"] = math.ceil(float(sv["api_amount"]) * 1.02)
-    return {"services": services}
+    return {"success": True, "services": services}
 
 
 @app.post("/api/purchase-education")
