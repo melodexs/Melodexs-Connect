@@ -107,3 +107,21 @@ def test_install_api_is_exposed_for_explicit_buttons():
     assert "installCard" in profile
     assert "MELODEXS_INSTALL" in profile
     assert "DOMContentLoaded" in profile, "install API is created by the deferred pwa.js"
+
+
+def test_install_button_is_always_actionable():
+    """When Chrome's native prompt is unavailable (app already installed,
+    non-Chrome browser, in-app WebView) the profile install button must
+    never become a dead disabled control: tapping it shows actionable
+    install guidance instead."""
+    profile = (WEB / "purchase-pin.html").read_text()
+    assert 'id="installHelp"' in profile, "guidance box must exist in the install card"
+    assert "installer.canPrompt()" in profile, "click handler must branch on prompt availability"
+    assert "inAppBrowser" in profile, "in-app browsers (WebView/FB/Instagram) need their own guidance"
+    # The unavailable path must not disable the install button into a dead
+    # control. Scope the check to setupInstallCard so unrelated form buttons
+    # (PIN, photo upload) can still use disabled states.
+    start = profile.index("function setupInstallCard")
+    end = profile.index("document.addEventListener(\"DOMContentLoaded\", setupInstallCard)")
+    card_logic = profile[start:end]
+    assert "disabled" not in card_logic, "install button must stay tappable when no native prompt is available"
