@@ -9,6 +9,9 @@
     <link rel="stylesheet" href="styles.css">
     <link rel="manifest" href="/manifest.webmanifest">
     <meta name="theme-color" content="#0251B0">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="MELODEXS">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
 </head>
 
@@ -92,6 +95,20 @@
             <p class="message" id="message" role="status" aria-live="polite" hidden></p>
         </section>
 
+        <section class="card hidden" id="installCard" aria-labelledby="installTitle">
+            <h2 class="card-title" id="installTitle">Get the app</h2>
+            <p class="section-hint" id="installHint">Install MELODEXS CONNECT on your phone for one-tap access and faster checkouts.</p>
+            <button class="btn btn-primary btn-block" id="installButton" type="button">Install MELODEXS CONNECT</button>
+            <div id="installIos" class="hidden">
+                <p class="section-hint">On iPhone or iPad:</p>
+                <ol class="install-steps">
+                    <li>Tap the <b>Share</b> button <span aria-hidden="true">(⬆︎)</span> in Safari's toolbar</li>
+                    <li>Scroll down and tap <b>Add to Home Screen</b></li>
+                    <li>Tap <b>Add</b> — MELODEXS CONNECT will appear on your home screen</li>
+                </ol>
+            </div>
+        </section>
+
         <section class="card" aria-labelledby="sessionTitle">
             <h2 class="card-title" id="sessionTitle">Session</h2>
             <p class="section-hint">Signing out ends this session on this device. You can sign back in anytime.</p>
@@ -115,6 +132,45 @@
         const user = JSON.parse(storedUser);
 
         const message = document.getElementById("message");
+
+        // ---- Install (PWA) entry point --------------------------------
+        // pwa.js is deferred, so MELODEXS_INSTALL only exists after DOM ready.
+        function setupInstallCard() {
+            const installer = window.MELODEXS_INSTALL;
+            if (!installer || installer.isStandalone()) return;
+            const card = document.getElementById("installCard");
+            const MENU_LABEL = "Use your browser menu → Install app";
+            const button = document.getElementById("installButton");
+            const iosSteps = document.getElementById("installIos");
+            const hint = document.getElementById("installHint");
+            card.classList.remove("hidden");
+            if (installer.platform() === "ios") {
+                button.classList.add("hidden");
+                iosSteps.classList.remove("hidden");
+                return;
+            }
+            installer.onAvailabilityChange(available => {
+                if (available) {
+                    button.disabled = false;
+                    button.textContent = "Install MELODEXS CONNECT";
+                } else {
+                    button.disabled = true;
+                    button.textContent = MENU_LABEL;
+                }
+            });
+            button.disabled = true;
+            button.textContent = MENU_LABEL;
+            hint.textContent = "Install MELODEXS CONNECT on your phone for one-tap access and faster checkouts.";
+            button.addEventListener("click", async () => {
+                const outcome = await installer.promptInstall();
+                if (outcome === "accepted") {
+                    button.textContent = "Installed ✓";
+                    button.disabled = true;
+                    hint.textContent = "MELODEXS CONNECT is on your home screen. See you there!";
+                }
+            });
+        }
+        document.addEventListener("DOMContentLoaded", setupInstallCard);
 
         function showMessage(text, type) {
             message.textContent = text;

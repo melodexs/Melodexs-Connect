@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Offline | MELODEXS CONNECT</title>
+    <meta name="theme-color" content="#020817">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            min-height: 100vh;
+            background: radial-gradient(1200px 600px at 70% -10%, rgba(2, 81, 176, .35), transparent 60%), #020817;
+            color: #C7D1DD;
+            font-family: Arial, Helvetica, sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            text-align: center;
+        }
+        .wrap { max-width: 420px; }
+        .logo {
+            font-weight: 800;
+            letter-spacing: 2px;
+            color: #fff;
+            font-size: 15px;
+            margin-bottom: 28px;
+        }
+        .logo b { color: #D1FF42; }
+        .card {
+            background: rgba(255, 255, 255, .04);
+            border: 1px solid rgba(199, 209, 221, .18);
+            border-radius: 18px;
+            padding: 32px 24px;
+        }
+        h1 { color: #fff; font-size: 21px; margin-bottom: 10px; }
+        p { font-size: 14.5px; line-height: 1.6; margin-bottom: 8px; }
+        .hint { font-size: 13px; color: #8ea3b8; }
+        button {
+            margin-top: 20px;
+            width: 100%;
+            padding: 14px 16px;
+            border: 0;
+            border-radius: 12px;
+            background: #D1FF42;
+            color: #020817;
+            font-weight: 700;
+            font-size: 15px;
+            cursor: pointer;
+        }
+        button:active { transform: translateY(1px); }
+        @media (prefers-reduced-motion: no-preference) { button { transition: transform .15s ease; } }
+    </style>
+</head>
+
+<body>
+    <div class="wrap">
+        <div class="logo">MELODEXS <b>CONNECT</b></div>
+        <div class="card">
+            <h1>You're offline</h1>
+            <p>This page couldn't load because your device has no internet connection.</p>
+            <p class="hint">Your wallet and purchase history are safe. Reconnect to the internet and try again — any purchase that was already submitted keeps processing on our servers.</p>
+            <button type="button" onclick="window.location.reload()">Try again</button>
+        </div>
+    </div>
+</body>
+
+</html>
