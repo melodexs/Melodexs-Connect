@@ -117,8 +117,10 @@ def test_python_routes_cover_the_documented_frontend_contract():
     #  - /api/paystack/webhook: called by Paystack server-to-server.
     #  - /api/webhooks/isquaredata: ISQUAREDATA supplier server-to-server
     #    signed transaction callbacks.
-    allowed_unused = {"/api/status", "/api/purchase-pin/verify", "/api/paystack/webhook",
-                      "/api/webhooks/isquaredata"}
+    #  - /api/session: session-status probe used by the app shell and
+    #    automated clients, not by an individual page action.
+    allowed_unused = {"/api/status", "/api/session", "/api/purchase-pin/verify",
+                      "/api/paystack/webhook", "/api/webhooks/isquaredata"}
     assert set(unused) == allowed_unused, (
         f"Unexpected Python routes unused by the frontend: "
         f"{sorted(set(unused) - allowed_unused)}"

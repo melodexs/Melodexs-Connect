@@ -81,6 +81,12 @@ def init_schema():
             conn.execute(text("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS provider TEXT"))
             conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_transactions_reference ON transactions(reference) WHERE reference IS NOT NULL"))
             conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_transactions_user_idempotency ON transactions(user_id,idempotency_key) WHERE idempotency_key IS NOT NULL"))
+        # Saved recipient numbers for faster repeat purchases. Tied to the
+        # owning account; never shared between users.
+        conn.execute(text(f"""CREATE TABLE IF NOT EXISTS favorite_recipients (
+            id {auto}, user_id INTEGER NOT NULL, label TEXT, phone TEXT NOT NULL,
+            network TEXT, created_at {timestamp_type} NOT NULL DEFAULT {now},
+            FOREIGN KEY(user_id) REFERENCES users(id))"""))
         conn.execute(text("CREATE TABLE IF NOT EXISTS sessions (sid TEXT PRIMARY KEY, sess TEXT NOT NULL, expire BIGINT NOT NULL)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_sessions_expire ON sessions(expire)"))
 

@@ -1,291 +1,64 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta name="api-base-url" content="">
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Create Account | MELODEXS CONNECT</title>
-
-    <style>
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
-
-        body {
-            min-height: 100vh;
-            font-family: Arial, Helvetica, sans-serif;
-            background: #F5F8FC;
-            color: #172033;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 20px;
-        }
-
-        .container {
-            width: 100%;
-            max-width: 450px;
-        }
-
-        .logo {
-            text-align: center;
-            font-size: 32px;
-            font-weight: 700;
-            color: #0251B0;
-            margin-bottom: 22px;
-        }
-
-        .card {
-            background: #ffffff;
-            width: 100%;
-            padding: 32px;
-            border-radius: 18px;
-            box-shadow: 0 10px 35px rgba(0, 0, 0, 0.08);
-        }
-
-        h1 {
-            text-align: center;
-            font-size: 28px;
-            margin-bottom: 8px;
-        }
-
-        .subtitle {
-            text-align: center;
-            color: #667085;
-            margin-bottom: 28px;
-            font-size: 15px;
-        }
-
-        .message {
-            display: none;
-            padding: 12px;
-            border-radius: 8px;
-            margin-bottom: 18px;
-            text-align: center;
-            font-size: 14px;
-        }
-
-        .form-group {
-            margin-bottom: 18px;
-        }
-
-        label {
-            display: block;
-            font-weight: 600;
-            margin-bottom: 8px;
-            font-size: 14px;
-        }
-
-        input {
-            width: 100%;
-            padding: 14px;
-            border: 1px solid #d0d5dd;
-            border-radius: 9px;
-            font-size: 16px;
-            outline: none;
-            background: #ffffff;
-        }
-
-        input:focus {
-            border-color: #0251B0;
-            box-shadow: 0 0 0 3px rgba(23, 107, 58, 0.08);
-        }
-
-        .register-btn {
-            width: 100%;
-            padding: 15px;
-            border: none;
-            border-radius: 9px;
-            background: #0251B0;
-            color: white;
-            font-size: 16px;
-            font-weight: 700;
-            cursor: pointer;
-            margin-top: 5px;
-        }
-
-        .register-btn:hover {
-            background: #12562e;
-        }
-
-        .register-btn:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-        }
-
-        .login-link {
-            text-align: center;
-            margin-top: 22px;
-            color: #667085;
-            font-size: 14px;
-        }
-
-        .login-link a {
-            color: #0251B0;
-            text-decoration: none;
-            font-weight: 700;
-        }
-
-        .back-home {
-            display: block;
-            text-align: center;
-            margin-top: 20px;
-            color: #172033;
-            text-decoration: none;
-            font-size: 14px;
-        }
-
-        .back-home:hover,
-        .login-link a:hover {
-            text-decoration: underline;
-        }
-
-        @media (max-width: 500px) {
-            body {
-                padding: 15px;
-                align-items: flex-start;
-                padding-top: 35px;
-            }
-
-            .card {
-                padding: 25px 20px;
-            }
-
-            .logo {
-                font-size: 28px;
-            }
-
-            h1 {
-                font-size: 25px;
-            }
-        }
-    </style>
-    <script src="api.js"></script>
-    <meta name="theme-color" content="#0251B0">
+    <link rel="stylesheet" href="styles.css">
     <link rel="manifest" href="/manifest.webmanifest">
-    <script src="/pwa.js" defer></script>
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="theme-color" content="#0251B0">
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
-    <link rel="icon" type="image/png" href="/icons/melodexs-connect-192.png">
 </head>
 
-<body>
+<body class="auth-body">
+    <nav class="landing-nav" aria-label="Main">
+        <a class="landing-logo" href="/"><span class="logo-mark">M</span>MELODEXS CONNECT</a>
+    </nav>
 
-    <div class="container">
+    <header class="auth-hero">
+        <h1>Create your <span class="auth-accent">MELODEXS CONNECT</span> account</h1>
+        <p>Join and enjoy affordable data and airtime in minutes.</p>
+    </header>
 
-        <div class="logo">
-            MELODEXS CONNECT
-        </div>
+    <main class="auth-card" aria-labelledby="authTitle">
+        <h2 class="form-label" id="authTitle">Register</h2>
 
-        <div class="card">
+        <form id="registerForm" novalidate>
+            <label class="field">
+                <span class="field-label">Full name</span>
+                <input id="name" class="input" type="text" autocomplete="name" placeholder="Your full name" required>
+            </label>
+            <label class="field">
+                <span class="field-label">Email address</span>
+                <input id="email" class="input" type="email" autocomplete="email" placeholder="you@example.com" required>
+            </label>
+            <label class="field">
+                <span class="field-label">Phone number</span>
+                <input id="phone" class="input" type="tel" inputmode="tel" autocomplete="tel" placeholder="08012345678" required>
+            </label>
+            <label class="field">
+                <span class="field-label">Password</span>
+                <input id="password" class="input" type="password" autocomplete="new-password" placeholder="At least 8 characters" required>
+            </label>
+            <label class="field">
+                <span class="field-label">Confirm password</span>
+                <input id="confirmPassword" class="input" type="password" autocomplete="new-password" placeholder="Repeat your password" required>
+            </label>
+            <button type="submit" class="btn btn-primary btn-block" id="registerButton">Create Account</button>
+        </form>
 
-            <h1>Create Account</h1>
+        <p class="message" id="message" role="status" aria-live="polite" hidden></p>
 
-            <p class="subtitle">
-                Create your MELODEXS CONNECT account
-            </p>
+        <p class="auth-alt">
+            Already have an account?
+            <a href="/login.html">Sign in</a>
+        </p>
+    </main>
 
-            <div id="message" class="message"></div>
-
-            <form id="registerForm">
-
-                <div class="form-group">
-                    <label for="name">Full Name</label>
-
-                    <input
-                        type="text"
-                        id="name"
-                        name="name"
-                        placeholder="Enter your full name"
-                        autocomplete="name"
-                        required
-                    >
-                </div>
-
-                <div class="form-group">
-                    <label for="email">Email Address</label>
-
-                    <input
-                        type="email"
-                        id="email"
-                        name="email"
-                        placeholder="Enter your email"
-                        autocomplete="email"
-                        required
-                    >
-                </div>
-
-                <div class="form-group">
-                    <label for="phone">Phone Number</label>
-
-                    <input
-                        type="tel"
-                        id="phone"
-                        name="phone"
-                        placeholder="08012345678"
-                        maxlength="11"
-                        autocomplete="tel"
-                        inputmode="numeric"
-                        required
-                    >
-                </div>
-
-                <div class="form-group">
-                    <label for="password">Password</label>
-
-                    <input
-                        type="password"
-                        id="password"
-                        name="password"
-                        placeholder="Create a password"
-                        minlength="8"
-                        autocomplete="new-password"
-                        required
-                    >
-                </div>
-
-                <div class="form-group">
-                    <label for="confirmPassword">
-                        Confirm Password
-                    </label>
-
-                    <input
-                        type="password"
-                        id="confirmPassword"
-                        name="confirmPassword"
-                        placeholder="Confirm your password"
-                        minlength="8"
-                        autocomplete="new-password"
-                        required
-                    >
-                </div>
-
-                <button
-                    type="submit"
-                    class="register-btn"
-                    id="registerButton"
-                >
-                    Create Account
-                </button>
-
-            </form>
-
-            <div class="login-link">
-                Already have an account?
-                <a href="/login.html">Login</a>
-            </div>
-
-        </div>
-
-        <a href="/" class="back-home">
-            ← Back to Homepage
-        </a>
-
-    </div>
-
+    <script src="api.js"></script>
+    <script src="/pwa.js" defer></script>
     <script>
         const form = document.getElementById("registerForm");
         const message = document.getElementById("message");
@@ -293,158 +66,75 @@
 
         function showMessage(text, type) {
             message.textContent = text;
-            message.style.display = "block";
-
-            if (type === "error") {
-                message.style.background = "#fee4e2";
-                message.style.color = "#b42318";
-            } else {
-                message.style.background = "#eef8f2";
-                message.style.color = "#0251B0";
-            }
+            message.className = "message " + type;
+            message.hidden = false;
         }
 
-        form.addEventListener("submit", async function(event) {
+        form.addEventListener("submit", async function (event) {
             event.preventDefault();
-
             const name = document.getElementById("name").value.trim();
             const email = document.getElementById("email").value.trim();
             const phone = document.getElementById("phone").value.trim();
             const password = document.getElementById("password").value;
-            const confirmPassword =
-                document.getElementById("confirmPassword").value;
+            const confirmPassword = document.getElementById("confirmPassword").value;
+            message.hidden = true;
 
-            message.style.display = "none";
-
-            if (!name) {
-                showMessage("Please enter your full name.", "error");
-                return;
-            }
-
-            if (!email) {
-                showMessage("Please enter your email address.", "error");
-                return;
-            }
-
+            if (!name) { showMessage("Please enter your full name.", "error"); return; }
+            if (!email) { showMessage("Please enter your email address.", "error"); return; }
             if (!/^0[789][01][0-9]{8}$/.test(phone)) {
-                showMessage(
-                    "Please enter a valid Nigerian phone number.",
-                    "error"
-                );
+                showMessage("Please enter a valid Nigerian phone number.", "error");
                 return;
             }
-
             if (password.length < 8) {
-                showMessage(
-                    "Password must be at least 8 characters.",
-                    "error"
-                );
+                showMessage("Password must be at least 8 characters.", "error");
                 return;
             }
-
             if (password !== confirmPassword) {
-                showMessage(
-                    "Passwords do not match.",
-                    "error"
-                );
+                showMessage("Passwords do not match.", "error");
                 return;
             }
 
             button.disabled = true;
-            button.textContent = "Creating Account...";
-
+            button.textContent = "Creating Account…";
             try {
                 const response = await fetch("/api/register", {
                     method: "POST",
-                    headers: {
-                        "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify({
-                        name: name,
-                        email: email,
-                        phone: phone,
-                        password: password
-                    })
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({ name: name, email: email, phone: phone, password: password })
                 });
-
                 let data;
-
                 try {
                     data = await response.json();
                 } catch (jsonError) {
-                    throw new Error(
-                        "The server returned an invalid response."
-                    );
+                    throw new Error("The server returned an invalid response.");
                 }
-
                 if (!response.ok || !data.success) {
-                    showMessage(
-                        data.message || "Registration failed.",
-                        "error"
-                    );
-
+                    showMessage(data.message || "Registration failed.", "error");
                     button.disabled = false;
                     button.textContent = "Create Account";
                     return;
                 }
-
-                /*
-                    Save the new user's ID temporarily.
-                    The Create PIN page will use this ID.
-                */
                 if (!data.user || !data.user.id) {
-                    showMessage(
-                        "Account was created, but no user ID was returned.",
-                        "error"
-                    );
-
+                    showMessage("Account was created, but no user ID was returned.", "error");
                     button.disabled = false;
                     button.textContent = "Create Account";
                     return;
                 }
-
-                localStorage.setItem(
-                    "cheapdataNewUserId",
-                    String(data.user.id)
-                );
-
-                showMessage(
-                    "Account created successfully! 🎉",
-                    "success"
-                );
-
+                localStorage.setItem("cheapdataNewUserId", String(data.user.id));
+                showMessage("Account created successfully! Setting up your PIN…", "success");
                 button.textContent = "Account Created ✓";
-
-                /*
-                    Send the new user to the Purchase PIN page.
-                */
-                setTimeout(function() {
-                    window.location.href = "/create-pin.html";
-                }, 1000);
-
+                // Send the new user to set up their Purchase PIN.
+                setTimeout(function () {
+                    window.location.href = "/purchase-pin.html";
+                }, 900);
             } catch (error) {
-                console.error("REGISTRATION ERROR:", error);
-
-                showMessage(
-                    "Unable to connect to the server. Please try again.",
-                    "error"
-                );
-
+                showMessage(error.message || "Unable to register. Please try again.", "error");
                 button.disabled = false;
                 button.textContent = "Create Account";
             }
         });
-
-        /*
-            Allow only numbers in the phone field.
-        */
-        document.getElementById("phone").addEventListener(
-            "input",
-            function() {
-                this.value = this.value.replace(/\D/g, "").slice(0, 11);
-            }
-        );
     </script>
-
 </body>
+
 </html>

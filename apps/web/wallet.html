@@ -1,272 +1,227 @@
 <!DOCTYPE html>
-
 <html lang="en">
 
 <head>
     <meta name="api-base-url" content="">
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Wallet | MELODEXS CONNECT</title>
-
-<style>
-    * {
-        box-sizing: border-box;
-        margin: 0;
-        padding: 0;
-        font-family: Arial, sans-serif;
-    }
-
-    body {
-        background: #F5F8FC;
-        color: #172033;
-    }
-
-    nav {
-        background: white;
-        padding: 18px 7%;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-    }
-
-    .logo {
-        font-size: 26px;
-        font-weight: bold;
-        color: #0251B0;
-    }
-
-    nav a {
-        text-decoration: none;
-        color: #172033;
-        font-weight: bold;
-    }
-
-    .container {
-        max-width: 700px;
-        margin: 40px auto;
-        padding: 0 20px;
-    }
-
-    .card {
-        background: white;
-        padding: 30px;
-        border-radius: 18px;
-        box-shadow: 0 8px 25px rgba(0,0,0,0.06);
-        margin-bottom: 20px;
-    }
-
-    .balance-card {
-        background: #0251B0;
-        color: white;
-    }
-
-    .balance-label {
-        opacity: 0.85;
-        margin-bottom: 10px;
-    }
-
-    .balance {
-        font-size: 38px;
-        font-weight: bold;
-    }
-
-    h2 {
-        margin-bottom: 20px;
-    }
-
-    label {
-        display: block;
-        font-weight: bold;
-        margin-bottom: 8px;
-    }
-
-    input {
-        width: 100%;
-        padding: 14px;
-        border: 1px solid #d0d5dd;
-        border-radius: 8px;
-        font-size: 16px;
-        outline: none;
-        margin-bottom: 15px;
-    }
-
-    input:focus {
-        border-color: #0251B0;
-    }
-
-    button {
-        width: 100%;
-        padding: 15px;
-        border: none;
-        border-radius: 8px;
-        background: #0251B0;
-        color: white;
-        font-size: 16px;
-        font-weight: bold;
-        cursor: pointer;
-    }
-
-    button:hover {
-        opacity: 0.9;
-    }
-
-    .test-note {
-        background: #fff7e6;
-        color: #7a4b00;
-        padding: 14px;
-        border-radius: 8px;
-        margin-top: 15px;
-        font-size: 14px;
-        line-height: 1.5;
-    }
-
-    .message {
-        display: none;
-        padding: 14px;
-        border-radius: 8px;
-        margin-bottom: 15px;
-    }
-
-    @media (max-width: 600px) {
-        .balance {
-            font-size: 32px;
-        }
-
-        .card {
-            padding: 22px;
-        }
-    }
-</style>
-
+    <link rel="stylesheet" href="/styles.css">
     <script src="api.js"></script>
+    <script src="ui.js" defer></script>
     <meta name="theme-color" content="#0251B0">
     <link rel="manifest" href="/manifest.webmanifest">
     <script src="/pwa.js" defer></script>
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
     <link rel="icon" type="image/png" href="/icons/melodexs-connect-192.png">
 </head>
 
 <body>
 
-<nav>
+<header class="appbar" id="appbar"></header>
+<nav class="desktop-tabs" id="desktop-tabs" aria-label="Primary"></nav>
 
-<div class="logo">
-    MELODEXS CONNECT
-</div>
+<main class="page page-narrow">
 
-<a href="/dashboard.html">
-    ← Dashboard
-</a>
+    <!-- BALANCE -->
+    <section class="balance-card" aria-label="Wallet balance">
+        <div class="wallet-chip" aria-hidden="true">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0251B0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></svg>
+        </div>
+        <div class="balance-main">
+            <div class="balance-label">Wallet Balance</div>
+            <div class="balance-amount" id="balance">₦0</div>
+        </div>
+        <a href="/fund-wallet.html" class="balance-cta">+ Top Up Balance</a>
+    </section>
 
-</nav>
-
-<main class="container">
-
-<div class="card balance-card">
-
-    <div class="balance-label">
-        Wallet Balance
+    <!-- FILTERS -->
+    <div class="card mt-2" style="padding:16px">
+        <div class="card-title mb-2">Transaction History</div>
+        <div class="field" style="margin-bottom:12px">
+            <label for="txSearch">Search</label>
+            <input id="txSearch" type="search" placeholder="Search by description or reference…" autocomplete="off">
+        </div>
+        <div class="filter-bar" role="group" aria-label="Filter transactions">
+            <button class="filter-chip active" data-type="" data-status="">All</button>
+            <button class="filter-chip" data-type="credit">Funding</button>
+            <button class="filter-chip" data-type="debit">Purchases</button>
+            <button class="filter-chip" data-status="successful">Successful</button>
+            <button class="filter-chip" data-status="pending">Pending</button>
+            <button class="filter-chip" data-status="failed">Failed</button>
+        </div>
+        <div id="txList" class="tx-list">
+            <div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>
+        </div>
+        <div class="text-center mt-2 hidden" id="loadMoreWrap">
+            <button class="btn btn-ghost btn-sm" id="loadMore">Load more</button>
+        </div>
     </div>
 
-    <div class="balance" id="balance">
-        ₦0
+    <!-- DETAIL MODAL -->
+    <div class="modal-backdrop" id="tx-modal" role="dialog" aria-modal="true">
+        <div class="modal">
+            <div class="modal-head">
+                <h3>Transaction details</h3>
+                <button class="modal-close" id="txClose" aria-label="Close">✕</button>
+            </div>
+            <div id="txDetail"></div>
+        </div>
     </div>
-
-</div>
-
-
-<div class="card">
-
-    <h2>
-        Fund Wallet
-    </h2>
-
-    <div id="message" class="message"></div>
-
-    <label for="amount">
-        Amount
-    </label>
-
-    <input
-        type="number"
-        id="amount"
-        min="100"
-        max="100000"
-        placeholder="Enter amount">
-
-    <button onclick="window.location.href='fund-wallet.html'">
-        Fund Wallet with Paystack
-    </button>
-
-    <div class="test-note">
-        You will be redirected to the secure wallet funding page
-        to complete your payment through Paystack.
-    </div>
-
-</div>
 
 </main>
 
+<nav class="bottom-nav" id="bottom-nav" aria-label="Primary"></nav>
+
 <script>
+document.addEventListener("DOMContentLoaded", () => {
+    const UI = window.MELODEXS_UI;
+    UI.mountChrome("wallet");
+    start();
+});
 
-const savedUser =
-    localStorage.getItem("cheapdataUser");
+const PAGE_SIZE = 20;
+let currentOffset = 0;
+let filters = { type: "", status: "", q: "" };
+let searchTimer = null;
 
+async function start() {
+    const UI = window.MELODEXS_UI;
+    const session = await UI.requireSession();
+    if (!session) return;
+    const user = UI.currentUser();
+    if (!user) { window.location.href = "/login.html"; return; }
 
-if (!savedUser) {
-
-    window.location.href = "/login.html";
-
-}
-
-
-let user =
-    JSON.parse(savedUser);
-
-
-function displayBalance() {
-
-    document.getElementById("balance").textContent =
-        "₦" +
-        Number(user.balance || 0).toLocaleString();
-
-}
-
-
-displayBalance();
-
-
-
-
-
-function showMessage(text, type) {
-
-    const message =
-        document.getElementById("message");
-
-
-    message.textContent = text;
-
-    message.style.display = "block";
-
-
-    if (type === "error") {
-
-        message.style.background = "#fee4e2";
-        message.style.color = "#b42318";
-
-    } else {
-
-        message.style.background = "#eef8f2";
-        message.style.color = "#0251B0";
-
+    const refreshed = await UI.refreshUserCache();
+    if (refreshed) {
+        document.getElementById("balance").textContent = UI.formatNaira(refreshed.balance);
     }
 
+    document.querySelectorAll(".filter-chip").forEach(chip => {
+        chip.addEventListener("click", () => {
+            document.querySelectorAll(".filter-chip").forEach(c => c.classList.remove("active"));
+            chip.classList.add("active");
+            if (chip.dataset.status) {
+                filters = { type: "", status: chip.dataset.status, q: filters.q };
+            } else {
+                filters = { type: chip.dataset.type, status: "", q: filters.q };
+            }
+            currentOffset = 0;
+            loadTransactions(user.id, true);
+        });
+    });
+
+    document.getElementById("txSearch").addEventListener("input", (event) => {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => {
+            filters.q = event.target.value.trim();
+            currentOffset = 0;
+            loadTransactions(user.id, true);
+        }, 350);
+    });
+
+    document.getElementById("loadMore").addEventListener("click", () => {
+        loadTransactions(user.id, false);
+    });
+    document.getElementById("txClose").addEventListener("click", () => UI.closeModal("tx-modal"));
+
+    await loadTransactions(user.id, true);
+
+    const wanted = new URLSearchParams(window.location.search).get("ref");
+    if (wanted) {
+        const all = (await (await fetch("/api/transactions/" + user.id + "?limit=100", { credentials: "include" })).json()).transactions || [];
+        const match = all.find(t => t.reference === wanted);
+        if (match) openDetail(match);
+    }
 }
 
+function txRow(transaction) {
+    const UI = window.MELODEXS_UI;
+    const isCredit = transaction.type === "wallet_funding";
+    const badge = { successful: "badge-success", pending: "badge-pending", failed: "badge-failed" }[transaction.status] || "badge-pending";
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "tx-row";
+    row.setAttribute("aria-label", "View transaction " + (transaction.reference || ""));
+    row.innerHTML =
+        '<span class="tx-icon ' + (isCredit ? "lime" : "") + '" aria-hidden="true">' +
+        (isCredit
+            ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#020817" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>'
+            : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0251B0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>') +
+        "</span>" +
+        '<span class="tx-body"><span class="tx-title">' + UI.esc(transaction.description || transaction.type) + "</span>" +
+        '<span class="tx-meta">' + new Date(transaction.created_at).toLocaleString("en-NG") + " · " + UI.esc(transaction.reference || "") + "</span></span>" +
+        '<span class="tx-right"><span class="tx-amount ' + (isCredit ? "credit" : "debit") + '">' + (isCredit ? "+ " : "− ") + UI.esc(UI.formatNaira(transaction.amount)) + "</span>" +
+        '<span class="badge ' + badge + '"><span class="dot"></span>' + UI.esc(transaction.status) + "</span></span>";
+    row.addEventListener("click", () => openDetail(transaction));
+    return row;
+}
+
+async function loadTransactions(userId, replace) {
+    const UI = window.MELODEXS_UI;
+    const list = document.getElementById("txList");
+    const params = new URLSearchParams({ limit: PAGE_SIZE, offset: currentOffset });
+    if (filters.type) params.set("type", filters.type);
+    if (filters.status) params.set("status", filters.status);
+    if (filters.q) params.set("q", filters.q);
+    if (replace) list.innerHTML = '<div class="skeleton"></div><div class="skeleton"></div>';
+    try {
+        const response = await fetch("/api/transactions/" + userId + "?" + params.toString(), { credentials: "include" });
+        const data = await response.json();
+        if (!data.success) throw new Error("failed");
+        if (replace) list.innerHTML = "";
+        const rows = data.transactions || [];
+        rows.forEach(t => list.appendChild(txRow(t)));
+        const shown = currentOffset + rows.length;
+        document.getElementById("loadMoreWrap").classList.toggle("hidden", shown >= (data.total || 0));
+        currentOffset += rows.length;
+        if (replace && rows.length === 0) {
+            list.innerHTML = '<div class="state-box"><div class="state-emoji">🔍</div><h3>No matching transactions</h3><p>Try clearing the filters or search.</p></div>';
+        }
+    } catch (error) {
+        list.innerHTML = '<div class="state-box"><div class="state-emoji">📡</div><h3>Could not load transactions</h3><p>Check your connection and try again.</p></div>';
+    }
+}
+
+function openDetail(t) {
+    const UI = window.MELODEXS_UI;
+    const isCredit = t.type === "wallet_funding";
+    const statusBadge = { successful: "badge-success", pending: "badge-pending", failed: "badge-failed" }[t.status] || "badge-pending";
+    const pendingNote = t.status === "pending"
+        ? '<div class="form-success" style="margin-top:12px">This transaction is still being confirmed with the provider. Please do not retry it; your wallet is protected from double charges while it settles.</div>'
+        : "";
+    const receipt = t.status === "successful"
+        ? '<button class="btn btn-lime btn-block mt-2" id="printReceipt">View receipt</button><div class="receipt hidden mt-2" id="receiptBox"></div>'
+        : "";
+    document.getElementById("txDetail").innerHTML =
+        '<div class="confirm-row"><span class="k">Reference</span><span class="v">' + UI.esc(t.reference || "—") + "</span></div>" +
+        '<div class="confirm-row"><span class="k">Type</span><span class="v">' + UI.esc(isCredit ? "Wallet funding" : "Purchase") + "</span></div>" +
+        '<div class="confirm-row"><span class="k">Amount</span><span class="v">' + (isCredit ? "+ " : "− ") + UI.esc(UI.formatNaira(t.amount)) + "</span></div>" +
+        '<div class="confirm-row"><span class="k">Date</span><span class="v">' + UI.esc(new Date(t.created_at).toLocaleString("en-NG")) + "</span></div>" +
+        '<div class="confirm-row"><span class="k">Details</span><span class="v">' + UI.esc(t.description || "—") + "</span></div>" +
+        '<div class="confirm-row"><span class="k">Status</span><span class="v"><span class="badge ' + statusBadge + '"><span class="dot"></span>' + UI.esc(t.status) + "</span></span></div>" +
+        pendingNote + receipt;
+    const printBtn = document.getElementById("printReceipt");
+    if (printBtn) {
+        printBtn.addEventListener("click", () => {
+            const box = document.getElementById("receiptBox");
+            box.classList.toggle("hidden");
+            if (!box.classList.contains("hidden")) {
+                box.innerHTML =
+                    '<div class="receipt-head"><div class="brand">MELODEXS CONNECT</div><div class="tag">Official receipt</div></div>' +
+                    '<div class="confirm-row"><span class="k">Reference</span><span class="v">' + UI.esc(t.reference || "—") + "</span></div>" +
+                    '<div class="confirm-row"><span class="k">Type</span><span class="v">' + UI.esc(isCredit ? "Wallet funding" : "Purchase") + "</span></div>" +
+                    '<div class="confirm-row"><span class="k">Date</span><span class="v">' + UI.esc(new Date(t.created_at).toLocaleString("en-NG")) + "</span></div>" +
+                    '<div class="confirm-row"><span class="k">Details</span><span class="v">' + UI.esc(t.description || "—") + "</span></div>" +
+                    '<div class="receipt-total">Amount: ' + UI.esc(UI.formatNaira(t.amount)) + "</div>" +
+                    '<div class="text-center small muted mt-1">Thank you for choosing MELODEXS CONNECT</div>';
+            }
+        });
+    }
+    UI.openModal("tx-modal");
+}
 </script>
 
 </body>

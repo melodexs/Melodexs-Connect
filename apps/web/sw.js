@@ -1,4 +1,4 @@
-const STATIC_CACHE = "melodexs-static-v1";
+const STATIC_CACHE = "melodexs-static-v2";
 const STATIC_ASSET = /\.(?:css|js|png|svg|webmanifest|woff2?)$/i;
 
 self.addEventListener("install", event => {
