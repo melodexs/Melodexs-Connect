@@ -716,6 +716,334 @@ async def isquaredata_webhook(request: Request):
     return {"success": True, "status": "failed_refunded", "reference": reference}
 
 
+# =====================================================================
+# BILLER SERVICES (ISQUAREDATA: electricity, cable TV, education).
+# These products exist only on ISQUAREDATA; they are available whenever
+# the ISQUAREDATA provider row is enabled and configured, independent of
+# which supplier serves the data catalog. While ISQUAREDATA stays
+# disabled (current production state) every biller endpoint answers 503
+# and the frontend shows the services as "coming soon".
+# =====================================================================
+
+def _biller_adapter():
+    adapter = get_adapter("isquaredata")
+    if adapter is None or not adapter.is_configured():
+        return None
+    with db_session() as db:
+        row = q(db, "SELECT enabled FROM providers WHERE slug='isquaredata'").first()
+    if not row or not row[0]:
+        return None
+    return adapter
+
+
+def _biller_unavailable():
+    raise HTTPException(503, "This service is not available yet. We are rolling it out shortly.")
+
+
+async def _biller_purchase_core(user_id: int, body: dict, amount, description: str, submit):
+    """Shared biller purchase core; mirrors the ISQUAREDATA data/airtime
+    flow: Purchase PIN, pending-duplicate guard, idempotency key, atomic
+    wallet debit, supplier pre-flight balance, pending-held outcomes."""
+    adapter = _biller_adapter()
+    if adapter is None:
+        _biller_unavailable()
+    pin = validate_pin(body.get("pin"))
+    with db_session() as db:
+        user = q(db, "SELECT id,balance,purchase_pin FROM users WHERE id=:id", {"id": user_id}).mappings().first()
+        if engine.dialect.name != "sqlite":
+            user = q(db, "SELECT id,balance,purchase_pin FROM users WHERE id=:id FOR UPDATE", {"id": user_id}).mappings().first()
+        if not user:
+            raise HTTPException(404, "User not found")
+        if not user["purchase_pin"]:
+            raise HTTPException(400, "Please create a Purchase PIN before making this purchase")
+        if not password_check(pin, user["purchase_pin"]):
+            raise HTTPException(401, "Incorrect Purchase PIN")
+        pending_purchase = q(db, "SELECT reference FROM transactions WHERE user_id=:uid AND type='debit' AND status='pending' AND SUBSTR(description,1,LENGTH(:prefix))=:prefix ORDER BY id DESC LIMIT 1", {"uid": user_id, "prefix": description}).mappings().first()
+        if pending_purchase:
+            return JSONResponse({"success": False, "pending": True, "message": "A matching purchase is still being confirmed. Please do not submit it again.", "reference": pending_purchase["reference"]}, status_code=202)
+        if user["balance"] < amount:
+            raise HTTPException(400, "Insufficient wallet balance")
+        idempotency_key = str(body.get("requestId") or "").strip()
+        if idempotency_key:
+            if len(idempotency_key) > 100:
+                raise HTTPException(400, "Invalid request ID")
+            previous = q(db, "SELECT reference,status,amount FROM transactions WHERE user_id=:uid AND idempotency_key=:key", {"uid": user_id, "key": idempotency_key}).mappings().first()
+            if previous:
+                if previous["status"] == "pending":
+                    return JSONResponse({"success": False, "pending": True, "message": "This purchase is still being confirmed. Please do not retry it.", "reference": previous["reference"]}, status_code=202)
+                return {"success": previous["status"] == "successful", "status": previous["status"], "message": "This purchase request was already processed.", "reference": previous["reference"], "amount": float(previous["amount"])}
+    supplier_amount = None
+    try:
+        supplier_balance = await adapter.account_balance()
+        if supplier_balance.supported and supplier_balance.balance is not None:
+            supplier_amount = float(supplier_balance.balance)
+    except Exception:
+        supplier_amount = None
+    if supplier_amount is None or supplier_amount < float(amount):
+        logger.warning("ISQUAREDATA pre-flight balance check refused a biller purchase (supplier balance unavailable or insufficient)")
+        raise HTTPException(503, "This service is temporarily unavailable. Your wallet was not charged. Please try again shortly.")
+    reference = ref()
+    with db_session() as db:
+        debit = q(db, "UPDATE users SET balance=balance-:amount WHERE id=:id AND balance>=:amount", {"amount": amount, "id": user_id})
+        if debit.rowcount != 1:
+            raise HTTPException(400, "Insufficient wallet balance")
+        q(db, "INSERT INTO transactions(user_id,type,amount,status,reference,description,idempotency_key,provider) VALUES(:uid,'debit',:amount,'pending',:reference,:description,:idem,'isquaredata')",
+          {"uid": user_id, "amount": amount, "reference": reference, "description": description + " | Pending ISQUAREDATA confirmation", "idem": idempotency_key or None})
+    try:
+        result = await submit(reference)
+    except Exception:
+        add_pending_purchase_note(reference, user_id, "ISQUAREDATA submission failed; outcome requires reconciliation")
+        return JSONResponse({"success": False, "pending": True, "message": "We could not immediately confirm your purchase. Please do not retry this purchase.", "reference": reference}, status_code=202)
+    if result.outcome == PurchaseOutcome.SUCCESSFUL:
+        final_description = description + (" | " + result.message if result.message else "")
+        with db_session() as db:
+            q(db, "UPDATE transactions SET status='successful',provider_reference=:pref,description=:description WHERE reference=:reference AND user_id=:id AND type='debit' AND status='pending'",
+              {"pref": reference, "description": final_description, "reference": reference, "id": user_id})
+        return {"success": True, "status": "successful",
+                "message": "Purchase successful.", "reference": reference,
+                "amount": float(amount), "detail": result.message or None}
+    add_pending_purchase_note(reference, user_id, result.message or "outcome pending reconciliation")
+    return JSONResponse({"success": False, "pending": True, "message": "Your purchase was accepted and is being confirmed. You will be notified once delivery is confirmed. Please do not retry.", "reference": reference}, status_code=202)
+
+
+@app.get("/api/billers")
+def billers_status(request: Request):
+    require_user(request)
+    adapter = _biller_adapter()
+    return {"electricity": adapter is not None, "cable": adapter is not None,
+            "education": adapter is not None}
+
+
+@app.get("/api/billers/electricity")
+async def billers_electricity(request: Request):
+    require_user(request)
+    adapter = _biller_adapter()
+    if adapter is None:
+        _biller_unavailable()
+    try:
+        services = await adapter.fetch_electricity_services()
+    except Exception:
+        raise HTTPException(502, "The electricity service list is unavailable right now. Please try again shortly.")
+    return {"services": services}
+
+
+@app.get("/api/billers/electricity/verify")
+async def billers_electricity_verify(request: Request, service_id: int | None = None,
+                                        meter_type: str = "", meter_number: str = ""):
+    require_user(request)
+    adapter = _biller_adapter()
+    if adapter is None:
+        _biller_unavailable()
+    meter_type = str(meter_type or "").strip().lower()
+    meter_number = re.sub(r"\D", "", str(meter_number or ""))
+    if meter_type not in ("prepaid", "postpaid"):
+        raise HTTPException(400, "Choose a valid meter type (prepaid or postpaid)")
+    if not (8 <= len(meter_number) <= 15):
+        raise HTTPException(400, "Enter a valid meter number")
+    try:
+        outcome = await adapter.verify_meter(service_id=service_id, meter_type=meter_type, meter_number=meter_number)
+    except Exception:
+        raise HTTPException(502, "Meter verification is unavailable right now. Please try again shortly.")
+    if not outcome.get("status"):
+        raise HTTPException(400, outcome.get("message") or "Invalid meter number. Please check and try again")
+    return {"customer_name": outcome.get("customer_name")}
+
+
+@app.post("/api/purchase-electricity")
+async def purchase_electricity(request: Request, body: dict):
+    user_id = require_user(request)
+    adapter = _biller_adapter()
+    if adapter is None:
+        _biller_unavailable()
+    try:
+        service_id = int(body.get("service_id") or 0)
+    except (TypeError, ValueError):
+        service_id = 0
+    meter_type = str(body.get("meter_type") or "").strip().lower()
+    meter_number = re.sub(r"\D", "", str(body.get("meter_number") or ""))
+    phone = str(body.get("phone_number") or "").strip()
+    customer_name = str(body.get("customer_name") or "").strip()[:80]
+    if service_id <= 0:
+        raise HTTPException(400, "Choose your electricity distribution company")
+    if meter_type not in ("prepaid", "postpaid"):
+        raise HTTPException(400, "Choose a valid meter type (prepaid or postpaid)")
+    if not (8 <= len(meter_number) <= 15):
+        raise HTTPException(400, "Enter a valid meter number")
+    if not nigeria_phone(phone):
+        raise HTTPException(400, "Please enter a valid Nigerian phone number")
+    try:
+        amount = float(body.get("amount") or 0)
+    except (TypeError, ValueError):
+        amount = 0
+    if not amount.is_integer() or amount < 500 or amount > 100000:
+        raise HTTPException(400, "Electricity amount must be between \u20a6500 and \u20a6100,000")
+    amount = int(amount)
+    try:
+        services = await adapter.fetch_electricity_services()
+        disco = next((sv for sv in services if sv["id"] == service_id), None)
+    except Exception:
+        raise HTTPException(502, "The electricity service list is unavailable right now. Please try again shortly.")
+    if not disco:
+        raise HTTPException(400, "That electricity distribution company is not available")
+    description = (f"Electricity {meter_type} token ({disco['name']}) for meter {meter_number}"
+                   + (f" | Customer: {customer_name}" if customer_name else "")
+                   + f" | Phone: {phone} | Amount: {amount:.2f}")
+    async def submit(reference: str):
+        return await adapter.submit_electricity_purchase(service_id=service_id, meter_type=meter_type,
+                                                         meter_number=meter_number, amount=amount,
+                                                         phone=phone, reference=reference)
+    return await _biller_purchase_core(user_id, body, amount, description, submit)
+
+
+@app.get("/api/billers/cable")
+async def billers_cable(request: Request):
+    require_user(request)
+    adapter = _biller_adapter()
+    if adapter is None:
+        _biller_unavailable()
+    try:
+        services = await adapter.fetch_cable_services()
+    except Exception:
+        raise HTTPException(502, "The TV subscription service list is unavailable right now. Please try again shortly.")
+    return {"services": services}
+
+
+@app.post("/api/billers/cable/verify")
+async def billers_cable_verify(request: Request, body: dict):
+    require_user(request)
+    adapter = _biller_adapter()
+    if adapter is None:
+        _biller_unavailable()
+    plan_id = body.get("plan_id")
+    smartcard = re.sub(r"\D", "", str(body.get("smartcard") or ""))
+    if plan_id in (None, ""):
+        raise HTTPException(400, "Choose a TV package first")
+    if not (5 <= len(smartcard) <= 15):
+        raise HTTPException(400, "Enter a valid smartcard number")
+    try:
+        outcome = await adapter.verify_smartcard(plan_id=plan_id, smartcard=smartcard)
+    except Exception:
+        raise HTTPException(502, "Smartcard verification is unavailable right now. Please try again shortly.")
+    if not outcome.get("status"):
+        raise HTTPException(400, outcome.get("message") or "Invalid smartcard number. Please check and try again")
+    return {"customer_name": outcome.get("customer_name")}
+
+
+@app.post("/api/purchase-cable")
+async def purchase_cable(request: Request, body: dict):
+    user_id = require_user(request)
+    adapter = _biller_adapter()
+    if adapter is None:
+        _biller_unavailable()
+    try:
+        service_id = int(body.get("service_id") or 0)
+    except (TypeError, ValueError):
+        service_id = 0
+    plan_id = body.get("plan_id")
+    smartcard = re.sub(r"\D", "", str(body.get("smartcard") or ""))
+    phone = str(body.get("phone_number") or "").strip()
+    customer_name = str(body.get("customer_name") or "").strip()[:80]
+    subscription_type = str(body.get("subscription_type") or "renew").strip().lower()
+    if service_id <= 0:
+        raise HTTPException(400, "Choose your TV provider")
+    if plan_id in (None, ""):
+        raise HTTPException(400, "Choose a TV package")
+    if not (5 <= len(smartcard) <= 15):
+        raise HTTPException(400, "Enter a valid smartcard number")
+    if not nigeria_phone(phone):
+        raise HTTPException(400, "Please enter a valid Nigerian phone number")
+    if subscription_type not in ("change", "renew"):
+        raise HTTPException(400, "Choose a valid subscription type (new or renewal)")
+    try:
+        services = await adapter.fetch_cable_services()
+    except Exception:
+        raise HTTPException(502, "The TV subscription service list is unavailable right now. Please try again shortly.")
+    operator = next((sv for sv in services if sv["id"] == service_id), None)
+    plan = None
+    if operator:
+        plan = next((pl for pl in operator["plans"] if str(pl["id"]) == str(plan_id)), None)
+    if not operator or not plan:
+        raise HTTPException(400, "That TV package is not currently available")
+    amount = float(plan["amount"])
+    if not math.isfinite(amount) or amount <= 0 or not float(amount).is_integer():
+        raise HTTPException(409, "That TV package price is invalid. Refresh the package list.")
+    amount = int(amount)
+    try:
+        expected_price = float(body.get("expectedPrice", amount))
+    except (TypeError, ValueError):
+        expected_price = float("nan")
+    if not math.isfinite(expected_price) or abs(expected_price - float(amount)) >= 0.005:
+        raise HTTPException(409, "The package price changed. Review the current price and confirm again.")
+    description = (f"{operator['name']} {plan['name']} subscription ({'new package' if subscription_type == 'change' else 'renewal'}) for smartcard {smartcard}"
+                   + (f" | Customer: {customer_name}" if customer_name else "")
+                   + f" | Phone: {phone} | Amount: {amount:.2f}")
+    async def submit(reference: str):
+        return await adapter.submit_cable_purchase(service_id=service_id, plan_id=plan["id"],
+                                                    smartcard=smartcard, phone=phone,
+                                                    amount=amount, subscription_type=subscription_type,
+                                                    reference=reference)
+    return await _biller_purchase_core(user_id, body, amount, description, submit)
+
+
+@app.get("/api/billers/education")
+async def billers_education(request: Request):
+    require_user(request)
+    adapter = _biller_adapter()
+    if adapter is None:
+        _biller_unavailable()
+    try:
+        services = await adapter.fetch_education_services()
+    except Exception:
+        raise HTTPException(502, "The education service list is unavailable right now. Please try again shortly.")
+    services = [sv for sv in services if sv.get("is_active")]
+    for sv in services:
+        sv["selling_price"] = math.ceil(float(sv["api_amount"]) * 1.02)
+    return {"services": services}
+
+
+@app.post("/api/purchase-education")
+async def purchase_education(request: Request, body: dict):
+    user_id = require_user(request)
+    adapter = _biller_adapter()
+    if adapter is None:
+        _biller_unavailable()
+    try:
+        service_id = int(body.get("service_id") or 0)
+        quantity = int(body.get("quantity") if body.get("quantity") is not None else 1)
+    except (TypeError, ValueError):
+        service_id, quantity = 0, 0
+    phone = str(body.get("phone_number") or "").strip()
+    email = str(body.get("email_address") or "").strip()
+    if service_id <= 0:
+        raise HTTPException(400, "Choose an examination service")
+    if not (1 <= quantity <= 20):
+        raise HTTPException(400, "Quantity must be between 1 and 20")
+    if not nigeria_phone(phone):
+        raise HTTPException(400, "Please enter a valid Nigerian phone number")
+    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+        raise HTTPException(400, "Please enter a valid email address")
+    try:
+        services = await adapter.fetch_education_services()
+    except Exception:
+        raise HTTPException(502, "The education service list is unavailable right now. Please try again shortly.")
+    service = next((sv for sv in services if sv["id"] == service_id and sv.get("is_active")), None)
+    if not service:
+        raise HTTPException(400, "That examination service is not currently available")
+    unit_price = math.ceil(float(service["api_amount"]) * 1.02)
+    amount = unit_price * quantity
+    try:
+        expected_price = float(body.get("expectedPrice", amount))
+    except (TypeError, ValueError):
+        expected_price = float("nan")
+    if not math.isfinite(expected_price) or abs(expected_price - amount) >= 0.005:
+        raise HTTPException(409, "The service price changed. Review the current price and confirm again.")
+    description = f"{service['name']} result checker PIN x{quantity} | Phone: {phone} | Email: {email} | Price: {amount:.2f}"
+    async def submit(reference: str):
+        return await adapter.submit_education_purchase(service_id=service_id, quantity=quantity,
+                                                        phone=phone, email=email, reference=reference)
+    return await _biller_purchase_core(user_id, body, amount, description, submit)
+
+
 async def purchase(request: Request, body: dict, service: str):
     user_id = require_user(request)
     network, phone, pin = body.get("network"), body.get("phone"), body.get("pin")

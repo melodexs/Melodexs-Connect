@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta name="api-base-url" content="">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Result Checker PINs | MELODEXS CONNECT</title>
+    <link rel="stylesheet" href="/styles.css">
+    <script src="api.js"></script>
+    <script src="ui.js" defer></script>
+    <meta name="theme-color" content="#0251B0">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <script src="/pwa.js" defer></script>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+    <link rel="icon" type="image/png" href="/icons/melodexs-connect-192.png">
+</head>
+
+<body class="app-body">
+
+<header class="appbar" id="appbar"></header>
+<nav class="desktop-tabs" id="desktop-tabs" aria-label="Primary"></nav>
+
+<main class="page page-narrow">
+
+    <h1 class="fw-bold" style="font-size:22px">Result Checker PINs</h1>
+    <p class="muted small">WAEC, NECO, NABTEB and NBAIS examination PINs</p>
+
+    <div class="card mt-2">
+        <div class="confirm-row"><span class="k">Wallet balance</span><span class="v" id="balance">₦0</span></div>
+    </div>
+
+    <div id="unavailable" class="card mt-2 hidden">
+        <p class="fw-bold">Coming soon</p>
+        <p class="muted small">Result checker PINs are being rolled out and are not live on your account yet. Your wallet is never charged.</p>
+    </div>
+
+    <div id="purchaseForm" class="card mt-2 hidden">
+        <div class="field">
+            <label for="examService">Examination</label>
+            <select id="examService"></select>
+        </div>
+
+        <div class="field mt-2">
+            <label for="quantity">Quantity (1 – 20)</label>
+            <input id="quantity" type="number" inputmode="numeric" min="1" max="20" step="1" value="1" style="width:100%">
+        </div>
+
+        <div class="field mt-2">
+            <label for="phone">Phone number</label>
+            <input id="phone" type="tel" inputmode="numeric" placeholder="e.g. 08012345678" maxlength="14">
+        </div>
+
+        <div class="field mt-2">
+            <label for="email">Email address (PIN delivery)</label>
+            <input id="email" type="email" inputmode="email" placeholder="e.g. student@example.com" autocomplete="email">
+        </div>
+
+        <div class="field">
+            <label for="purchasePin">Purchase PIN</label>
+            <input id="purchasePin" type="password" inputmode="numeric" maxlength="4" placeholder="4-digit PIN" autocomplete="off">
+        </div>
+
+        <div id="message" class="form-error hidden" role="alert"></div>
+
+        <div class="confirm-row"><span class="k">Examination</span><span class="v" id="summaryService">Not selected</span></div>
+        <div class="confirm-row"><span class="k">Unit price</span><span class="v" id="summaryUnit">₦0</span></div>
+        <div class="confirm-row"><span class="k">Quantity</span><span class="v" id="summaryQuantity">1</span></div>
+        <div class="confirm-row"><span class="k">Total payable</span><span class="v" id="summaryTotal">₦0</span></div>
+
+        <button class="btn btn-primary btn-block btn-lg mt-2" id="buyButton" disabled>Choose an Examination</button>
+    </div>
+
+    <div id="pinResult" class="card mt-2 hidden">
+        <p class="fw-bold">Your PIN</p>
+        <p class="small muted">Keep this safe. It is also saved in your wallet history receipt.</p>
+        <p id="pinDetails" class="fw-bold" style="word-break:break-all"></p>
+    </div>
+
+</main>
+
+<nav class="bottom-nav" id="bottom-nav" aria-label="Primary"></nav>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    window.MELODEXS_UI.mountChrome("plans");
+    start();
+});
+
+let user;
+let services = [];
+let educationRequestId = "";
+const ui = () => window.MELODEXS_UI;
+
+async function start() {
+    const session = await ui().requireSession();
+    if (!session) return;
+    user = ui().currentUser();
+    if (!user) { window.location.href = "/login.html"; return; }
+
+    await loadBalance();
+    await loadServices();
+
+    document.getElementById("examService").addEventListener("change", updateSummary);
+    document.getElementById("quantity").addEventListener("input", updateSummary);
+    document.getElementById("purchasePin").addEventListener("input", function () { this.value = this.value.replace(/\D/g, "").slice(0, 4); });
+    document.getElementById("buyButton").addEventListener("click", purchaseEducation);
+}
+
+async function loadBalance() {
+    try {
+        const response = await fetch("/api/user/" + user.id, { credentials: "include" });
+        const data = await response.json();
+        if (data.success) {
+            user = { ...data.user, has_purchase_pin: data.has_purchase_pin };
+            localStorage.setItem("cheapdataUser", JSON.stringify(user));
+            document.getElementById("balance").textContent = ui().formatNaira(user.balance);
+        }
+    } catch (error) { /* cached balance */ }
+}
+
+async function loadServices() {
+    try {
+        const response = await fetch("/api/billers/education", { credentials: "include" });
+        if (response.status === 503) {
+            document.getElementById("unavailable").classList.remove("hidden");
+            return;
+        }
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.message || "Could not load examination services");
+        services = data.services || [];
+        document.getElementById("examService").innerHTML =
+            '<option value="">Choose an examination</option>' +
+            services.map(sv => '<option value="' + sv.id + '" data-price="' + sv.selling_price + '">' +
+                ui().esc(sv.name) + " · " + ui().formatNaira(sv.selling_price) + "</option>").join("");
+        document.getElementById("purchaseForm").classList.remove("hidden");
+        updateSummary();
+    } catch (error) {
+        document.getElementById("unavailable").classList.remove("hidden");
+    }
+}
+
+function selectedService() {
+    const select = document.getElementById("examService");
+    const option = select.options[select.selectedIndex];
+    if (!option || !option.value) return null;
+    return { id: Number(option.value), price: Number(option.dataset.price), name: option.text.split(" · ")[0] };
+}
+
+function quantity() {
+    const value = Number(document.getElementById("quantity").value);
+    if (!Number.isInteger(value) || value < 1 || value > 20) return 0;
+    return value;
+}
+
+function updateSummary() {
+    const service = selectedService();
+    const qty = quantity();
+    document.getElementById("summaryService").textContent = service ? service.name : "Not selected";
+    document.getElementById("summaryUnit").textContent = service ? ui().formatNaira(service.price) : "₦0";
+    document.getElementById("summaryQuantity").textContent = qty || "—";
+    document.getElementById("summaryTotal").textContent = (service && qty) ? ui().formatNaira(service.price * qty) : "₦0";
+    const buyButton = document.getElementById("buyButton");
+    if (service && qty) {
+        buyButton.disabled = false;
+        buyButton.textContent = "Buy " + qty + " PIN" + (qty > 1 ? "s" : "") + " for " + ui().formatNaira(service.price * qty);
+    } else {
+        buyButton.disabled = true;
+        buyButton.textContent = "Choose an Examination";
+    }
+}
+
+function showMessage(text, type) {
+    const message = document.getElementById("message");
+    message.textContent = text;
+    message.classList.remove("hidden");
+    message.className = type === "success" ? "form-success" : "form-error";
+    message.scrollIntoView({ behavior: "smooth", block: "center" });
+    ui().toast(text, type === "success" ? "success" : "error");
+}
+
+async function purchaseEducation() {
+    const service = selectedService();
+    const qty = quantity();
+    const phone = document.getElementById("phone").value.trim();
+    const email = document.getElementById("email").value.trim();
+    const pin = document.getElementById("purchasePin").value.trim();
+    const buyButton = document.getElementById("buyButton");
+    document.getElementById("message").classList.add("hidden");
+
+    if (!service) { showMessage("Choose an examination service.", "error"); return; }
+    if (!qty) { showMessage("Quantity must be between 1 and 20.", "error"); return; }
+    if (!/^0[7-9][0-1][0-9]{8}$/.test(phone)) { showMessage("Please enter a valid Nigerian phone number.", "error"); return; }
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { showMessage("Please enter a valid email address.", "error"); return; }
+    if (!/^\d{4}$/.test(pin)) { showMessage("Please enter your 4-digit Purchase PIN.", "error"); return; }
+    const total = service.price * qty;
+    if (Number(user.balance) < total) { showMessage("Insufficient wallet balance. Top up your wallet first.", "error"); return; }
+
+    const confirmed = await ui().confirm("Confirm result checker purchase",
+        "Buy " + qty + " " + service.name + " result checker PIN" + (qty > 1 ? "s" : "") + " for " + ui().formatNaira(total) + "? The PIN" + (qty > 1 ? "s will be" : " will be") + " delivered to " + email + ".",
+        "Pay " + ui().formatNaira(total));
+    if (!confirmed) return;
+
+    buyButton.disabled = true;
+    buyButton.textContent = "Processing…";
+    if (!educationRequestId) educationRequestId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : Date.now() + "-" + Math.random().toString(16).slice(2);
+
+    try {
+        const response = await fetch("/api/purchase-education", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({
+                service_id: service.id, quantity: qty, phone_number: phone,
+                email_address: email, expectedPrice: total, pin: pin, requestId: educationRequestId
+            })
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+            if (response.status === 202) {
+                showMessage(data.message || "Your purchase is awaiting provider confirmation. Please do not retry it.", "error");
+                buyButton.textContent = "Purchase Pending";
+                return;
+            }
+            showMessage(data.message || "Purchase failed.", "error");
+            buyButton.disabled = false;
+            educationRequestId = "";
+            buyButton.textContent = "Buy " + qty + " PIN" + (qty > 1 ? "s" : "") + " for " + ui().formatNaira(total);
+            return;
+        }
+        showMessage("Result checker purchase successful! Reference: " + data.reference + ".", "success");
+        if (data.detail) {
+            document.getElementById("pinDetails").textContent = data.detail;
+            document.getElementById("pinResult").classList.remove("hidden");
+        } else {
+            document.getElementById("pinDetails").textContent = "Your PIN is in the receipt on your wallet history.";
+            document.getElementById("pinResult").classList.remove("hidden");
+        }
+        buyButton.textContent = "Purchase Successful";
+        educationRequestId = "";
+        document.getElementById("purchasePin").value = "";
+        loadBalance();
+    } catch (error) {
+        showMessage("Unable to connect to the server. If the purchase was submitted, it is being confirmed safely — check your wallet history before retrying.", "error");
+        buyButton.disabled = false;
+        buyButton.textContent = "Buy " + qty + " PIN" + (qty > 1 ? "s" : "") + " for " + ui().formatNaira(total);
+    }
+}
+</script>
+
+</body>
+
+</html>

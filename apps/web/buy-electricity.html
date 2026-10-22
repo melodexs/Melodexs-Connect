@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta name="api-base-url" content="">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Buy Electricity | MELODEXS CONNECT</title>
+    <link rel="stylesheet" href="/styles.css">
+    <script src="api.js"></script>
+    <script src="ui.js" defer></script>
+    <meta name="theme-color" content="#0251B0">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <script src="/pwa.js" defer></script>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+    <link rel="icon" type="image/png" href="/icons/melodexs-connect-192.png">
+</head>
+
+<body class="app-body">
+
+<header class="appbar" id="appbar"></header>
+<nav class="desktop-tabs" id="desktop-tabs" aria-label="Primary"></nav>
+
+<main class="page page-narrow">
+
+    <h1 class="fw-bold" style="font-size:22px">Buy Electricity</h1>
+    <p class="muted small">Prepaid and postpaid electricity tokens for every disco</p>
+
+    <div class="card mt-2">
+        <div class="confirm-row"><span class="k">Wallet balance</span><span class="v" id="balance">₦0</span></div>
+    </div>
+
+    <div id="unavailable" class="card mt-2 hidden">
+        <p class="fw-bold">Coming soon</p>
+        <p class="muted small">Electricity payments are being rolled out and are not live on your account yet. Your wallet is never charged.</p>
+    </div>
+
+    <div id="purchaseForm" class="card mt-2 hidden">
+        <div class="field">
+            <label for="disco">Distribution company</label>
+            <select id="disco"></select>
+        </div>
+
+        <div class="field mt-2">
+            <label>Meter type</label>
+            <div class="chip-row" id="meterTypes" role="group" aria-label="Meter type"></div>
+        </div>
+
+        <div class="field mt-2">
+            <label for="meterNumber">Meter number</label>
+            <input id="meterNumber" type="text" inputmode="numeric" placeholder="e.g. 1111111111111" maxlength="15" autocomplete="off">
+            <button class="btn btn-outline btn-sm mt-1" id="verifyMeterBtn" type="button">Verify meter</button>
+            <p class="small mt-1 hidden" id="meterCustomer"></p>
+        </div>
+
+        <div class="field mt-2">
+            <label for="amount">Amount (₦500 – ₦100,000)</label>
+            <input id="amount" type="number" inputmode="numeric" min="500" max="100000" step="1" placeholder="e.g. 5000" style="width:100%">
+        </div>
+
+        <div class="field mt-2">
+            <label for="phone">Phone number on the account</label>
+            <input id="phone" type="tel" inputmode="numeric" placeholder="e.g. 08012345678" maxlength="14">
+        </div>
+
+        <div class="field">
+            <label for="purchasePin">Purchase PIN</label>
+            <input id="purchasePin" type="password" inputmode="numeric" maxlength="4" placeholder="4-digit PIN" autocomplete="off">
+        </div>
+
+        <div id="message" class="form-error hidden" role="alert"></div>
+
+        <div class="confirm-row"><span class="k">Disco</span><span class="v" id="summaryDisco">Not selected</span></div>
+        <div class="confirm-row"><span class="k">Meter</span><span class="v" id="summaryMeter">Not entered</span></div>
+        <div class="confirm-row"><span class="k">Customer</span><span class="v" id="summaryCustomer">Not verified</span></div>
+        <div class="confirm-row"><span class="k">Amount payable</span><span class="v" id="summaryAmount">₦0</span></div>
+
+        <button class="btn btn-primary btn-block btn-lg mt-2" id="buyButton" disabled>Enter Amount</button>
+    </div>
+
+</main>
+
+<nav class="bottom-nav" id="bottom-nav" aria-label="Primary"></nav>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    window.MELODEXS_UI.mountChrome("plans");
+    start();
+});
+
+let user;
+let discos = [];
+let selectedMeterType = "prepaid";
+let customerName = "";
+let electricityRequestId = "";
+const ui = () => window.MELODEXS_UI;
+
+async function start() {
+    const session = await ui().requireSession();
+    if (!session) return;
+    user = ui().currentUser();
+    if (!user) { window.location.href = "/login.html"; return; }
+
+    await loadBalance();
+    await loadDiscos();
+
+    renderMeterTypes();
+    document.getElementById("meterNumber").addEventListener("input", meterChanged);
+    document.getElementById("amount").addEventListener("input", updateSummary);
+    document.getElementById("disco").addEventListener("change", updateSummary);
+    document.getElementById("verifyMeterBtn").addEventListener("click", verifyMeter);
+    document.getElementById("purchasePin").addEventListener("input", function () { this.value = this.value.replace(/\D/g, "").slice(0, 4); });
+    document.getElementById("buyButton").addEventListener("click", purchaseElectricity);
+}
+
+async function loadBalance() {
+    try {
+        const response = await fetch("/api/user/" + user.id, { credentials: "include" });
+        const data = await response.json();
+        if (data.success) {
+            user = { ...data.user, has_purchase_pin: data.has_purchase_pin };
+            localStorage.setItem("cheapdataUser", JSON.stringify(user));
+            document.getElementById("balance").textContent = ui().formatNaira(user.balance);
+        }
+    } catch (error) { /* cached balance */ }
+}
+
+async function loadDiscos() {
+    try {
+        const response = await fetch("/api/billers/electricity", { credentials: "include" });
+        if (response.status === 503) {
+            document.getElementById("unavailable").classList.remove("hidden");
+            return;
+        }
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.message || "Could not load electricity providers");
+        discos = data.services || [];
+        const select = document.getElementById("disco");
+        select.innerHTML = '<option value="">Choose your distribution company</option>' +
+            discos.map(sv => '<option value="' + sv.id + '">' + ui().esc(sv.name) + "</option>").join("");
+        document.getElementById("purchaseForm").classList.remove("hidden");
+    } catch (error) {
+        document.getElementById("unavailable").classList.remove("hidden");
+    }
+}
+
+function renderMeterTypes() {
+    const container = document.getElementById("meterTypes");
+    container.innerHTML = ["prepaid", "postpaid"].map(t =>
+        '<button type="button" class="chip ' + (t === selectedMeterType ? "active" : "") + '" data-type="' + t + '">' +
+        (t === "prepaid" ? "Prepaid" : "Postpaid") + "</button>").join("");
+    container.querySelectorAll(".chip").forEach(button =>
+        button.addEventListener("click", () => {
+            selectedMeterType = button.dataset.type;
+            container.querySelectorAll(".chip").forEach(b => b.classList.remove("active"));
+            button.classList.add("active");
+            meterChanged();
+        }));
+}
+
+function meterChanged() {
+    customerName = "";
+    document.getElementById("meterCustomer").classList.add("hidden");
+    updateSummary();
+}
+
+async function verifyMeter() {
+    const meterNumber = document.getElementById("meterNumber").value.replace(/\D/g, "");
+    const serviceId = document.getElementById("disco").value;
+    if (!serviceId) { showMessage("Choose your distribution company first.", "error"); return; }
+    if (meterNumber.length < 8) { showMessage("Enter a valid meter number first.", "error"); return; }
+    const button = document.getElementById("verifyMeterBtn");
+    button.disabled = true;
+    button.textContent = "Verifying…";
+    try {
+        const response = await fetch("/api/billers/electricity/verify?service_id=" + encodeURIComponent(serviceId) +
+            "&meter_type=" + encodeURIComponent(selectedMeterType) +
+            "&meter_number=" + encodeURIComponent(meterNumber), { credentials: "include" });
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.message || "Meter verification failed");
+        customerName = data.customer_name || "Verified customer";
+        const line = document.getElementById("meterCustomer");
+        line.textContent = "✓ " + customerName;
+        line.className = "small mt-1 form-success";
+        updateSummary();
+    } catch (error) {
+        customerName = "";
+        const line = document.getElementById("meterCustomer");
+        line.textContent = "✗ " + (error.message || "Could not verify this meter.");
+        line.className = "small mt-1 form-error";
+        updateSummary();
+    } finally {
+        button.disabled = false;
+        button.textContent = "Verify meter";
+    }
+}
+
+function updateSummary() {
+    const amount = Number(document.getElementById("amount").value);
+    const meterNumber = document.getElementById("meterNumber").value.replace(/\D/g, "");
+    const discoSelect = document.getElementById("disco");
+    document.getElementById("summaryDisco").textContent = discoSelect.options[discoSelect.selectedIndex] ? ui().esc(discoSelect.options[discoSelect.selectedIndex].text) : "Not selected";
+    document.getElementById("summaryMeter").textContent = meterNumber || "Not entered";
+    document.getElementById("summaryCustomer").textContent = customerName || "Not verified";
+    document.getElementById("summaryAmount").textContent = amount ? ui().formatNaira(amount) : "₦0";
+    const buyButton = document.getElementById("buyButton");
+    if (amount >= 500 && amount <= 100000 && meterNumber.length >= 8) {
+        buyButton.disabled = false;
+        buyButton.textContent = "Buy Token for " + ui().formatNaira(amount);
+    } else {
+        buyButton.disabled = true;
+        buyButton.textContent = "Enter Amount";
+    }
+}
+
+function showMessage(text, type) {
+    const message = document.getElementById("message");
+    message.textContent = text;
+    message.classList.remove("hidden");
+    message.className = type === "success" ? "form-success" : "form-error";
+    message.scrollIntoView({ behavior: "smooth", block: "center" });
+    ui().toast(text, type === "success" ? "success" : "error");
+}
+
+async function purchaseElectricity() {
+    const serviceId = Number(document.getElementById("disco").value);
+    const meterNumber = document.getElementById("meterNumber").value.replace(/\D/g, "");
+    const amount = Number(document.getElementById("amount").value);
+    const phone = document.getElementById("phone").value.trim();
+    const pin = document.getElementById("purchasePin").value.trim();
+    const buyButton = document.getElementById("buyButton");
+    document.getElementById("message").classList.add("hidden");
+
+    if (!serviceId) { showMessage("Choose your distribution company.", "error"); return; }
+    if (meterNumber.length < 8) { showMessage("Enter a valid meter number.", "error"); return; }
+    if (!Number.isFinite(amount) || amount < 500 || amount > 100000) { showMessage("Electricity amount must be between ₦500 and ₦100,000.", "error"); return; }
+    if (!/^0[7-9][0-1][0-9]{8}$/.test(phone)) { showMessage("Please enter a valid Nigerian phone number.", "error"); return; }
+    if (!/^\d{4}$/.test(pin)) { showMessage("Please enter your 4-digit Purchase PIN.", "error"); return; }
+    if (Number(user.balance) < amount) { showMessage("Insufficient wallet balance. Top up your wallet first.", "error"); return; }
+
+    const confirmed = await ui().confirm("Confirm electricity purchase",
+        "Buy " + ui().formatNaira(amount) + " of " + selectedMeterType + " electricity for meter " + meterNumber + "?", "Pay " + ui().formatNaira(amount));
+    if (!confirmed) return;
+
+    buyButton.disabled = true;
+    buyButton.textContent = "Processing…";
+    if (!electricityRequestId) electricityRequestId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : Date.now() + "-" + Math.random().toString(16).slice(2);
+
+    try {
+        const response = await fetch("/api/purchase-electricity", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({
+                service_id: serviceId, meter_type: selectedMeterType, meter_number: meterNumber,
+                phone_number: phone, customer_name: customerName, amount: amount, pin: pin, requestId: electricityRequestId
+            })
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+            if (response.status === 202) {
+                showMessage(data.message || "Your purchase is awaiting provider confirmation. Please do not retry it.", "error");
+                buyButton.textContent = "Purchase Pending";
+                return;
+            }
+            showMessage(data.message || "Electricity purchase failed.", "error");
+            buyButton.disabled = false;
+            electricityRequestId = "";
+            buyButton.textContent = "Buy Token for " + ui().formatNaira(amount);
+            return;
+        }
+        showMessage("Electricity purchase successful! Reference: " + data.reference + ". Your token will be confirmed shortly — check your wallet history for the receipt.", "success");
+        buyButton.textContent = "Purchase Submitted";
+        electricityRequestId = "";
+        document.getElementById("purchasePin").value = "";
+        loadBalance();
+    } catch (error) {
+        showMessage("Unable to connect to the server. If the purchase was submitted, it is being confirmed safely — check your wallet history before retrying.", "error");
+        buyButton.disabled = false;
+        buyButton.textContent = "Buy Token for " + ui().formatNaira(amount);
+    }
+}
+</script>
+
+</body>
+
+</html>
