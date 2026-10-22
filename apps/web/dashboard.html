@@ -142,20 +142,6 @@
         </a>
     </div>
 
-    <!-- RECENT TRANSACTIONS -->
-    <div class="section-head">
-        <h2>Recent Transactions</h2>
-        <a href="/wallet.html">View all ›</a>
-    </div>
-
-    <section class="card" style="padding: 6px 18px">
-        <div id="transactions" class="tx-list">
-            <div class="skeleton"></div>
-            <div class="skeleton"></div>
-            <div class="skeleton"></div>
-        </div>
-    </section>
-
     <!-- ACCOUNT INFORMATION -->
     <div class="section-head">
         <h2>Account Information</h2>
@@ -218,7 +204,7 @@ async function start() {
         UI.toast("Electricity payments are coming soon. No provider is configured yet.", "info");
     });
 
-    await Promise.all([loadRecentTransactions(user.id), renderDataOverview(user.id)]);
+    await renderDataOverview(user.id);
 }
 
 /* Data overview: honest, based on the latest data purchase.
@@ -256,41 +242,6 @@ async function renderDataOverview(userId) {
     }
 }
 
-async function loadRecentTransactions(userId) {
-    const UI = window.MELODEXS_UI;
-    const container = document.getElementById("transactions");
-    try {
-        const response = await fetch("/api/transactions/" + userId + "?limit=6", { credentials: "include" });
-        const data = await response.json();
-        const rows = data.transactions || [];
-        if (!data.success || !rows.length) {
-            container.innerHTML = '<div class="state-box"><div class="state-emoji">🧾</div><h3>No transactions yet</h3><p>Top up your wallet and make your first purchase.</p></div>';
-            return;
-        }
-        container.innerHTML = "";
-        rows.forEach(transaction => {
-            const isCredit = transaction.type === "wallet_funding";
-            const sign = isCredit ? "+" : "-";
-            const badge = { successful: "badge-success", pending: "badge-pending", failed: "badge-failed" }[transaction.status] || "badge-pending";
-            const row = document.createElement("a");
-            row.className = "tx-row";
-            row.href = "/wallet.html?ref=" + encodeURIComponent(transaction.reference || "");
-            row.innerHTML =
-                '<span class="tx-icon ' + (isCredit ? "lime" : "") + '" aria-hidden="true">' +
-                (isCredit
-                    ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#020817" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>'
-                    : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0251B0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>') +
-                "</span>" +
-                '<span class="tx-body"><span class="tx-title">' + UI.esc(transaction.description || transaction.type) + "</span>" +
-                '<span class="tx-meta">' + new Date(transaction.created_at).toLocaleString("en-NG") + "</span></span>" +
-                '<span class="tx-right"><span class="tx-amount ' + (isCredit ? "credit" : "debit") + '">' + sign + " " + UI.esc(UI.formatNaira(transaction.amount)) + "</span>" +
-                '<span class="badge ' + badge + '"><span class="dot"></span>' + UI.esc(transaction.status) + "</span></span>";
-            container.appendChild(row);
-        });
-    } catch (error) {
-        container.innerHTML = '<div class="state-box"><div class="state-emoji">📡</div><h3>Could not load transactions</h3><p>Check your connection and refresh.</p></div>';
-    }
-}
 </script>
 
 </body>
