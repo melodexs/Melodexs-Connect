@@ -126,17 +126,6 @@
         </a>
     </div>
 
-    <!-- PURCHASE PIN -->
-    <div class="card mt-2" id="pinSection" style="display:none">
-        <div class="row-between">
-            <div>
-                <div class="card-title"><span aria-hidden="true">🔐</span> <span id="pinTitle"></span></div>
-                <p class="small muted mt-1" id="pinMessage"></p>
-            </div>
-            <a class="btn btn-primary btn-sm" id="pinButton" href="/purchase-pin.html"></a>
-        </div>
-    </div>
-
     <!-- ADMIN -->
     <div id="adminSection" style="display:none" class="mt-2">
         <a class="link-card" href="/admin.html">
@@ -177,7 +166,6 @@
         <div class="confirm-row"><span class="k">Name</span><span class="v" id="userName">—</span></div>
         <div class="confirm-row"><span class="k">Email</span><span class="v" id="userEmail">—</span></div>
         <div class="confirm-row"><span class="k">Phone</span><span class="v" id="userPhone">—</span></div>
-        <div class="confirm-row"><span class="k">Purchase PIN</span><span class="v" id="pinStatus">Checking…</span></div>
     </section>
 
 </main>
@@ -223,27 +211,6 @@ async function start() {
         balanceHidden = !balanceHidden;
         renderBalance();
     });
-
-    const pinSection = document.getElementById("pinSection");
-    const pinTitle = document.getElementById("pinTitle");
-    const pinMessage = document.getElementById("pinMessage");
-    const pinButton = document.getElementById("pinButton");
-    const pinStatus = document.getElementById("pinStatus");
-    if (user.has_purchase_pin) {
-        pinSection.style.display = "block";
-        pinTitle.textContent = "Purchase PIN Active ✓";
-        pinMessage.textContent = "Your Purchase PIN is active. Change it any time from your profile.";
-        pinButton.textContent = "Change PIN";
-        pinButton.href = "/purchase-pin.html";
-        pinStatus.innerHTML = '<span class="badge badge-success"><span class="dot"></span>Created</span>';
-    } else {
-        pinSection.style.display = "block";
-        pinTitle.textContent = "Create your Purchase PIN";
-        pinMessage.textContent = "A 4-digit Purchase PIN is required before buying data or airtime.";
-        pinButton.textContent = "Create PIN";
-        pinButton.href = "/purchase-pin.html";
-        pinStatus.innerHTML = '<span class="badge badge-failed"><span class="dot"></span>Not created</span>';
-    }
 
     document.getElementById("adminSection").style.display = Number(user.is_admin) === 1 ? "block" : "none";
 
