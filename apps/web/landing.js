@@ -134,6 +134,69 @@
         });
     }
 
+    /* ---------- Cursor spotlight (desktop) ---------- */
+    var spotlight = document.getElementById("spotlight");
+    if (spotlight && finePointer && !reduce) {
+        var sx = window.innerWidth / 2, sy = window.innerHeight * 0.35;
+        var stx = sx, sty = sy;
+        var sRaf = null;
+
+        function renderSpot() {
+            sRaf = null;
+            sx += (stx - sx) * 0.12;
+            sy += (sty - sy) * 0.12;
+            spotlight.style.transform = "translate(" + (sx - 280) + "px," + (sy - 280) + "px)";
+            if (Math.abs(stx - sx) + Math.abs(sty - sy) > 0.5) sRaf = window.requestAnimationFrame(renderSpot);
+        }
+
+        window.addEventListener("pointermove", function (e) {
+            stx = e.clientX; sty = e.clientY;
+            document.body.classList.add("spotlight-on");
+            if (sRaf === null) sRaf = window.requestAnimationFrame(renderSpot);
+        }, { passive: true });
+    }
+
+    /* ---------- Magnetic CTA buttons ---------- */
+    if (finePointer && !reduce) {
+        document.querySelectorAll(".magnetic").forEach(function (btn) {
+            btn.addEventListener("pointermove", function (e) {
+                var rect = btn.getBoundingClientRect();
+                var dx = e.clientX - (rect.left + rect.width / 2);
+                var dy = e.clientY - (rect.top + rect.height / 2);
+                btn.style.transform = "translate(" + (dx * 0.18).toFixed(1) + "px," + (dy * 0.28).toFixed(1) + "px) translateY(-2px)";
+            });
+            btn.addEventListener("pointerleave", function () {
+                btn.style.transform = "";
+            });
+        });
+    }
+
+    /* ---------- Stats count-up ---------- */
+    var counters = document.querySelectorAll(".stat b[data-count]");
+    if (counters.length) {
+        var cio = new IntersectionObserver(function (entries) {
+            entries.forEach(function (entry) {
+                if (!entry.isIntersecting) return;
+                var el = entry.target;
+                cio.unobserve(el);
+                if (reduce) return;
+                var target = parseInt(el.getAttribute("data-count"), 10) || 0;
+                var suffix = el.getAttribute("data-suffix") || "";
+                var start = null;
+                var dur = 1100;
+                function tick(ts) {
+                    if (start === null) start = ts;
+                    var t = Math.min(1, (ts - start) / dur);
+                    var eased = 1 - Math.pow(1 - t, 3);
+                    el.textContent = Math.round(target * eased) + suffix;
+                    if (t < 1) window.requestAnimationFrame(tick);
+                }
+                window.requestAnimationFrame(tick);
+            });
+        }, { threshold: 0.5 });
+        counters.forEach(function (el) { cio.observe(el); });
+    }
+
     /* ---------- Seamless marquee ---------- */
     var track = document.getElementById("marqueeTrack");
     if (track && !reduce) {

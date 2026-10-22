@@ -17,6 +17,9 @@
 
     <div class="orb orb-lime" aria-hidden="true"></div>
     <div class="orb orb-blue" aria-hidden="true"></div>
+    <div class="aurora aurora-1" aria-hidden="true"></div>
+    <div class="aurora aurora-2" aria-hidden="true"></div>
+    <div class="spotlight" id="spotlight" aria-hidden="true"></div>
 
     <nav class="landing-nav" id="landingNav" aria-label="Main">
         <a class="landing-logo" href="/"><span class="logo-mark">M</span>MELODEXS CONNECT</a>
@@ -29,18 +32,18 @@
 
     <section class="landing-hero">
         <div>
-            <div class="hero-eyebrow"><span class="pulse-dot"></span>Instant VTU for MTN · Airtel · Glo · 9mobile</div>
-            <h1>Your data, your airtime,<br><span>delivered instantly.</span></h1>
-            <p class="lead">
+            <div class="hero-eyebrow hero-pop" style="--d:.05s"><span class="pulse-dot"></span>Instant VTU for MTN · Airtel · Glo · 9mobile</div>
+            <h1 class="hero-pop" style="--d:.15s">Your data, your airtime,<br><span>delivered instantly.</span></h1>
+            <p class="lead hero-pop" style="--d:.28s">
                 Welcome to MELODEXS CONNECT — your one-stop platform for affordable data,
                 airtime and more. Top up instantly, buy MTN, Airtel, Glo and 9mobile bundles
                 at prices that make sense, and track every naira in your wallet.
             </p>
-            <div class="landing-cta">
-                <a href="/register.html" class="btn btn-primary">Create a free account</a>
-                <a href="/login.html" class="btn btn-outline" style="color:#fff;border-color:rgba(255,255,255,.5);">Sign in</a>
+            <div class="landing-cta hero-pop" style="--d:.4s">
+                <a href="/register.html" class="btn btn-primary magnetic">Create a free account</a>
+                <a href="/login.html" class="btn btn-outline magnetic" style="color:#fff;border-color:rgba(255,255,255,.5);">Sign in</a>
             </div>
-            <div class="hero-trust">
+            <div class="hero-trust hero-pop" style="--d:.52s">
                 <span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Paystack-secured wallet</span>
                 <span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Purchase PIN protection</span>
                 <span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Printable receipts</span>
@@ -52,7 +55,7 @@
                 <div class="scene-glow"></div>
                 <div class="scene-ring"></div>
 
-                <div class="landing-phone" id="heroPhone">
+                <div class="landing-phone phone-in" id="heroPhone">
                     <div class="phone-screen">
                         <div class="screen-head">
                             <div class="screen-hello">Good morning 👋<strong>Destiny</strong></div>
@@ -91,6 +94,7 @@
                     </div>
                 </div>
 
+                <div class="phone-shadow" aria-hidden="true"></div>
                 <span class="float-chip lime chip-a" style="--fd:0s">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
                     Fast &amp; Reliable Data
@@ -118,6 +122,11 @@
     </div>
 
     <section class="landing-features" id="features">
+        <div class="section-head reveal" style="--d:0s">
+            <span class="section-eyebrow">Why MELODEXS</span>
+            <h2>Built for everyday Nigeria</h2>
+            <p>Everything you need to stay connected, designed to be fast, transparent and secure from the first tap.</p>
+        </div>
         <div class="landing-feature tilt reveal" style="--d:0s">
             <div class="feature-icon">
                 <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
@@ -149,10 +158,10 @@
     </section>
 
     <div class="stats-band">
-        <div class="stat reveal" style="--d:0s"><b>4</b><span>Networks covered</span></div>
-        <div class="stat reveal" style="--d:.1s"><b>2%</b><span>Flat markup, no surprises</span></div>
+        <div class="stat reveal" style="--d:0s"><b data-count="4">4</b><span>Networks covered</span></div>
+        <div class="stat reveal" style="--d:.1s"><b data-count="2" data-suffix="%">2%</b><span>Flat markup, no surprises</span></div>
         <div class="stat reveal" style="--d:.2s"><b>Seconds</b><span>Delivery time</span></div>
-        <div class="stat reveal" style="--d:.3s"><b>100%</b><span>Of purchases tracked</span></div>
+        <div class="stat reveal" style="--d:.3s"><b data-count="100" data-suffix="%">100%</b><span>Of purchases tracked</span></div>
     </div>
 
     <section class="landing-cta-card">
@@ -160,8 +169,8 @@
             <h2>Ready to stay connected?</h2>
             <p>Create a free account, fund your wallet and buy your next bundle at a price that makes sense.</p>
             <div class="landing-cta">
-                <a href="/register.html" class="btn btn-primary">Get started free</a>
-                <a href="/login.html" class="btn btn-outline" style="color:#fff;border-color:rgba(255,255,255,.5);">Sign in</a>
+                <a href="/register.html" class="btn btn-primary magnetic">Get started free</a>
+                <a href="/login.html" class="btn btn-outline magnetic" style="color:#fff;border-color:rgba(255,255,255,.5);">Sign in</a>
             </div>
         </div>
     </section>
