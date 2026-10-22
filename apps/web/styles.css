@@ -1223,6 +1223,33 @@ table.data-table tr:hover td { background: #F7FAFE; }
 .landing-nav-links a { font-size: 14px; }
 .landing-nav-links a:hover { opacity: 1; }
 
+/* Back-to-home link on auth pages */
+.landing-nav .back-home {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--bluegray);
+    text-decoration: none;
+    padding: 8px 14px;
+    border-radius: 999px;
+    border: 1px solid rgba(199, 209, 221, .25);
+    background: rgba(10, 34, 66, .4);
+    transition: color .2s ease, border-color .2s ease, background .2s ease;
+}
+
+.landing-nav .back-home:hover {
+    color: var(--lime);
+    border-color: rgba(209, 255, 66, .45);
+    background: rgba(209, 255, 66, .08);
+}
+
+@media (max-width: 560px) {
+    .landing-nav .back-home span,
+    .landing-nav .back-home { gap: 5px; font-size: 12.5px; padding: 7px 12px; }
+}
+
 /* ============================================================
    HERO
    ============================================================ */
