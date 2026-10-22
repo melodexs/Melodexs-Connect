@@ -733,11 +733,36 @@ h1, h2, h3 { line-height: 1.2; }
 .tx-icon.lime svg, .tx-icon.lime span { color: var(--navy); }
 
 .tx-body { flex: 1; min-width: 0; }
-.tx-title { font-weight: 700; font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tx-meta { font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Long lines wrap to a second line instead of squeezing the amount;
+   anything beyond two lines is cut with an ellipsis (full text lives
+   in the transaction detail modal). */
+.tx-title {
+    font-weight: 700;
+    font-size: 14.5px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+}
+.tx-meta {
+    font-size: 12.5px;
+    color: var(--muted);
+    display: block;
+    margin-top: 2px;
+    overflow-wrap: anywhere;
+}
 
-.tx-right { text-align: right; flex-shrink: 0; }
-.tx-amount { font-weight: 800; font-size: 15px; }
+/* Amount and status badge stack in a fixed right column so they never
+   wrap inline or push the body text. */
+.tx-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    flex-shrink: 0;
+}
+.tx-amount { font-weight: 800; font-size: 15px; white-space: nowrap; }
 .tx-amount.credit { color: var(--success); }
 .tx-amount.debit { color: var(--ink); }
 
