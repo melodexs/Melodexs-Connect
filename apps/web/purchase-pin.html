@@ -99,6 +99,7 @@
             <h2 class="card-title" id="installTitle">Get the app</h2>
             <p class="section-hint" id="installHint">Install MELODEXS CONNECT on your phone for one-tap access and faster checkouts.</p>
             <button class="btn btn-primary btn-block" id="installButton" type="button">Install MELODEXS CONNECT</button>
+            <div id="installHelp" class="install-help hidden" role="status" aria-live="polite"></div>
             <div id="installIos" class="hidden">
                 <p class="section-hint">On iPhone or iPad:</p>
                 <ol class="install-steps">
@@ -139,7 +140,6 @@
             const installer = window.MELODEXS_INSTALL;
             if (!installer || installer.isStandalone()) return;
             const card = document.getElementById("installCard");
-            const MENU_LABEL = "Use your browser menu → Install app";
             const button = document.getElementById("installButton");
             const iosSteps = document.getElementById("installIos");
             const hint = document.getElementById("installHint");
@@ -149,24 +149,41 @@
                 iosSteps.classList.remove("hidden");
                 return;
             }
+            const help = document.getElementById("installHelp");
+            const ua = window.navigator.userAgent || "";
+            const inAppBrowser = /wv\)|FBAV|FBAN|Instagram|Twitter|Snapchat|LinkedIn|TikTok|Messenger|Line\//i.test(ua);
+            function showHelp(text) {
+                if (!help) return;
+                help.textContent = text;
+                help.hidden = false;
+            }
             installer.onAvailabilityChange(available => {
                 if (available) {
-                    button.disabled = false;
                     button.textContent = "Install MELODEXS CONNECT";
                 } else {
-                    button.disabled = true;
-                    button.textContent = MENU_LABEL;
+                    button.textContent = "How to install";
                 }
+                if (help) help.hidden = true;
             });
-            button.disabled = true;
-            button.textContent = MENU_LABEL;
-            hint.textContent = "Install MELODEXS CONNECT on your phone for one-tap access and faster checkouts.";
             button.addEventListener("click", async () => {
-                const outcome = await installer.promptInstall();
-                if (outcome === "accepted") {
-                    button.textContent = "Installed ✓";
-                    button.disabled = true;
-                    hint.textContent = "MELODEXS CONNECT is on your home screen. See you there!";
+                if (installer.canPrompt()) {
+                    const outcome = await installer.promptInstall();
+                    if (outcome === "accepted") {
+                        button.textContent = "Installed ✓";
+                        hint.textContent = "MELODEXS CONNECT is on your home screen. See you there!";
+                    } else if (outcome === "dismissed") {
+                        hint.textContent = "No problem — install anytime from your browser menu (\u22ee) \u2192 Install app.";
+                    }
+                    return;
+                }
+                // No native prompt (already installed, another browser, or an
+                // in-app browser): give actionable steps instead of a dead button.
+                if (inAppBrowser) {
+                    showHelp("You\u2019re viewing this inside another app\u2019s browser. Tap your browser menu and choose \u201cOpen in Chrome\u201d (or paste this link into Chrome), then install from Chrome\u2019s menu (\u22ee) \u2192 Install app.");
+                } else if (installer.platform() === "android") {
+                    showHelp("Tap your browser menu (\u22ee at the top right) and choose \u201cInstall app\u201d or \u201cAdd to Home screen\u201d. If it\u2019s already installed, just open MELODEXS CONNECT from your home screen.");
+                } else {
+                    showHelp("Use the install icon in your browser\u2019s address bar, or the browser menu \u2192 \u201cInstall page as app\u201d / \u201cAdd to Home screen\u201d.");
                 }
             });
         }

@@ -2287,3 +2287,5 @@ body.app-body .hero-title.compact span { color: var(--lime); }
     line-height: 1.7;
 }
 .install-steps b { color: var(--primary); }
+.install-help { margin: 12px 0 0; padding: 12px 14px; border-radius: 10px; background: rgba(2, 81, 176, .08); border: 1px solid rgba(2, 81, 176, .25); color: #10243e; font-size: 13.5px; line-height: 1.55; }
+.install-help.hidden { display: none; }
