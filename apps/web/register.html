@@ -133,6 +133,8 @@
                     button.textContent = "Create Account";
                     return;
                 }
+                localStorage.setItem("cheapdataUser", JSON.stringify(data.user));
+                localStorage.setItem("cheapdataUserId", String(data.user.id));
                 localStorage.setItem("cheapdataNewUserId", String(data.user.id));
                 showMessage("Account created successfully! Setting up your PIN…", "success");
                 button.textContent = "Account Created ✓";
@@ -166,6 +168,8 @@
                     throw new Error(data.message || "Google sign-in failed. Please try again.");
                 }
                 if (data.user && data.user.id) {
+                    localStorage.setItem("cheapdataUser", JSON.stringify(data.user));
+                    localStorage.setItem("cheapdataUserId", String(data.user.id));
                     localStorage.setItem("cheapdataNewUserId", String(data.user.id));
                 }
                 showMessage("Account created with Google! Setting up your PIN…", "success");
