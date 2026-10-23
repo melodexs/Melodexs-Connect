@@ -189,5 +189,15 @@
         window.location.href = "/login.html";
     };
 
+    /* ---------- Cold-start boot indicator ----------
+       App pages render <div id="boot-loading"> while start() awaits the API.
+       Pages call UI.bootDone() once interactive; a 25s safety timer guarantees
+       the overlay can never get stuck over a working page. */
+    UI.bootDone = function () {
+        const el = document.getElementById("boot-loading");
+        if (el) el.classList.add("hidden");
+    };
+    setTimeout(function () { UI.bootDone(); }, 25000);
+
     window.MELODEXS_UI = UI;
 })();

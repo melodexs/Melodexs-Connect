@@ -22,6 +22,7 @@
 <body class="app-body">
 
 <header class="appbar" id="appbar"></header>
+<div class="boot-loading" id="boot-loading" role="status" aria-live="polite"><span class="spin"></span><span>Connecting to MELODEXS…</span></div>
 <nav class="desktop-tabs" id="desktop-tabs" aria-label="Primary"></nav>
 
 <main class="page page-narrow">
@@ -136,6 +137,7 @@ async function start() {
         const match = all.find(t => t.reference === wanted);
         if (match) openDetail(match);
     }
+    window.MELODEXS_UI.bootDone();
 }
 
 function txRow(transaction) {

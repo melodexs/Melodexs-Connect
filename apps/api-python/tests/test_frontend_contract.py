@@ -168,3 +168,27 @@ def test_purchase_pages_do_not_ship_empty_confirm_modal():
                     f"{page.name} ships a confirm modal without #{inner}; "
                     "remove the empty backdrop so mountChrome injects the full one"
                 )
+
+
+def test_app_pages_show_boot_indicator_until_initialized():
+    """Cold-start UX contract: every logged-in app page that performs async
+    init against the API must show the #boot-loading overlay and dismiss it
+    via UI.bootDone() when start() completes, so a sleeping/free-tier API
+    reads as 'connecting' instead of a dead page. ui.js owns the helper and
+    a safety auto-hide so the overlay can never get stuck."""
+    ui_js = (_WEB_DIR / "ui.js").read_text()
+    assert "UI.bootDone = function ()" in ui_js
+    assert "setTimeout(function () { UI.bootDone(); }, 25000)" in ui_js
+    css = (_WEB_DIR / "styles.css").read_text()
+    assert ".boot-loading" in css
+    app_pages = ["dashboard.html", "wallet.html", "buy-data.html", "buy-airtime.html",
+                 "buy-electricity.html", "buy-cable.html", "buy-education.html"]
+    import re as _re
+    for name in app_pages:
+        page = _WEB_DIR / name
+        text = page.read_text()
+        assert 'id="boot-loading"' in text, f"{name} must render the boot indicator"
+        m = _re.search(r"async function start\(\) \{", text)
+        assert m, f"{name} must have start()"
+        body = text[m.end(): text.index("\n}\n", m.end())]
+        assert "bootDone()" in body, f"{name} must call bootDone() at the end of start()"
