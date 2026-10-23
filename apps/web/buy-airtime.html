@@ -22,6 +22,7 @@
 <body class="app-body">
 
 <header class="appbar" id="appbar"></header>
+<div class="boot-loading" id="boot-loading" role="status" aria-live="polite"><span class="spin"></span><span>Connecting to MELODEXS…</span></div>
 <nav class="desktop-tabs" id="desktop-tabs" aria-label="Primary"></nav>
 
 <main class="page page-narrow">
@@ -115,6 +116,7 @@ async function start() {
     document.getElementById("purchasePin").addEventListener("input", function () { this.value = this.value.replace(/\D/g, "").slice(0, 4); });
     document.getElementById("buyButton").addEventListener("click", purchaseAirtime);
     document.getElementById("saveFavoriteBtn").addEventListener("click", saveFavorite);
+    window.MELODEXS_UI.bootDone();
 }
 
 async function loadBalance() {

@@ -2294,3 +2294,20 @@ body.app-body .hero-title.compact span { color: var(--lime); }
 .auth-divider { display: flex; align-items: center; gap: 12px; margin: 18px 0 14px; color: var(--ink-soft, #C7D1DD); font-size: 13px; }
 .auth-divider::before, .auth-divider::after { content: ""; flex: 1; height: 1px; background: rgba(199, 209, 221, .3); }
 .google-btn-wrap { display: flex; justify-content: center; }
+
+
+/* ---------- Cold-start boot indicator ---------- */
+.boot-loading {
+    position: fixed; left: 50%; transform: translateX(-50%); bottom: 84px; z-index: 60;
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 18px; border-radius: 999px;
+    background: rgba(2, 8, 23, 0.92); color: #fff; font-size: 13px; font-weight: 500;
+    box-shadow: 0 12px 32px rgba(2, 8, 23, 0.35);
+    border: 1px solid rgba(199, 209, 221, 0.18);
+}
+.boot-loading .spin {
+    width: 14px; height: 14px; border-radius: 50%; flex: 0 0 auto;
+    border: 2px solid rgba(199, 209, 221, 0.25); border-top-color: #D1FF42;
+    animation: boot-spin 0.8s linear infinite;
+}
+@keyframes boot-spin { to { transform: rotate(360deg); } }
