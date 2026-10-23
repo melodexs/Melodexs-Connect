@@ -48,6 +48,25 @@ app.add_exception_handler(RequestValidationError, validation_error_handler)
 app.add_exception_handler(Exception, unexpected_error_handler)
 
 
+# Content-Security-Policy for responses that render the web app (the API
+# serves apps/web at / as well as JSON). The only external origins the web
+# app uses are the Google Identity Services client (sign-in) and this API.
+# Inline scripts/styles are part of the deployed page markup, so they are
+# allowed explicitly; every other script/style source is blocked.
+# COEP is deliberately NOT set anywhere: cross-origin embedding would break
+# the Google sign-in popup, which does not serve CORP/COEP headers.
+WEB_CSP = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline' https://accounts.google.com; "
+    "style-src 'self' 'unsafe-inline'; "
+    "img-src 'self' data: https://accounts.google.com https://*.gstatic.com; "
+    "font-src 'self' data:; "
+    "connect-src 'self' https://melodexs-connect-api.onrender.com https://accounts.google.com; "
+    "frame-src https://accounts.google.com; "
+    "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+)
+
+
 def _security_headers(response) -> None:
     """Apply the baseline security headers to every outgoing response.
 
@@ -59,6 +78,9 @@ def _security_headers(response) -> None:
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Strict-Transport-Security"] = "max-age=15552000; includeSubDomains"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups"
+    response.headers["Content-Security-Policy"] = WEB_CSP
 
 
 class SecurityMiddleware(BaseHTTPMiddleware):
