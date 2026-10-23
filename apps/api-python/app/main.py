@@ -21,7 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from .categorization import category_sort_sql
-from .provider_registry import (ensure_provider_rows, get_adapter, primary_provider, provider_enabled, resolve_fulfillment_provider)
+from .provider_registry import (eligible_provider_slugs, ensure_provider_rows, get_adapter, primary_provider, provider_enabled, resolve_fulfillment_provider)
 from .provider_isquaredata import verify_webhook_signature
 from .provider_base import PurchaseOutcome
 from .config import settings, ROOT, validate_wisesub_configuration, wisesub_recipient
@@ -519,23 +519,63 @@ def transactions(request: Request, user_id: str, type: str | None = None,
     return {"success": True, "transactions": [dict(x) for x in rows], "total": int(total)}
 
 
+def visible_data_sources() -> list[str]:
+    """Catalog sources whose plans are customer-visible and purchasable.
+
+    With multi-provider routing disabled this is just the primary provider
+    (single-catalog behavior). With routing enabled, every eligible
+    (configured + enabled + not selection-excluded) provider's plans are
+    visible; the purchase flow fulfills each plan through the provider
+    that owns it (plan rows carry their source, and plan names are
+    unique per network across sources).
+    """
+    primary = primary_provider()
+    if not settings.multi_provider_routing_enabled:
+        return [primary]
+    return [primary] + sorted(slug for slug in eligible_provider_slugs() if slug != primary)
+
+
+def _plan_owner_provider(network: str, plan: str | None) -> str | None:
+    """Which visible provider owns a data plan row (or None if absent)."""
+    sources = visible_data_sources()
+    if not plan or not sources:
+        return None
+    placeholders = ",".join(f":src{i}" for i in range(len(sources)))
+    params = {f"src{i}": slug for i, slug in enumerate(sources)}
+    params.update({"network": network, "plan": plan})
+    with db_session() as db:
+        row = q(db, f"""SELECT LOWER(TRIM(source)) AS source FROM data_plans
+                       WHERE network=:network AND plan=:plan
+                         AND active=1 AND provider_available=1
+                         AND selling_price>=provider_cost
+                         AND category IS NOT NULL AND TRIM(category)<>''
+                         AND LOWER(TRIM(source)) IN ({placeholders})
+                       ORDER BY CASE LOWER(TRIM(source)) WHEN :primary_source THEN 0 ELSE 1 END
+                       LIMIT 1""", {**params, "primary_source": sources[0]}).mappings().first()
+    return row["source"] if row else None
+
+
 @app.get("/api/data-categories")
 def data_categories(network: str):
+    sources = visible_data_sources()
+    source_params = {f"src{i}": slug for i, slug in enumerate(sources)}
+    placeholders = ",".join(f":src{i}" for i in range(len(sources)))
     with db_session() as db:
-        rows = q(db, "SELECT category,COUNT(*) plan_count FROM data_plans WHERE network=:network AND active=1 AND provider_available=1 AND selling_price>=provider_cost AND LOWER(TRIM(source))=:source AND category IS NOT NULL AND TRIM(category)<>'' GROUP BY category ORDER BY " + category_sort_sql() + "", {"network": network, "source": primary_provider()}).mappings().all()
+        rows = q(db, "SELECT category,COUNT(*) plan_count FROM data_plans WHERE network=:network AND active=1 AND provider_available=1 AND selling_price>=provider_cost AND LOWER(TRIM(source)) IN (" + placeholders + ") AND category IS NOT NULL AND TRIM(category)<>'' GROUP BY category ORDER BY " + category_sort_sql() + "", {"network": network, **source_params}).mappings().all()
     return {"success": True, "categories": [dict(x) for x in rows]}
 
 
 @app.get("/api/data-plans")
 def data_plans(network: str | None = None, category: str | None = None):
-    conditions = ["active=1", "provider_available=1", "selling_price>=provider_cost", "LOWER(TRIM(source))=:source", "category IS NOT NULL", "TRIM(category)<>''"]
-    params = {"source": primary_provider()}
+    conditions = ["active=1", "provider_available=1", "selling_price>=provider_cost", "category IS NOT NULL", "TRIM(category)<>''"]
+    params = {f"src{i}": slug for i, slug in enumerate(visible_data_sources())}
+    conditions.append("LOWER(TRIM(source)) IN (" + ",".join(f":src{i}" for i in range(len(params))) + ")")
     if network:
         conditions.append("network=:network"); params["network"] = network
     if category:
         conditions.append("category=:category"); params["category"] = category
     with db_session() as db:
-        rows = q(db, "SELECT id,network,plan,category,selling_price,data_size,validity FROM data_plans WHERE " + " AND ".join(conditions) + " ORDER BY CASE LOWER(network) WHEN 'mtn' THEN 1 WHEN 'airtel' THEN 2 WHEN 'glo' THEN 3 WHEN '9mobile' THEN 4 ELSE 5 END,selling_price,id", params).mappings().all()
+        rows = q(db, "SELECT id,network,plan,category,selling_price,data_size,validity,LOWER(TRIM(source)) AS source FROM data_plans WHERE " + " AND ".join(conditions) + " ORDER BY CASE LOWER(network) WHEN 'mtn' THEN 1 WHEN 'airtel' THEN 2 WHEN 'glo' THEN 3 WHEN '9mobile' THEN 4 ELSE 5 END,selling_price,LOWER(TRIM(source)),id", params).mappings().all()
     return {"success": True, "plans": [dict(x) for x in rows]}
 
 
@@ -1201,19 +1241,26 @@ async def purchase(request: Request, body: dict, service: str):
     if not network or not phone or not nigeria_phone(phone): raise HTTPException(400, "Please enter a valid Nigerian phone number")
     if network not in {"MTN", "Airtel", "Glo", "9mobile"}: raise HTTPException(400, "Invalid network")
     if primary_provider() == "isquaredata":
-        try:
-            return await isquaredata_purchase_flow(user_id, body, service, network, phone, pin)
-        except SupplierPreFlightRefusal as refusal:
-            # Nothing has been debited or recorded at this point, so an
-            # airtime retry through WiseSub is safe. Data purchases are NOT
-            # retried: WiseSub publishes no product family label, so data
-            # package equivalence can never be confirmed automatically
-            # (see app/package_matching.py) - a wrong "equivalent" package
-            # would deliver the wrong product to a paying customer.
-            if service == "airtime" and _wisesub_fallback_ready():
-                logger.warning("Primary supplier refused an airtime purchase before debit; attempting WiseSub fallback")
-                return await wisesub_airtime_fallback(user_id, body, network, phone, pin)
-            raise
+        if service == "data" and _plan_owner_provider(network, body.get("plan")) == "wisesub":
+            # A WiseSub catalog plan: multi-provider routing is enabled and
+            # WiseSub is eligible, so fulfill through the WiseSub flow below
+            # (which re-validates the plan row under lock). ISQUAREDATA plans
+            # and airtime keep the ISQUAREDATA flow.
+            pass
+        else:
+            try:
+                return await isquaredata_purchase_flow(user_id, body, service, network, phone, pin)
+            except SupplierPreFlightRefusal as refusal:
+                # Nothing has been debited or recorded at this point, so an
+                # airtime retry through WiseSub is safe. Data purchases are NOT
+                # retried: WiseSub publishes no product family label, so data
+                # package equivalence can never be confirmed automatically
+                # (see app/package_matching.py) - a wrong "equivalent" package
+                # would deliver the wrong product to a paying customer.
+                if service == "airtime" and _wisesub_fallback_ready():
+                    logger.warning("Primary supplier refused an airtime purchase before debit; attempting WiseSub fallback")
+                    return await wisesub_airtime_fallback(user_id, body, network, phone, pin)
+                raise
     selected = None
     plan = body.get("plan")
     if service == "data":

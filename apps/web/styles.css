@@ -393,6 +393,12 @@ h1, h2, h3 { line-height: 1.2; }
     font-size: 12.5px;
     font-weight: 600;
 }
+/* Provider pill on mixed-provider plan cards (buy-data) */
+.pill-provider {
+    background: rgba(2, 81, 176, 0.10);
+    color: #0251B0;
+    border: 1px solid rgba(2, 81, 176, 0.25);
+}
 
 /* ---------- Services grid ---------- */
 .services-grid {

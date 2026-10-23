@@ -39,6 +39,11 @@ def _cleanup_isquare_test_rows():
         q(db, "DELETE FROM users WHERE email LIKE 'isquare-%@example.com'")
         q(db, "DELETE FROM data_plans WHERE LOWER(TRIM(source))='isquaredata'")
         q(db, "DELETE FROM data_plans WHERE plan='WISE-1GB'")
+        # The app lifespan enables the active provider on every startup; while
+        # these tests run, that is ISQUAREDATA. Restore the pristine default
+        # (WiseSub sole enabled provider) so later modules see a clean state.
+        q(db, "UPDATE providers SET enabled=1 WHERE slug='wisesub'")
+        q(db, "UPDATE providers SET enabled=0 WHERE slug='isquaredata'")
 
 
 def account(client):
@@ -130,22 +135,26 @@ def test_catalog_defaults_to_wisesub_when_not_active():
 
 def mock_adapter(monkeypatch, *, balance=None, outcome=PurchaseOutcome.PENDING,
                  status=None):
+    # Patch the CLASS (never the singleton instance): an instance-level
+    # monkeypatch records the bound class method as the old value, so
+    # teardown leaves it behind as an instance attribute that shadows
+    # class-level patches in later test modules (pytest gotcha).
     adapter = main.get_adapter("isquaredata")
 
-    async def fake_account_balance():
+    async def fake_account_balance(self):
         if balance is None:
             return BalanceResult(supported=False, balance=None)
         return BalanceResult(supported=True, balance=Decimal(str(balance)))
 
-    async def fake_data_purchase(*, network, package_code, phone, reference):
+    async def fake_data_purchase(self, *, network, package_code, phone, reference):
         return PurchaseResult(outcome=outcome, message="accepted")
 
-    async def fake_status(reference):
+    async def fake_status(self, reference):
         return StatusResult(recognized=status is not None, status=status)
 
-    monkeypatch.setattr(adapter, "account_balance", fake_account_balance)
-    monkeypatch.setattr(adapter, "submit_data_purchase", fake_data_purchase)
-    monkeypatch.setattr(adapter, "transaction_status", fake_status)
+    monkeypatch.setattr(IsquareDataAdapter, "account_balance", fake_account_balance)
+    monkeypatch.setattr(IsquareDataAdapter, "submit_data_purchase", fake_data_purchase)
+    monkeypatch.setattr(IsquareDataAdapter, "transaction_status", fake_status)
     return adapter
 
 
@@ -301,18 +310,17 @@ def test_webhook_unconfigured_rejected(monkeypatch):
 
 
 def mock_catalog(monkeypatch, packages):
-    adapter = main.get_adapter("isquaredata")
-
     class Pkg:
         def __init__(self, code, name, network, cost, size, validity, family=None):
             self.code, self.name, self.network = code, name, network
             self.cost, self.data_size, self.validity = cost, size, validity
             self.plan_type = family
 
-    async def fake_fetch():
+    async def fake_fetch(self):
         return [Pkg(**p) for p in packages]
 
-    monkeypatch.setattr(adapter, "fetch_catalog", fake_fetch)
+    # Class-level patch (see mock_adapter for the instance-shadow gotcha)
+    monkeypatch.setattr(IsquareDataAdapter, "fetch_catalog", fake_fetch)
 
 
 @pytest.mark.asyncio
