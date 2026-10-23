@@ -126,9 +126,19 @@
     <script src="ui.js"></script>
     <script src="/pwa.js" defer></script>
     <script>
-        const storedUser = localStorage.getItem("cheapdataUser");
+        let storedUser = localStorage.getItem("cheapdataUser");
         if (!storedUser) {
-            window.location.href = "login.html";
+            // Fresh registrations redirect straight here before any user data
+            // was cached; fall back to the id saved at registration so the PIN
+            // setup works without logging out and back in.
+            const newUserId = localStorage.getItem("cheapdataNewUserId");
+            if (newUserId) {
+                storedUser = JSON.stringify({ id: Number(newUserId) });
+                localStorage.setItem("cheapdataUser", storedUser);
+            } else {
+                window.location.href = "login.html";
+                throw new Error("Session is initializing. Redirecting to sign in…");
+            }
         }
         const user = JSON.parse(storedUser);
 
