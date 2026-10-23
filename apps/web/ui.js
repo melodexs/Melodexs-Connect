@@ -95,7 +95,7 @@
     UI.confirm = function (title, message, confirmLabel) {
         return new Promise((resolve) => {
             const backdrop = document.getElementById("confirm-modal");
-            if (!backdrop) { resolve(window.confirm(message)); return; }
+            if (!backdrop || !document.getElementById("confirm-title")) { resolve(window.confirm(message)); return; }
             document.getElementById("confirm-title").textContent = title;
             document.getElementById("confirm-message").textContent = message;
             const ok = document.getElementById("confirm-ok");

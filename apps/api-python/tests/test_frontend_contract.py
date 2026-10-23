@@ -146,3 +146,25 @@ def test_frontend_api_configuration_is_centralized_and_safe():
             assert 'name="api-base-url"' in text, (
                 f"{page.name} uses the API without declaring the api-base-url meta tag"
             )
+
+
+def test_purchase_pages_do_not_ship_empty_confirm_modal():
+    """Regression: buy-data/buy-airtime once contained an empty
+    #confirm-modal backdrop. UI.mountChrome only injects the full modal when
+    the element is absent, and UI.confirm() then crashed on the missing inner
+    elements, silently killing every data/airtime purchase behind a dead
+    overlay. Pages must leave the modal to mountChrome (or ship the complete
+    markup)."""
+    ui_js = (_WEB_DIR / "ui.js").read_text()
+    # mountChrome's injection contract stays intact.
+    assert 'if (!document.getElementById("confirm-modal"))' in ui_js
+    # The injected fallback keeps purchases alive even if markup is missing.
+    assert 'if (!backdrop || !document.getElementById("confirm-title"))' in ui_js
+    for page in _WEB_DIR.glob("*.html"):
+        text = page.read_text()
+        if 'id="confirm-modal"' in text:
+            for inner in ("confirm-title", "confirm-message", "confirm-ok", "confirm-cancel"):
+                assert f'id="{inner}"' in text, (
+                    f"{page.name} ships a confirm modal without #{inner}; "
+                    "remove the empty backdrop so mountChrome injects the full one"
+                )
