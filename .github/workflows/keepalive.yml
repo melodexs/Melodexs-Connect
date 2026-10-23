@@ -1,0 +1,33 @@
+name: API keep-alive
+
+# Keeps the MELODEXS CONNECT production API warm on Render's free tier,
+# which otherwise spins the instance down after ~15 minutes of inactivity.
+# This repo is public, so GitHub Actions minutes are free and unlimited.
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: keepalive
+  cancel-in-progress: true
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Ping production API status
+        run: |
+          echo "Pinging at $(date -u +%FT%TZ)"
+          code=$(curl -s -o /tmp/status.json -w "%{http_code}" --max-time 120 https://melodexs-connect-api.onrender.com/api/status)
+          echo "HTTP $code"
+          cat /tmp/status.json
+          echo ""
+          if [ "$code" != "200" ]; then
+            echo "::warning::API did not return 200 (it may be waking up; next run retries)"
+          fi
