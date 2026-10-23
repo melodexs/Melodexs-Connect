@@ -1,4 +1,5 @@
 import hashlib
+from decimal import Decimal
 import json
 import logging
 import math
@@ -20,7 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from .categorization import category_sort_sql
-from .provider_registry import (ensure_provider_rows, get_adapter, primary_provider, resolve_fulfillment_provider)
+from .provider_registry import (ensure_provider_rows, get_adapter, primary_provider, provider_enabled, resolve_fulfillment_provider)
 from .provider_isquaredata import verify_webhook_signature
 from .provider_base import PurchaseOutcome
 from .config import settings, ROOT, validate_wisesub_configuration, wisesub_recipient
@@ -587,6 +588,21 @@ def add_pending_purchase_note(reference: str, user_id: int, note: str):
         q(db, "UPDATE transactions SET description=description || :note WHERE reference=:reference AND user_id=:user_id AND type='debit' AND status='pending'", {"note": " | " + note, "reference": reference, "user_id": user_id})
 
 
+class SupplierPreFlightRefusal(HTTPException):
+    """The primary supplier cannot serve a purchase BEFORE any customer
+    debit happens (not configured, or its wallet cannot cover it).
+
+    Distinct from a plain 503 on purpose: the dispatcher catches exactly
+    this class to attempt the WiseSub airtime fallback. Because nothing has
+    been charged or recorded at this point, retrying through another
+    supplier is always safe. Post-debit failures (submission errors,
+    uncertain outcomes) must NEVER use this class: they stay pending and
+    are reconciled instead."""
+
+    def __init__(self, message: str):
+        super().__init__(503, message)
+
+
 async def isquaredata_purchase_flow(user_id: int, body: dict, service: str, network: str, phone: str, pin: str):
     """Fulfillment through the ISQUAREDATA adapter (active supplier).
 
@@ -599,7 +615,7 @@ async def isquaredata_purchase_flow(user_id: int, body: dict, service: str, netw
     """
     adapter = get_adapter("isquaredata")
     if adapter is None or not adapter.is_configured():
-        raise HTTPException(503, "The data provider is not available right now. Please try again later.")
+        raise SupplierPreFlightRefusal("The data provider is not available right now. Please try again later.")
     selected = None
     amount = 0.0
     plan = body.get("plan")
@@ -657,7 +673,7 @@ async def isquaredata_purchase_flow(user_id: int, body: dict, service: str, netw
         supplier_amount = None
     if supplier_amount is None or supplier_amount < float(amount):
         logger.warning("ISQUAREDATA pre-flight balance check refused a purchase (supplier balance unavailable or insufficient)")
-        raise HTTPException(503, "The data provider is temporarily unavailable. Your wallet was not charged. Please try again shortly.")
+        raise SupplierPreFlightRefusal("The data provider is temporarily unavailable. Your wallet was not charged. Please try again shortly.")
     reference = ref()
     with db_session() as db:
         debit = q(db, "UPDATE users SET balance=balance-:amount WHERE id=:id AND balance>=:amount", {"amount": amount, "id": user_id})
@@ -1074,6 +1090,86 @@ async def purchase_education(request: Request, body: dict):
     return await _biller_purchase_core(user_id, body, amount, description, submit)
 
 
+def _wisesub_fallback_ready() -> bool:
+    """WiseSub may serve a fallback only when multi-provider routing is
+    enabled and WiseSub is configured and enabled (never excluded)."""
+    if not settings.multi_provider_routing_enabled:
+        return False
+    adapter = get_adapter("wisesub")
+    if adapter is None or adapter.selection_excluded:
+        return False
+    return bool(adapter.is_configured() and provider_enabled("wisesub"))
+
+
+async def wisesub_airtime_fallback(user_id: int, body: dict, network: str, phone: str, pin: str):
+    """Fulfill an airtime purchase through WiseSub after the primary
+    supplier refused it before any customer debit.
+
+    Airtime is fully defined by network + amount, so no product-equivalence
+    matching is needed. Mirrors the proven WiseSub airtime flow exactly:
+    PIN check, pending-duplicate guard, idempotency, atomic debit,
+    synchronous outcome handling, and pending-held for anything that is
+    not an explicitly successful provider response (WiseSub documents no
+    automatic refunds, so failures are never auto-refunded here).
+    """
+    if not _wisesub_fallback_ready():
+        raise HTTPException(503, "The data provider is temporarily unavailable. Please try again later.")
+    try:
+        amount = float(body.get("amount") or 0)
+    except (TypeError, ValueError):
+        amount = 0
+    if not amount.is_integer() or amount < 50 or amount > 50000:
+        raise HTTPException(400, "Airtime amount must be between \u20a650 and \u20a650,000")
+    amount = int(amount)
+    if amount <= 0: raise HTTPException(400, "A valid airtime amount is required")
+    description = f"{network} airtime purchase for {phone}"
+    with db_session() as db:
+        user = q(db, "SELECT id,balance,purchase_pin FROM users WHERE id=:id", {"id": user_id}).mappings().first()
+        if engine.dialect.name != "sqlite":
+            user = q(db, "SELECT id,balance,purchase_pin FROM users WHERE id=:id FOR UPDATE", {"id": user_id}).mappings().first()
+        if not user: raise HTTPException(404, "User not found")
+        if not user["purchase_pin"]:
+            raise HTTPException(400, "Please create a Purchase PIN before buying airtime")
+        if not password_check(pin, user["purchase_pin"]): raise HTTPException(401, "Incorrect Purchase PIN")
+        pending_prefix = description
+        pending_purchase = q(db, "SELECT reference FROM transactions WHERE user_id=:uid AND type='debit' AND status='pending' AND SUBSTR(description,1,LENGTH(:prefix))=:prefix ORDER BY id DESC LIMIT 1", {"uid": user_id, "prefix": pending_prefix}).mappings().first()
+        if pending_purchase:
+            return JSONResponse({"success": False, "pending": True, "message": "A matching purchase is still being confirmed. Please do not submit it again.", "reference": pending_purchase["reference"]}, status_code=202)
+        if user["balance"] < amount: raise HTTPException(400, "Insufficient wallet balance")
+        idempotency_key = str(body.get("requestId") or "").strip()
+        if idempotency_key:
+            if len(idempotency_key) > 100: raise HTTPException(400, "Invalid request ID")
+            previous = q(db, "SELECT reference,status,amount FROM transactions WHERE user_id=:uid AND idempotency_key=:key", {"uid": user_id, "key": idempotency_key}).mappings().first()
+            if previous:
+                if previous["status"] == "pending":
+                    return JSONResponse({"success": False, "pending": True, "message": "This purchase is still being confirmed. Please do not retry it.", "reference": previous["reference"]}, status_code=202)
+                return {"success": previous["status"] == "successful", "status": previous["status"], "message": "This purchase request was already processed.", "reference": previous["reference"], "amount": float(previous["amount"])}
+    adapter = get_adapter("wisesub")
+    reference = ref()
+    with db_session() as db:
+        debit = q(db, "UPDATE users SET balance=balance-:amount WHERE id=:id AND balance>=:amount", {"amount": amount, "id": user_id})
+        if debit.rowcount != 1: raise HTTPException(400, "Insufficient wallet balance")
+        q(db, "INSERT INTO transactions(user_id,type,amount,status,reference,description,idempotency_key,provider) VALUES(:uid,'debit',:amount,'pending',:reference,:description,:idempotency_key,'wisesub')",
+          {"uid": user_id, "amount": amount, "reference": reference, "description": description + " | Pending WiseSub confirmation (fallback)", "idempotency_key": idempotency_key or None})
+    try:
+        result = await adapter.submit_airtime_purchase(network=network, phone=wisesub_recipient(phone), amount=Decimal(amount), reference=reference)
+    except Exception:
+        add_pending_purchase_note(reference, user_id, "WiseSub fallback response was not received; outcome requires reconciliation")
+        return JSONResponse({"success": False, "pending": True, "message": "We could not immediately confirm your purchase. Please do not retry this purchase.", "reference": reference}, status_code=202)
+    if result.outcome == PurchaseOutcome.SUCCESSFUL:
+        try:
+            with db_session() as db:
+                completed = q(db, "UPDATE transactions SET status='successful',provider_reference=:pref,description=:description WHERE reference=:reference AND user_id=:id AND type='debit' AND status='pending'",
+                              {"pref": str(result.provider_reference or reference), "description": description + " | WiseSub reference: " + str(result.provider_reference or reference) + " (fallback)", "reference": reference, "id": user_id})
+                if completed.rowcount != 1: raise RuntimeError("Pending purchase could not be completed")
+                balance = q(db, "SELECT balance FROM users WHERE id=:id", {"id": user_id}).scalar()
+        except Exception:
+            return JSONResponse({"success": False, "message": "Your purchase was processed by the provider, but we could not complete the transaction record automatically. Please contact support before trying again.", "reference": reference, "providerReference": result.provider_reference}, status_code=500)
+        return {"success": True, "message": "Airtime purchase successful", "network": network, "phone": phone, "amount": amount, "balance": float(balance), "reference": reference, "providerReference": result.provider_reference}
+    add_pending_purchase_note(reference, user_id, (result.message or "outcome pending reconciliation") + " (WiseSub fallback)")
+    return JSONResponse({"success": False, "pending": True, "message": "Your purchase was accepted and is being confirmed. You will be notified once delivery is confirmed. Please do not retry.", "reference": reference}, status_code=202)
+
+
 async def purchase(request: Request, body: dict, service: str):
     user_id = require_user(request)
     network, phone, pin = body.get("network"), body.get("phone"), body.get("pin")
@@ -1083,7 +1179,19 @@ async def purchase(request: Request, body: dict, service: str):
     if not network or not phone or not nigeria_phone(phone): raise HTTPException(400, "Please enter a valid Nigerian phone number")
     if network not in {"MTN", "Airtel", "Glo", "9mobile"}: raise HTTPException(400, "Invalid network")
     if primary_provider() == "isquaredata":
-        return await isquaredata_purchase_flow(user_id, body, service, network, phone, pin)
+        try:
+            return await isquaredata_purchase_flow(user_id, body, service, network, phone, pin)
+        except SupplierPreFlightRefusal as refusal:
+            # Nothing has been debited or recorded at this point, so an
+            # airtime retry through WiseSub is safe. Data purchases are NOT
+            # retried: WiseSub publishes no product family label, so data
+            # package equivalence can never be confirmed automatically
+            # (see app/package_matching.py) - a wrong "equivalent" package
+            # would deliver the wrong product to a paying customer.
+            if service == "airtime" and _wisesub_fallback_ready():
+                logger.warning("Primary supplier refused an airtime purchase before debit; attempting WiseSub fallback")
+                return await wisesub_airtime_fallback(user_id, body, network, phone, pin)
+            raise
     selected = None
     plan = body.get("plan")
     if service == "data":
