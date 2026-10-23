@@ -58,7 +58,7 @@ app.add_exception_handler(Exception, unexpected_error_handler)
 WEB_CSP = (
     "default-src 'self'; "
     "script-src 'self' 'unsafe-inline' https://accounts.google.com; "
-    "style-src 'self' 'unsafe-inline'; "
+    "style-src 'self' 'unsafe-inline' https://accounts.google.com; "
     "img-src 'self' data: https://accounts.google.com https://*.gstatic.com; "
     "font-src 'self' data:; "
     "connect-src 'self' https://melodexs-connect-api.onrender.com https://accounts.google.com; "
