@@ -362,6 +362,13 @@ async function renderPlans() {
             container.innerHTML = '<div class="state-box" style="grid-column:1/-1"><div class="state-emoji">📦</div><h3>No plans available</h3><p>There are currently no available plans in ' + ui.esc(selectedCategory) + " for " + ui.esc(selectedNetwork) + ".</p></div>";
             return;
         }
+        /* When the catalog mixes providers, each plan carries a provider
+         * pill so customers can compare same-size plans from different
+         * suppliers (the backend fulfills each plan through its own
+         * provider). Single-provider catalogs look exactly as before. */
+        const PROVIDER_LABELS = { wisesub: "WiseSub", isquaredata: "ISQUARE" };
+        const shownSources = new Set(plans.map(item => String(item.source || "").trim().toLowerCase()).filter(Boolean));
+        const mixedCatalog = shownSources.size > 1;
         container.innerHTML = plans.map(item => {
             /* WiseSub plan names can contain a provider denomination
              * ("N100 100MB - 24 hrs"). That N100 is part of the provider
@@ -370,9 +377,11 @@ async function renderPlans() {
             const displayPlan = customerPlanName || item.plan;
             const validityLabel = String(item.validity || "").trim();
             const titleHasValidity = validityLabel && displayPlan.toLowerCase().includes(validityLabel.toLowerCase());
+            const providerLabel = mixedCatalog ? PROVIDER_LABELS[String(item.source || "").trim().toLowerCase()] || String(item.source || "") : "";
             return '<button type="button" class="plan-card plan" data-plan="' + ui.esc(item.plan) + '" data-price="' + Number(item.selling_price) + '" data-validity="' + ui.esc(item.validity || "") + '">' +
                 '<span class="plan-top"><span class="plan-network">' + ui.esc(item.network) + "</span>" +
-                (item.category ? '<span class="pill">' + ui.esc(item.category) + "</span>" : "") + "</span>" +
+                (item.category ? '<span class="pill">' + ui.esc(item.category) + "</span>" : "") +
+                (providerLabel ? '<span class="pill pill-provider">' + ui.esc(providerLabel) + "</span>" : "") + "</span>" +
                 '<span class="plan-size">' + ui.esc(displayPlan) + "</span>" +
                 (validityLabel && !titleHasValidity ? '<span class="plan-validity">⏱ ' + ui.esc(validityLabel) + "</span>" : "") +
                 '<span class="plan-bottom"><span class="plan-price">' + ui.esc(ui.formatNaira(item.selling_price)) + "</span>" +
