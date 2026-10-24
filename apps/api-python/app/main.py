@@ -9,13 +9,13 @@ import re
 import secrets
 import time
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 import httpx
-from fastapi import FastAPI, Query, Request, Response, HTTPException
+from fastapi import BackgroundTasks, FastAPI, Query, Request, Response, HTTPException
 from fastapi.responses import JSONResponse, FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -189,8 +189,76 @@ def nigeria_phone(phone: str) -> bool:
     return bool(re.fullmatch(r"(?:\+234|234|0)\d{10}", str(phone).strip()))
 
 
+# --- Automatic requery sweep -------------------------------------------
+# ISQUAREDATA purchases finalize through signed webhooks. When a callback is
+# missed the debit would otherwise sit pending until an admin runs
+# reconciliation (real incident 2026-10-23: a customer waited a full day for
+# a purchase the supplier had already delivered). The keep-alive cron pings
+# /api/status every 5 minutes, so the sweep runs there: any ISQUAREDATA
+# debit still pending after AUTO_REQUERY_STALE_MINUTES is requeried at the
+# supplier and a CONFIRMED delivery is finalized with the exact webhook
+# semantics. Refunds are NEVER automatic here - failures and unknown
+# statuses stay pending-held for admin reconciliation (the double-confirmed
+# webhook+requery gate stays the only automatic refund path).
+AUTO_REQUERY_STALE_MINUTES = 10
+AUTO_REQUERY_MIN_INTERVAL_SECONDS = 180
+AUTO_REQUERY_BATCH_LIMIT = 25
+_auto_requery_last_ran = 0.0
+_auto_requery_running = False
+
+
+def _as_datetime(value):
+    if isinstance(value, datetime):
+        return value
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+
+
+async def _auto_requery_stale_purchases() -> None:
+    """Self-heal stale pending ISQUAREDATA purchases (webhook missed)."""
+    global _auto_requery_last_ran, _auto_requery_running
+    if _auto_requery_running:
+        return
+    if time.time() - _auto_requery_last_ran < AUTO_REQUERY_MIN_INTERVAL_SECONDS:
+        return
+    _auto_requery_running = True
+    _auto_requery_last_ran = time.time()
+    try:
+        adapter = get_adapter("isquaredata")
+        if adapter is None or not adapter.is_configured():
+            return
+        cutoff = datetime.now() - timedelta(minutes=AUTO_REQUERY_STALE_MINUTES)
+        with db_session() as db:
+            rows = q(db, "SELECT id, reference, provider_reference, description, created_at FROM transactions "
+                         "WHERE type='debit' AND provider='isquaredata' AND status='pending' "
+                         "ORDER BY id ASC LIMIT :limit", {"limit": AUTO_REQUERY_BATCH_LIMIT}).mappings().all()
+        stale = [row for row in rows
+                 if (dt := _as_datetime(row["created_at"])) is not None and dt <= cutoff]
+        for transaction in stale:
+            reference = transaction["provider_reference"] or transaction["reference"]
+            outcome = await adapter.transaction_status(reference)
+            if not (outcome.recognized and outcome.status == "successful"):
+                continue
+            with db_session() as db:
+                done = q(db, "UPDATE transactions SET status='successful', provider_reference=:pref, "
+                             "description=:description WHERE id=:id AND status='pending'",
+                         {"pref": reference,
+                          "description": str(transaction["description"]).split(" | Pending ISQUAREDATA confirmation")[0]
+                                         + " | ISQUAREDATA confirmed delivery (auto requery sweep)",
+                          "id": transaction["id"]})
+            if done.rowcount == 1:
+                logger.info("Auto-requery sweep finalized ISQUAREDATA purchase %s (webhook never arrived)", reference)
+    except Exception:
+        logger.exception("Auto-requery sweep failed")
+    finally:
+        _auto_requery_running = False
+
+
 @app.get("/api/status")
-def status():
+async def status(background_tasks: BackgroundTasks):
+    background_tasks.add_task(_auto_requery_stale_purchases)
     return {"success": True, "message": "MELODEXS CONNECT API is running"}
 
 
