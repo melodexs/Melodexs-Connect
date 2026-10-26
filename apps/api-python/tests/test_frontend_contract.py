@@ -46,7 +46,9 @@ def _normalize(raw: str) -> tuple:
 
 def _frontend_api_paths() -> set:
     paths = set()
-    for source in sorted(_WEB_DIR.glob("*.html")) + [_WEB_DIR / "api.js"]:
+    # Pages, the fetch shim, and the shared app-shell script: ui.js is where
+    # the boot sequence (/api/bootstrap) lives, so it must be scanned too.
+    for source in sorted(_WEB_DIR.glob("*.html")) + [_WEB_DIR / "api.js", _WEB_DIR / "ui.js"]:
         text = source.read_text()
         for match in _PATH_RE.finditer(text):
             normalized = _normalize(match.group(1))

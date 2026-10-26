@@ -12,8 +12,27 @@ if database_url.startswith("postgres://"):
 elif database_url.startswith("postgresql://"):
     database_url = "postgresql+psycopg://" + database_url[len("postgresql://"):]
 
-connect_args = {"check_same_thread": False} if database_url.startswith("sqlite") else {}
-engine = create_engine(database_url, pool_pre_ping=True, connect_args=connect_args)
+if database_url.startswith("sqlite"):
+    # Local/test SQLite keeps its previous configuration.
+    engine = create_engine(database_url, pool_pre_ping=True,
+                           connect_args={"check_same_thread": False})
+else:
+    # The production database is a serverless Neon endpoint reached over the
+    # public internet: every NEW connection costs a full handshake round trip
+    # (TCP + TLS + auth). Keep connections alive and recycle them just under
+    # Neon's idle cutoff so steady traffic reuses one warm connection instead
+    # of paying that cost on every request. TCP keepalives stop the platform
+    # from silently dropping idle sockets.
+    engine = create_engine(
+        database_url,
+        pool_pre_ping=True,
+        pool_recycle=900,
+        pool_size=5,
+        max_overflow=5,
+        pool_timeout=10,
+        connect_args={"keepalives": 1, "keepalives_idle": 30,
+                      "keepalives_interval": 10, "keepalives_count": 5},
+    )
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 

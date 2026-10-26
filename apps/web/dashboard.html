@@ -193,14 +193,11 @@ function renderBalance() {
     }
 }
 
-async function start() {
+/* Paint the header/balance from whatever profile we already have. Safe to
+   call twice: the toggle handler is assigned (not added), so a cached paint
+   followed by the live one never stacks handlers. */
+function renderHeader(user) {
     const UI = window.MELODEXS_UI;
-    const session = await UI.requireSession();
-    if (!session) return;
-
-    const user = await UI.refreshUserCache();
-    if (!user) { window.location.href = "/login.html"; return; }
-
     document.getElementById("heroGreeting").textContent = "Hello, " + user.name + "!";
     document.getElementById("appbarPhone").textContent = UI.formatPhone(user.phone) || "Add phone number";
     document.getElementById("userName").textContent = user.name;
@@ -209,17 +206,37 @@ async function start() {
     lastBalance = Number(user.balance || 0);
     renderBalance();
 
-    document.getElementById("toggleBalance").addEventListener("click", () => {
+    document.getElementById("toggleBalance").onclick = () => {
         balanceHidden = !balanceHidden;
         renderBalance();
-    });
+    };
 
     document.getElementById("adminSection").style.display = Number(user.is_admin) === 1 ? "block" : "none";
+}
 
+async function start() {
+    const UI = window.MELODEXS_UI;
+
+    /* 1. Paint instantly from the cached profile so the page is readable and
+       tappable before any network round trip completes. */
+    const cached = UI.currentUser();
+    if (cached && cached.name) {
+        try { renderHeader(cached); } catch (error) { /* fall through to live data */ }
+    }
+
+    /* 2. One round trip validates the session and refreshes the profile
+       (/api/bootstrap, memoized in ui.js). */
+    const session = await UI.requireSession();
+    if (!session) return;
+    const user = await UI.refreshUserCache();
+    if (!user) { window.location.href = "/login.html"; return; }
+    renderHeader(user);
+
+    /* 3. Fire the secondary panels without blocking interaction, then clear
+       the connecting pill as soon as the essentials are on screen. */
     setupBillerTiles();
-
-    await renderDataOverview(user.id);
-    window.MELODEXS_UI.bootDone();
+    UI.bootDone();
+    renderDataOverview(user.id);
 }
 
 /* Biller services (electricity, TV, result PINs) light up automatically

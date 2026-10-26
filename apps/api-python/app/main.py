@@ -1,4 +1,6 @@
+import asyncio
 import hashlib
+import os
 from decimal import Decimal
 import json
 import logging
@@ -28,15 +30,56 @@ from .config import settings, ROOT, validate_wisesub_configuration, wisesub_reci
 from .database import db_session, engine, init_schema, q
 from .providers import paystack, send_brevo, wise_purchase
 from .security import (clear_session, current_user_id, new_session, password_check,
-                        password_hash, require_admin, require_user,
+                        password_hash, require_admin, require_user, session_id,
                         valid_paystack_signature)
 
 logger = logging.getLogger(__name__)
 
+async def _database_heartbeat():
+    """Keep one pooled database connection warm.
+
+    The production Neon endpoint has suspend_timeout_seconds=0: the compute
+    suspends the moment it goes idle and drops its connections, so every
+    customer request paid a full TCP+TLS+auth handshake plus compute resume
+    (measured ~1.2s per database round trip). A once-a-minute SELECT on a
+    pooled connection keeps both the compute and the pooled connection
+    alive, so real requests reuse a warm connection instead.
+    """
+    while True:
+        try:
+            await asyncio.sleep(45)
+            await asyncio.to_thread(_heartbeat_query)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.warning("database heartbeat failed", exc_info=False)
+
+
+def _heartbeat_query():
+    try:
+        with db_session() as db:
+            q(db, "SELECT 1")
+    except Exception:
+        logger.warning("database heartbeat query failed", exc_info=False)
+
+
 @asynccontextmanager
 async def lifespan(application):
     startup()
-    yield
+    heartbeat = None
+    # Tests drive the scratch database directly; a background heartbeat would
+    # only add noise there.
+    if os.environ.get("NODE_ENV") != "test":
+        heartbeat = asyncio.create_task(_database_heartbeat())
+    try:
+        yield
+    finally:
+        if heartbeat is not None:
+            heartbeat.cancel()
+            try:
+                await heartbeat
+            except (asyncio.CancelledError, Exception):
+                pass
 
 
 app = FastAPI(title="MELODEXS CONNECT API", docs_url=None if settings.production else "/docs", lifespan=lifespan)
@@ -258,6 +301,14 @@ async def _auto_requery_stale_purchases() -> None:
 
 @app.get("/api/status")
 async def status(background_tasks: BackgroundTasks):
+    # The keep-alive cron pings this endpoint every 5 minutes; touching the
+    # database here keeps the serverless Neon compute from idling so real
+    # customer requests never pay a cold-start round trip.
+    try:
+        with db_session() as db:
+            q(db, "SELECT 1")
+    except Exception:
+        logger.warning("status database warm-up failed", exc_info=False)
     background_tasks.add_task(_auto_requery_stale_purchases)
     return {"success": True, "message": "MELODEXS CONNECT API is running"}
 
@@ -274,6 +325,38 @@ def session_status(request: Request, response: Response):
         user = user_row(db, user_id, True)
     if not user:
         clear_session(request, response)
+        return {"success": True, "loggedIn": False, "user": None, "has_purchase_pin": False}
+    result = public_user(user)
+    result["has_purchase_pin"] = bool(user["purchase_pin"])
+    return {"success": True, "loggedIn": True, "user": result, "has_purchase_pin": result["has_purchase_pin"]}
+
+
+@app.get("/api/bootstrap")
+def bootstrap(request: Request, response: Response):
+    """Single-round-trip page boot: session + user in ONE connection.
+
+    Page boot previously needed /api/session then /api/user/{id} - two
+    sequential requests, each acquiring its own database connection. Every
+    connection acquisition costs a full network round trip, so the pages
+    now boot from this single call instead.
+    """
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, proxy-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    sid = session_id(request)
+    user_id = None
+    user = None
+    with db_session() as db:
+        if sid:
+            row = q(db, "SELECT sess, expire FROM sessions WHERE sid=:sid", {"sid": sid}).mappings().first()
+            if row and int(row["expire"]) > int(time.time() * 1000):
+                try:
+                    user_id = int(json.loads(row["sess"])["userId"])
+                except (ValueError, KeyError, TypeError):
+                    user_id = None
+        if user_id:
+            user = user_row(db, user_id, True)
+    if not user:
         return {"success": True, "loggedIn": False, "user": None, "has_purchase_pin": False}
     result = public_user(user)
     result["has_purchase_pin"] = bool(user["purchase_pin"])

@@ -25,21 +25,42 @@
         return "₦" + (Number.isInteger(n) ? n.toLocaleString("en-NG") : n.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
     };
 
+    /* ---------- Session + user boot (ONE request per page) ----------
+     * Every page used to boot with two sequential API calls (/api/session
+     * then /api/user/{id}); each one costs a database round trip, which is
+     * what made "Connecting to MELODEXS..." linger. /api/bootstrap returns
+     * both in a single round trip, and the promise is memoized so pages
+     * that call requireSession() and refreshUserCache() in sequence only
+     * ever make one request. */
+    let bootstrapPromise = null;
+    UI.bootstrap = function () {
+        if (!bootstrapPromise) {
+            bootstrapPromise = fetch("/api/bootstrap", { credentials: "include" })
+                .then(function (response) {
+                    return response.ok ? response.json() : null;
+                })
+                .then(function (data) {
+                    if (data && data.loggedIn && data.user) {
+                        const cached = { ...data.user, has_purchase_pin: data.has_purchase_pin };
+                        localStorage.setItem("cheapdataUser", JSON.stringify(cached));
+                        return { ...data, user: cached };
+                    }
+                    return data;
+                })
+                .catch(function () { return null; });
+        }
+        return bootstrapPromise;
+    };
+
     /* ---------- Session helper ---------- */
     UI.requireSession = async function () {
-        try {
-            const response = await fetch("/api/session", { credentials: "include" });
-            const data = await response.json();
-            if (!response.ok || !data.loggedIn) {
-                localStorage.removeItem("cheapdataUser");
-                window.location.href = "/login.html";
-                return null;
-            }
-            return data;
-        } catch (error) {
+        const data = await UI.bootstrap();
+        if (!data || !data.loggedIn) {
+            localStorage.removeItem("cheapdataUser");
             window.location.href = "/login.html";
             return null;
         }
+        return data;
     };
 
     UI.currentUser = function () {
@@ -47,16 +68,9 @@
     };
 
     UI.refreshUserCache = async function () {
-        const user = UI.currentUser();
-        if (!user) return null;
-        try {
-            const response = await fetch("/api/user/" + encodeURIComponent(user.id), { credentials: "include" });
-            const data = await response.json();
-            if (!response.ok || !data.success) return null;
-            const updated = { ...data.user, has_purchase_pin: data.has_purchase_pin };
-            localStorage.setItem("cheapdataUser", JSON.stringify(updated));
-            return updated;
-        } catch { return null; }
+        const data = await UI.bootstrap();
+        if (data && data.loggedIn && data.user) return data.user;
+        return null;
     };
 
     /* ---------- Toasts (in-app notifications) ---------- */
