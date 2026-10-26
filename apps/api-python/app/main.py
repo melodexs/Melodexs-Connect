@@ -35,6 +35,14 @@ from .security import (clear_session, current_user_id, new_session, password_che
 
 logger = logging.getLogger(__name__)
 
+# Endpoints that enforce their rate limit inside the handler, sharing one
+# database connection with the rest of their work.
+_ENDPOINT_RATE_LIMITED = {"/api/login", "/api/register"}
+
+
+def _rate_key(request: Request) -> str:
+    return (request.client.host if request.client else "unknown") + ":" + request.url.path
+
 async def _database_heartbeat():
     """Keep one pooled database connection warm.
 
@@ -156,7 +164,10 @@ class SecurityMiddleware(BaseHTTPMiddleware):
                 blocked = JSONResponse({"success": False, "message": "Cross-origin request blocked."}, status_code=403)
                 _security_headers(blocked)
                 return blocked
-        if request.method == "POST":
+        # Login and registration enforce the same limit inside their handler,
+        # so they reuse that handler's single database connection instead of
+        # paying for a second one here (the limit itself is unchanged).
+        if request.method == "POST" and request.url.path not in _ENDPOINT_RATE_LIMITED:
             rate_ok, rate_message = allowed(
                 request.url.path,
                 (request.client.host if request.client else "unknown") + ":" + request.url.path,
@@ -373,25 +384,34 @@ def register(request: Request, response: Response, body: dict):
     if len(password) < 8:
         raise HTTPException(400, "Password must be at least 8 characters")
     email, phone = str(email).strip().lower(), str(phone).strip()
+    # Rate limit, duplicate check, insert, and session all share ONE
+    # connection: each acquisition is a network round trip.
     with db_session() as db:
+        rate_ok, rate_message = allowed("/api/register", _rate_key(request), db=db)
+        if not rate_ok:
+            raise HTTPException(429, rate_message)
         if q(db, "SELECT id FROM users WHERE email=:email OR phone=:phone", {"email": email, "phone": phone}).first():
             raise HTTPException(400, "Email or phone number already exists")
         row = q(db, "INSERT INTO users(name,email,phone,password,balance,kyc_status,is_admin) VALUES(:name,:email,:phone,:password,0,'pending',0) RETURNING id", {"name": name, "email": email, "phone": phone, "password": password_hash(password)}).mappings().first()
         user = user_row(db, int(row["id"]), True)
-    new_session(response, int(user["id"]))
+        new_session(response, int(user["id"]), db=db)
     return {"success": True, "message": "Account created successfully", "user": public_user(user)}
 
 
 @app.post("/api/login")
-def login(response: Response, body: dict):
+def login(request: Request, response: Response, body: dict):
     email, password = body.get("email"), body.get("password")
     if not email or not password:
         raise HTTPException(400, "Email and password are required")
+    # Rate limit, user lookup, and session insert share ONE connection.
     with db_session() as db:
+        rate_ok, rate_message = allowed("/api/login", _rate_key(request), db=db)
+        if not rate_ok:
+            raise HTTPException(429, rate_message)
         user = q(db, "SELECT * FROM users WHERE LOWER(email)=:email", {"email": str(email).strip().lower()}).mappings().first()
-    if not user or not password_check(str(password), user["password"]):
-        raise HTTPException(401, "Invalid email or password")
-    new_session(response, int(user["id"]))
+        if not user or not password_check(str(password), user["password"]):
+            raise HTTPException(401, "Invalid email or password")
+        new_session(response, int(user["id"]), db=db)
     return {"success": True, "message": "Login successful", "user": public_user(user)}
 
 

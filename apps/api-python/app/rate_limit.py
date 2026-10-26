@@ -24,12 +24,24 @@ def init_rate_limit_table():
         conn.exec_driver_sql("CREATE TABLE IF NOT EXISTS api_rate_limits (rate_key TEXT PRIMARY KEY, window_start BIGINT NOT NULL, request_count INTEGER NOT NULL)")
 
 
-def allowed(path: str, key: str) -> tuple[bool, str]:
+def allowed(path: str, key: str, db=None) -> tuple[bool, str]:
+    """Check/consume a rate-limit slot.
+
+    Pass an existing session as `db` to reuse the caller's single database
+    connection instead of acquiring another one (each acquisition costs a
+    full network round trip against the production serverless database).
+    """
     limit, window = LIMITS.get(path, (0, 0))
     if not limit:
         return True, ""
     now = int(time.time())
-    with db_session() as db:
+    if db is None:
+        with db_session() as own_db:
+            return _consume(own_db, path, key, now, limit, window)
+    return _consume(db, path, key, now, limit, window)
+
+
+def _consume(db, path: str, key: str, now: int, limit: int, window: int) -> tuple[bool, str]:
         # One upsert serializes initialization, window rollover, and increment
         # on the rate_key in both supported dialects. A missing RETURNING row
         # means the existing, unexpired counter has already reached its limit.
@@ -42,7 +54,11 @@ def allowed(path: str, key: str) -> tuple[bool, str]:
             WHERE api_rate_limits.window_start <= :cutoff OR api_rate_limits.request_count < :limit
             RETURNING request_count
         """, {"key": key, "now": now, "cutoff": now - window, "limit": limit}).first()
-    if row is None:
-        return False, "Too many login attempts. Please try again later." if path == "/api/login" else "Too many requests. Please try again later."
-    return True, ""
+        # Persist the counter immediately: a shared caller session may roll
+        # back later (e.g. a rejected login), and a rolled-back increment
+        # would silently disable the limit.
+        db.commit()
+        if row is None:
+            return False, "Too many login attempts. Please try again later." if path == "/api/login" else "Too many requests. Please try again later."
+        return True, ""
 

@@ -25,11 +25,19 @@ def password_check(value: str, stored: str) -> bool:
         return False
 
 
-def new_session(response: Response, user_id: int):
+def new_session(response: Response, user_id: int, db=None):
+    """Create the login session row.
+
+    Pass an existing session as `db` to reuse the caller's connection (each
+    acquisition costs a network round trip against the serverless database).
+    """
     sid = secrets.token_urlsafe(32)
     expires = int(time.time() * 1000) + 86400000
-    with db_session() as db:
+    if db is not None:
         q(db, "INSERT INTO sessions(sid, sess, expire) VALUES(:sid,:sess,:expire) ON CONFLICT(sid) DO UPDATE SET sess=:sess, expire=:expire", {"sid": sid, "sess": json.dumps({"userId": user_id}), "expire": expires})
+    else:
+        with db_session() as own_db:
+            q(own_db, "INSERT INTO sessions(sid, sess, expire) VALUES(:sid,:sess,:expire) ON CONFLICT(sid) DO UPDATE SET sess=:sess, expire=:expire", {"sid": sid, "sess": json.dumps({"userId": user_id}), "expire": expires})
     response.set_cookie(COOKIE, serializer.dumps(sid), max_age=86400, httponly=True, secure=settings.production, samesite="none" if settings.production else "lax")
 
 
