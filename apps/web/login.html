@@ -100,6 +100,9 @@
                     throw new Error(data.message || "Invalid email or password.");
                 }
                 if (data.user) {
+                    if (data.session_token) {
+                        try { localStorage.setItem("cheapdataToken", data.session_token); } catch (error) { /* storage blocked */ }
+                    }
                     localStorage.setItem("cheapdataUser", JSON.stringify(data.user));
                     if (data.user.id) {
                         localStorage.setItem("cheapdataUserId", String(data.user.id));
@@ -137,6 +140,9 @@
                     throw new Error(data.message || "Google sign-in failed. Please try again.");
                 }
                 if (data.user) {
+                    if (data.session_token) {
+                        try { localStorage.setItem("cheapdataToken", data.session_token); } catch (error) { /* storage blocked */ }
+                    }
                     localStorage.setItem("cheapdataUser", JSON.stringify(data.user));
                     if (data.user.id) {
                         localStorage.setItem("cheapdataUserId", String(data.user.id));

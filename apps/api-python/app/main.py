@@ -177,7 +177,7 @@ class SecurityMiddleware(BaseHTTPMiddleware):
                 if origin:
                     rejected.headers["Access-Control-Allow-Origin"] = origin
                     rejected.headers["Access-Control-Allow-Credentials"] = "true"
-                    rejected.headers["Access-Control-Allow-Headers"] = "Content-Type, Accept"
+                    rejected.headers["Access-Control-Allow-Headers"] = "Content-Type, Accept, Authorization"
                     rejected.headers["Access-Control-Allow-Methods"] = "GET,POST,PUT,PATCH,DELETE,OPTIONS"
                     rejected.headers["Vary"] = "Origin"
                 _security_headers(rejected)
@@ -189,7 +189,7 @@ class SecurityMiddleware(BaseHTTPMiddleware):
                 response = await call_next(request)
             response.headers["Access-Control-Allow-Origin"] = origin
             response.headers["Access-Control-Allow-Credentials"] = "true"
-            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Accept"
+            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Accept, Authorization"
             response.headers["Access-Control-Allow-Methods"] = "GET,POST,PUT,PATCH,DELETE,OPTIONS"
             response.headers["Vary"] = "Origin"
         else:
@@ -394,8 +394,8 @@ def register(request: Request, response: Response, body: dict):
             raise HTTPException(400, "Email or phone number already exists")
         row = q(db, "INSERT INTO users(name,email,phone,password,balance,kyc_status,is_admin) VALUES(:name,:email,:phone,:password,0,'pending',0) RETURNING id", {"name": name, "email": email, "phone": phone, "password": password_hash(password)}).mappings().first()
         user = user_row(db, int(row["id"]), True)
-        new_session(response, int(user["id"]), db=db)
-    return {"success": True, "message": "Account created successfully", "user": public_user(user)}
+        session_token = new_session(response, int(user["id"]), db=db)
+    return {"success": True, "message": "Account created successfully", "user": public_user(user), "session_token": session_token}
 
 
 @app.post("/api/login")
@@ -411,8 +411,8 @@ def login(request: Request, response: Response, body: dict):
         user = q(db, "SELECT * FROM users WHERE LOWER(email)=:email", {"email": str(email).strip().lower()}).mappings().first()
         if not user or not password_check(str(password), user["password"]):
             raise HTTPException(401, "Invalid email or password")
-        new_session(response, int(user["id"]), db=db)
-    return {"success": True, "message": "Login successful", "user": public_user(user)}
+        session_token = new_session(response, int(user["id"]), db=db)
+    return {"success": True, "message": "Login successful", "user": public_user(user), "session_token": session_token}
 
 
 @app.post("/api/logout")
@@ -446,8 +446,8 @@ def google_auth(response: Response, body: dict):
             user = {"id": int(row["id"])}
             created = True
         user = user_row(db, int(user["id"]), True)
-    new_session(response, int(user["id"]))
-    return {"success": True, "message": "Signed in with Google", "user": public_user(user), "created": created}
+    session_token = new_session(response, int(user["id"]))
+    return {"success": True, "message": "Signed in with Google", "user": public_user(user), "created": created, "session_token": session_token}
 
 
 @app.post("/api/forgot-password")

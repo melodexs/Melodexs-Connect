@@ -57,6 +57,7 @@
         const data = await UI.bootstrap();
         if (!data || !data.loggedIn) {
             localStorage.removeItem("cheapdataUser");
+            localStorage.removeItem("cheapdataToken");
             window.location.href = "/login.html";
             return null;
         }
@@ -200,6 +201,7 @@
         try { await fetch("/api/logout", { method: "POST", credentials: "include" }); } catch (error) { /* network: still clear locally */ }
         localStorage.removeItem("cheapdataUser");
         localStorage.removeItem("cheapdataNewUserId");
+        localStorage.removeItem("cheapdataToken");
         window.location.href = "/login.html";
     };
 

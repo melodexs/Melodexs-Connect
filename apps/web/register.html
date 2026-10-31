@@ -133,7 +133,10 @@
                     button.textContent = "Create Account";
                     return;
                 }
-                localStorage.setItem("cheapdataUser", JSON.stringify(data.user));
+                if (data.session_token) {
+                        try { localStorage.setItem("cheapdataToken", data.session_token); } catch (error) { /* storage blocked */ }
+                    }
+                    localStorage.setItem("cheapdataUser", JSON.stringify(data.user));
                 localStorage.setItem("cheapdataUserId", String(data.user.id));
                 localStorage.setItem("cheapdataNewUserId", String(data.user.id));
                 showMessage("Account created successfully! Setting up your PIN…", "success");
@@ -168,6 +171,9 @@
                     throw new Error(data.message || "Google sign-in failed. Please try again.");
                 }
                 if (data.user && data.user.id) {
+                    if (data.session_token) {
+                        try { localStorage.setItem("cheapdataToken", data.session_token); } catch (error) { /* storage blocked */ }
+                    }
                     localStorage.setItem("cheapdataUser", JSON.stringify(data.user));
                     localStorage.setItem("cheapdataUserId", String(data.user.id));
                     localStorage.setItem("cheapdataNewUserId", String(data.user.id));
