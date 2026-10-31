@@ -12,6 +12,10 @@
     --lime: #D1FF42;
     --lime-600: #c0ef2e;
     --gray: #C7D1DD;
+    /* Body copy on the dark landing/phone surfaces. This token was
+       referenced in 11 rules but never defined, so every paragraph fell
+       back to the dark ink colour and read as near-invisible text. */
+    --bluegray: #C7D1DD;
     --navy: #020817;
     --navy-800: #0a1226;
     --navy-700: #101c36;
@@ -1378,6 +1382,8 @@ body.spotlight-on .spotlight { opacity: 1; }
     line-height: 1.06;
     font-weight: 800;
     letter-spacing: -.02em;
+    color: var(--white);
+    text-wrap: balance;
 }
 
 .landing-hero h1 span {
@@ -1391,9 +1397,10 @@ body.spotlight-on .spotlight { opacity: 1; }
 .landing-hero .lead {
     margin: 20px 0 30px;
     color: var(--bluegray);
-    font-size: 16.5px;
-    line-height: 1.7;
-    max-width: 480px;
+    font-size: 17px;
+    line-height: 1.75;
+    max-width: 490px;
+    text-wrap: pretty;
 }
 
 .landing-cta { display: flex; gap: 14px; flex-wrap: wrap; }
@@ -2293,7 +2300,7 @@ body.app-body .hero-title.compact span { color: var(--lime); }
     font-size: 13.5px;
     line-height: 1.7;
 }
-.install-steps b { color: var(--primary); }
+.install-steps b { color: var(--blue); }
 .install-help { margin: 12px 0 0; padding: 12px 14px; border-radius: 10px; background: rgba(2, 81, 176, .08); border: 1px solid rgba(2, 81, 176, .25); color: #10243e; font-size: 13.5px; line-height: 1.55; }
 .install-help.hidden { display: none; }
 /* Continue with Google (login + registration) */
