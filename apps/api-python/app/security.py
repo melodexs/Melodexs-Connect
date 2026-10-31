@@ -38,7 +38,12 @@ def new_session(response: Response, user_id: int, db=None):
     else:
         with db_session() as own_db:
             q(own_db, "INSERT INTO sessions(sid, sess, expire) VALUES(:sid,:sess,:expire) ON CONFLICT(sid) DO UPDATE SET sess=:sess, expire=:expire", {"sid": sid, "sess": json.dumps({"userId": user_id}), "expire": expires})
-    response.set_cookie(COOKIE, serializer.dumps(sid), max_age=86400, httponly=True, secure=settings.production, samesite="none" if settings.production else "lax")
+    token = serializer.dumps(sid)
+    response.set_cookie(COOKIE, token, max_age=86400, httponly=True, secure=settings.production, samesite="none" if settings.production else "lax")
+    # The same signed value is returned to the caller so browsers that block
+    # the cookie (Safari/iOS treats this API as a third party because
+    # onrender.com is a public suffix) can authenticate with a bearer token.
+    return token
 
 
 def clear_session(request: Request, response: Response):
@@ -53,6 +58,12 @@ def clear_session(request: Request, response: Response):
 
 def session_id(request: Request) -> str | None:
     raw = request.cookies.get(COOKIE)
+    if not raw:
+        # Cookie-less clients (Safari/iOS blocks the cross-site cookie) send
+        # the same signed token as a bearer credential.
+        authorization = request.headers.get("authorization") or ""
+        if authorization.lower().startswith("bearer "):
+            raw = authorization[7:].strip()
     if not raw:
         return None
     try:

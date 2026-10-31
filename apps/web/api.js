@@ -51,6 +51,19 @@
             credentials: "include"
         };
 
+        /* Safari/iOS blocks the cross-site session cookie (onrender.com is a
+           public suffix, so the API counts as a third party). When the login
+           response handed us a token, send it as a bearer credential so the
+           session survives browsers that drop third-party cookies. */
+        const sessionToken = (function () {
+            try { return localStorage.getItem("cheapdataToken"); } catch (error) { return null; }
+        })();
+        if (sessionToken) {
+            const headers = new Headers(requestInit.headers || {});
+            if (!headers.has("Authorization")) headers.set("Authorization", "Bearer " + sessionToken);
+            requestInit.headers = headers;
+        }
+
         return originalFetch(requestInput, requestInit);
     };
 })();
