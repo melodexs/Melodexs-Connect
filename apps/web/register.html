@@ -141,10 +141,8 @@
                 localStorage.setItem("cheapdataNewUserId", String(data.user.id));
                 showMessage("Account created successfully! Setting up your PIN…", "success");
                 button.textContent = "Account Created ✓";
-                // Send the new user to set up their Purchase PIN.
-                setTimeout(function () {
-                    window.location.href = "/purchase-pin.html";
-                }, 900);
+                // Session already established; go straight to PIN setup.
+                window.location.href = "/purchase-pin.html";
             } catch (error) {
                 showMessage(error.message || "Unable to register. Please try again.", "error");
                 button.disabled = false;
@@ -179,13 +177,23 @@
                     localStorage.setItem("cheapdataNewUserId", String(data.user.id));
                 }
                 showMessage("Account created with Google! Setting up your PIN…", "success");
-                setTimeout(function () {
-                    window.location.href = "/purchase-pin.html";
-                }, 900);
+                window.location.href = "/purchase-pin.html";
             } catch (error) {
                 showMessage(error.message || "Google sign-in failed. Please try again.", "error");
             }
 }
+        /* Wake the idle database while the visitor is still typing. */
+        let lastWarmAt = 0;
+        function warmApi() {
+            const now = Date.now();
+            if (now - lastWarmAt < 4000) return;
+            lastWarmAt = now;
+            try { fetch("/api/status", { credentials: "include" }); } catch (error) { /* ignore */ }
+        }
+        warmApi();
+        document.addEventListener("focusin", warmApi);
+        document.addEventListener("input", warmApi);
+
         async function setupGoogleAuth() {
             try {
                 const response = await fetch("/api/auth/google/config", { headers: { "Accept": "application/json" }, credentials: "include" });

@@ -113,15 +113,15 @@ def test_python_routes_cover_the_documented_frontend_contract():
     unused = [template for normalized, template in python_routes.items()
               if normalized not in frontend_paths]
     # Intentionally not called by the static frontend:
-    #  - /api/status: health/readiness probe used by monitoring and the Node
-    #    smoke test.
     #  - /api/purchase-pin/verify: programmatic PIN check (admin/support tool).
     #  - /api/paystack/webhook: called by Paystack server-to-server.
     #  - /api/webhooks/isquaredata: ISQUAREDATA supplier server-to-server
     #    signed transaction callbacks.
     #  - /api/session: session-status probe used by the app shell and
     #    automated clients, not by an individual page action.
-    allowed_unused = {"/api/status", "/api/session", "/api/purchase-pin/verify",
+    # /api/status is called by the sign-in pages to wake the idle database,
+    # so it is now part of the frontend contract rather than server-only.
+    allowed_unused = {"/api/session", "/api/purchase-pin/verify",
                       "/api/paystack/webhook", "/api/webhooks/isquaredata"}
     assert set(unused) == allowed_unused, (
         f"Unexpected Python routes unused by the frontend: "
