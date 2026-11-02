@@ -329,17 +329,39 @@ def session_status(request: Request, response: Response):
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, proxy-revalidate"
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
-    user_id = current_user_id(request)
-    if not user_id:
-        return {"success": True, "loggedIn": False, "user": None, "has_purchase_pin": False}
-    with db_session() as db:
-        user = user_row(db, user_id, True)
+    sid = session_id(request)
+    user = None
+    if sid:
+        with db_session() as db:
+            user = _session_user_row(db, sid)
     if not user:
         clear_session(request, response)
         return {"success": True, "loggedIn": False, "user": None, "has_purchase_pin": False}
     result = public_user(user)
     result["has_purchase_pin"] = bool(user["purchase_pin"])
     return {"success": True, "loggedIn": True, "user": result, "has_purchase_pin": result["has_purchase_pin"]}
+
+
+_SESSION_USER_COLUMNS = ("u.id, u.name, u.email, u.phone, u.balance, u.virtual_account_number, "
+                          "u.virtual_bank_name, u.kyc_status, u.is_admin, u.created_at, "
+                          "u.profile_image, u.purchase_pin, u.password")
+
+
+def _session_user_row(db, sid: str):
+    """Session owner + profile in ONE statement.
+
+    Every statement costs a full network round trip to the database, so the
+    page boot and session probe join the two lookups instead of paying for
+    them separately. The JSON user id is extracted with the dialect's own
+    function (json_extract for SQLite, jsonb for PostgreSQL).
+    """
+    if engine.dialect.name == "sqlite":
+        join = "CAST(json_extract(s.sess, '$.userId') AS INTEGER)"
+    else:
+        join = "CAST(s.sess::jsonb->>'userId' AS INTEGER)"
+    return q(db, f"SELECT {_SESSION_USER_COLUMNS} FROM sessions s JOIN users u "
+                 f"ON u.id = {join} WHERE s.sid=:sid AND s.expire > :now",
+             {"sid": sid, "now": int(time.time() * 1000)}).mappings().first()
 
 
 @app.get("/api/bootstrap")
@@ -355,18 +377,10 @@ def bootstrap(request: Request, response: Response):
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
     sid = session_id(request)
-    user_id = None
     user = None
-    with db_session() as db:
-        if sid:
-            row = q(db, "SELECT sess, expire FROM sessions WHERE sid=:sid", {"sid": sid}).mappings().first()
-            if row and int(row["expire"]) > int(time.time() * 1000):
-                try:
-                    user_id = int(json.loads(row["sess"])["userId"])
-                except (ValueError, KeyError, TypeError):
-                    user_id = None
-        if user_id:
-            user = user_row(db, user_id, True)
+    if sid:
+        with db_session() as db:
+            user = _session_user_row(db, sid)
     if not user:
         return {"success": True, "loggedIn": False, "user": None, "has_purchase_pin": False}
     result = public_user(user)

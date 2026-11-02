@@ -73,6 +73,20 @@
             message.hidden = false;
         }
 
+        /* The production database sleeps the instant it is idle, so the
+           first request after a pause pays a wake-up. Pinging while the
+           visitor types means that wake-up happens before they submit. */
+        let lastWarmAt = 0;
+        function warmApi() {
+            const now = Date.now();
+            if (now - lastWarmAt < 4000) return;   // at most one ping every 4s
+            lastWarmAt = now;
+            try { fetch("/api/status", { credentials: "include" }); } catch (error) { /* ignore */ }
+        }
+        warmApi();
+        document.addEventListener("focusin", warmApi);
+        document.addEventListener("input", warmApi);
+
         loginForm.addEventListener("submit", async function (event) {
             event.preventDefault();
             const email = document.getElementById("email").value.trim().toLowerCase();
@@ -109,10 +123,9 @@
                     }
                 }
                 showMessage("Login successful! Redirecting…", "success");
-                // Give the session cookie a moment before redirecting.
-                setTimeout(function () {
-                    window.location.href = "/dashboard.html";
-                }, 700);
+                // The session cookie and token are already set by this
+                // response, so go straight to the dashboard.
+                window.location.href = "/dashboard.html";
             } catch (error) {
                 showMessage(error.message || "Unable to login. Please try again.", "error");
             } finally {
