@@ -113,6 +113,10 @@ class MeleDataAdapter(ProviderAdapter):
     auto_refunds_on_failure = True
     failure_status_is_final = True
     capabilities = ("catalog", "data", "airtime", "status", "balance")
+    # Retired alternative: excluded from routing, fallback and the admin
+    # selection UI (2026-10 provider cleanup); the adapter stays for
+    # compatibility tests and historical reconciliation.
+    selection_excluded = True
 
     def is_configured(self) -> bool:
         return bool(self.meledata_api_key)

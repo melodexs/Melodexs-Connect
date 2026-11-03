@@ -12,8 +12,27 @@ if database_url.startswith("postgres://"):
 elif database_url.startswith("postgresql://"):
     database_url = "postgresql+psycopg://" + database_url[len("postgresql://"):]
 
-connect_args = {"check_same_thread": False} if database_url.startswith("sqlite") else {}
-engine = create_engine(database_url, pool_pre_ping=True, connect_args=connect_args)
+if database_url.startswith("sqlite"):
+    # Local/test SQLite keeps its previous configuration.
+    engine = create_engine(database_url, pool_pre_ping=True,
+                           connect_args={"check_same_thread": False})
+else:
+    # The production database is a serverless Neon endpoint reached over the
+    # public internet: every NEW connection costs a full handshake round trip
+    # (TCP + TLS + auth). Keep connections alive and recycle them just under
+    # Neon's idle cutoff so steady traffic reuses one warm connection instead
+    # of paying that cost on every request. TCP keepalives stop the platform
+    # from silently dropping idle sockets.
+    engine = create_engine(
+        database_url,
+        pool_pre_ping=True,
+        pool_recycle=900,
+        pool_size=5,
+        max_overflow=5,
+        pool_timeout=10,
+        connect_args={"keepalives": 1, "keepalives_idle": 30,
+                      "keepalives_interval": 10, "keepalives_count": 5},
+    )
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 
@@ -38,7 +57,7 @@ def init_schema():
             now = "CURRENT_TIMESTAMP"
         conn.execute(text(f"""CREATE TABLE IF NOT EXISTS users (
             id {auto}, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE,
-            phone TEXT NOT NULL UNIQUE, password TEXT NOT NULL,
+            phone TEXT UNIQUE, password TEXT NOT NULL,
             purchase_pin TEXT, balance {money_type} NOT NULL DEFAULT 0,
             virtual_account_number TEXT, virtual_bank_name TEXT,
             kyc_status TEXT NOT NULL DEFAULT 'pending', is_admin {bool_type} NOT NULL DEFAULT 0,
@@ -64,6 +83,13 @@ def init_schema():
                 finished_at {timestamp_type}, outcome TEXT NOT NULL,
                 added INTEGER NOT NULL DEFAULT 0, updated INTEGER NOT NULL DEFAULT 0,
                 unavailable INTEGER NOT NULL DEFAULT 0, errors TEXT)"""))
+        # Customer profile picture (small base64 data URL; None = initials).
+        if engine.dialect.name != "sqlite":
+            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image TEXT"))
+        else:
+            user_cols = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(users)")}
+            if "profile_image" not in user_cols:
+                conn.exec_driver_sql("ALTER TABLE users ADD COLUMN profile_image TEXT")
         # Multi-provider platform registry. WiseSub is enabled by default;
         # additional providers stay disabled until an admin enables them.
         conn.execute(text(f"""CREATE TABLE IF NOT EXISTS providers (
@@ -81,6 +107,12 @@ def init_schema():
             conn.execute(text("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS provider TEXT"))
             conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_transactions_reference ON transactions(reference) WHERE reference IS NOT NULL"))
             conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_transactions_user_idempotency ON transactions(user_id,idempotency_key) WHERE idempotency_key IS NOT NULL"))
+        # Saved recipient numbers for faster repeat purchases. Tied to the
+        # owning account; never shared between users.
+        conn.execute(text(f"""CREATE TABLE IF NOT EXISTS favorite_recipients (
+            id {auto}, user_id INTEGER NOT NULL, label TEXT, phone TEXT NOT NULL,
+            network TEXT, created_at {timestamp_type} NOT NULL DEFAULT {now},
+            FOREIGN KEY(user_id) REFERENCES users(id))"""))
         conn.execute(text("CREATE TABLE IF NOT EXISTS sessions (sid TEXT PRIMARY KEY, sess TEXT NOT NULL, expire BIGINT NOT NULL)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_sessions_expire ON sessions(expire)"))
 

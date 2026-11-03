@@ -2,15 +2,21 @@
     const DISMISSED_KEY = "melodexs_pwa_install_dismissed";
     let installPrompt = null;
     let banner = null;
+    const listeners = [];
 
     function isStandalone() {
         return window.matchMedia("(display-mode: standalone)").matches ||
             window.navigator.standalone === true;
     }
 
-    function isAppleMobile() {
-        return /iPhone|iPad|iPod/.test(window.navigator.userAgent) ||
-            (window.navigator.platform === "MacIntel" && window.navigator.maxTouchPoints > 1);
+    function platform() {
+        const ua = window.navigator.userAgent;
+        if (/iPhone|iPad|iPod/.test(ua) ||
+            (window.navigator.platform === "MacIntel" && window.navigator.maxTouchPoints > 1)) {
+            return "ios";
+        }
+        if (/Android/i.test(ua)) return "android";
+        return "desktop";
     }
 
     function wasDismissed() {
@@ -37,6 +43,32 @@
         }
     }
 
+    function notifyListeners() {
+        listeners.forEach(fn => {
+            try { fn(!!installPrompt); } catch (error) { /* listener errors never break install UX */ }
+        });
+    }
+
+    // Explicit install entry points (profile card, dashboard tiles) call this.
+    // Returns "prompted" | "unavailable" | "dismissed" | "accepted".
+    async function promptInstall() {
+        if (!installPrompt) return "unavailable";
+        installPrompt.prompt();
+        const choice = await installPrompt.userChoice;
+        installPrompt = null;
+        notifyListeners();
+        hideBanner();
+        return choice && choice.outcome === "accepted" ? "accepted" : "dismissed";
+    }
+
+    window.MELODEXS_INSTALL = {
+        platform: platform,
+        isStandalone: isStandalone,
+        canPrompt: () => !!installPrompt,
+        onAvailabilityChange: fn => { listeners.push(fn); fn(!!installPrompt); },
+        promptInstall: promptInstall
+    };
+
     function showBanner(appleFallback = false) {
         if (isStandalone() || wasDismissed() || banner) {
             return;
@@ -61,16 +93,9 @@
             installButton.type = "button";
             installButton.textContent = "Install MELODEXS CONNECT";
             installButton.addEventListener("click", async () => {
-                if (!installPrompt) {
-                    return;
-                }
-                installPrompt.prompt();
-                const choice = await installPrompt.userChoice;
-                installPrompt = null;
-                if (choice && choice.outcome === "dismissed") {
+                const outcome = await promptInstall();
+                if (outcome === "dismissed") {
                     dismissPermanently();
-                } else {
-                    hideBanner();
                 }
             });
             banner.append(installButton);
@@ -126,15 +151,17 @@
     window.addEventListener("beforeinstallprompt", event => {
         event.preventDefault();
         installPrompt = event;
+        notifyListeners();
         showBanner(false);
     });
 
     window.addEventListener("appinstalled", () => {
         hideBanner();
         installPrompt = null;
+        notifyListeners();
     });
 
-    if (isAppleMobile() && !isStandalone()) {
+    if (platform() === "ios" && !isStandalone()) {
         showBanner(true);
     }
 

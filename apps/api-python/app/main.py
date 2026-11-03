@@ -1,37 +1,93 @@
+import asyncio
 import hashlib
+import os
+from decimal import Decimal
 import json
 import logging
 import math
+import base64
+import binascii
 import re
 import secrets
 import time
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 import httpx
-from fastapi import FastAPI, Request, Response, HTTPException
+from fastapi import BackgroundTasks, FastAPI, Query, Request, Response, HTTPException
 from fastapi.responses import JSONResponse, FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from .categorization import category_sort_sql
-from .provider_registry import (ensure_provider_rows, resolve_fulfillment_provider)
+from .provider_registry import (eligible_provider_slugs, ensure_provider_rows, get_adapter, primary_provider, provider_enabled, resolve_fulfillment_provider)
+from .provider_isquaredata import verify_webhook_signature
+from .provider_base import PurchaseOutcome
 from .config import settings, ROOT, validate_wisesub_configuration, wisesub_recipient
 from .database import db_session, engine, init_schema, q
 from .providers import paystack, send_brevo, wise_purchase
 from .security import (clear_session, current_user_id, new_session, password_check,
-                        password_hash, require_admin, require_user,
+                        password_hash, require_admin, require_user, session_id,
                         valid_paystack_signature)
 
 logger = logging.getLogger(__name__)
 
+# Endpoints that enforce their rate limit inside the handler, sharing one
+# database connection with the rest of their work.
+_ENDPOINT_RATE_LIMITED = {"/api/login", "/api/register"}
+
+
+def _rate_key(request: Request) -> str:
+    return (request.client.host if request.client else "unknown") + ":" + request.url.path
+
+async def _database_heartbeat():
+    """Keep one pooled database connection warm.
+
+    The production Neon endpoint has suspend_timeout_seconds=0: the compute
+    suspends the moment it goes idle and drops its connections, so every
+    customer request paid a full TCP+TLS+auth handshake plus compute resume
+    (measured ~1.2s per database round trip). A once-a-minute SELECT on a
+    pooled connection keeps both the compute and the pooled connection
+    alive, so real requests reuse a warm connection instead.
+    """
+    while True:
+        try:
+            await asyncio.sleep(45)
+            await asyncio.to_thread(_heartbeat_query)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.warning("database heartbeat failed", exc_info=False)
+
+
+def _heartbeat_query():
+    try:
+        with db_session() as db:
+            q(db, "SELECT 1")
+    except Exception:
+        logger.warning("database heartbeat query failed", exc_info=False)
+
+
 @asynccontextmanager
 async def lifespan(application):
     startup()
-    yield
+    heartbeat = None
+    # Tests drive the scratch database directly; a background heartbeat would
+    # only add noise there.
+    if os.environ.get("NODE_ENV") != "test":
+        heartbeat = asyncio.create_task(_database_heartbeat())
+    try:
+        yield
+    finally:
+        if heartbeat is not None:
+            heartbeat.cancel()
+            try:
+                await heartbeat
+            except (asyncio.CancelledError, Exception):
+                pass
 
 
 app = FastAPI(title="MELODEXS CONNECT API", docs_url=None if settings.production else "/docs", lifespan=lifespan)
@@ -41,6 +97,25 @@ from .rate_limit import allowed, init_rate_limit_table
 app.add_exception_handler(HTTPException, http_error_handler)
 app.add_exception_handler(RequestValidationError, validation_error_handler)
 app.add_exception_handler(Exception, unexpected_error_handler)
+
+
+# Content-Security-Policy for responses that render the web app (the API
+# serves apps/web at / as well as JSON). The only external origins the web
+# app uses are the Google Identity Services client (sign-in) and this API.
+# Inline scripts/styles are part of the deployed page markup, so they are
+# allowed explicitly; every other script/style source is blocked.
+# COEP is deliberately NOT set anywhere: cross-origin embedding would break
+# the Google sign-in popup, which does not serve CORP/COEP headers.
+WEB_CSP = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline' https://accounts.google.com; "
+    "style-src 'self' 'unsafe-inline' https://accounts.google.com; "
+    "img-src 'self' data: https://accounts.google.com https://*.gstatic.com; "
+    "font-src 'self' data:; "
+    "connect-src 'self' https://melodexs-connect-api.onrender.com https://accounts.google.com; "
+    "frame-src https://accounts.google.com; "
+    "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+)
 
 
 def _security_headers(response) -> None:
@@ -54,6 +129,9 @@ def _security_headers(response) -> None:
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Strict-Transport-Security"] = "max-age=15552000; includeSubDomains"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups"
+    response.headers["Content-Security-Policy"] = WEB_CSP
 
 
 class SecurityMiddleware(BaseHTTPMiddleware):
@@ -86,7 +164,10 @@ class SecurityMiddleware(BaseHTTPMiddleware):
                 blocked = JSONResponse({"success": False, "message": "Cross-origin request blocked."}, status_code=403)
                 _security_headers(blocked)
                 return blocked
-        if request.method == "POST":
+        # Login and registration enforce the same limit inside their handler,
+        # so they reuse that handler's single database connection instead of
+        # paying for a second one here (the limit itself is unchanged).
+        if request.method == "POST" and request.url.path not in _ENDPOINT_RATE_LIMITED:
             rate_ok, rate_message = allowed(
                 request.url.path,
                 (request.client.host if request.client else "unknown") + ":" + request.url.path,
@@ -96,7 +177,7 @@ class SecurityMiddleware(BaseHTTPMiddleware):
                 if origin:
                     rejected.headers["Access-Control-Allow-Origin"] = origin
                     rejected.headers["Access-Control-Allow-Credentials"] = "true"
-                    rejected.headers["Access-Control-Allow-Headers"] = "Content-Type, Accept"
+                    rejected.headers["Access-Control-Allow-Headers"] = "Content-Type, Accept, Authorization"
                     rejected.headers["Access-Control-Allow-Methods"] = "GET,POST,PUT,PATCH,DELETE,OPTIONS"
                     rejected.headers["Vary"] = "Origin"
                 _security_headers(rejected)
@@ -108,7 +189,7 @@ class SecurityMiddleware(BaseHTTPMiddleware):
                 response = await call_next(request)
             response.headers["Access-Control-Allow-Origin"] = origin
             response.headers["Access-Control-Allow-Credentials"] = "true"
-            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Accept"
+            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Accept, Authorization"
             response.headers["Access-Control-Allow-Methods"] = "GET,POST,PUT,PATCH,DELETE,OPTIONS"
             response.headers["Vary"] = "Origin"
         else:
@@ -119,6 +200,7 @@ class SecurityMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(SecurityMiddleware)
 from .admin_routes import router as admin_router
+from .google_auth import verify_google_credential
 app.include_router(admin_router)
 
 
@@ -144,7 +226,8 @@ def startup():
 
 
 def user_row(db, user_id: int, include_secret=False):
-    cols = "id,name,email,phone,balance,virtual_account_number,virtual_bank_name,kyc_status,is_admin,created_at"
+    cols = ("id,name,email,phone,balance,virtual_account_number,virtual_bank_name,"
+            "kyc_status,is_admin,created_at,profile_image")
     if include_secret:
         cols += ",password,purchase_pin"
     return q(db, f"SELECT {cols} FROM users WHERE id=:id", {"id": user_id}).mappings().first()
@@ -153,15 +236,91 @@ def user_row(db, user_id: int, include_secret=False):
 def public_user(row):
     if not row:
         return None
-    return {"id": row["id"], "name": row["name"], "email": row["email"], "phone": row["phone"], "balance": float(row["balance"] or 0), "virtual_account_number": row["virtual_account_number"], "virtual_bank_name": row["virtual_bank_name"], "kyc_status": row["kyc_status"], "is_admin": row["is_admin"], "created_at": row["created_at"], "has_purchase_pin": bool(row.get("purchase_pin")) if hasattr(row, "get") else False}
+    return {"id": row["id"], "name": row["name"], "email": row["email"], "phone": row["phone"], "balance": float(row["balance"] or 0), "virtual_account_number": row["virtual_account_number"], "virtual_bank_name": row["virtual_bank_name"], "kyc_status": row["kyc_status"], "is_admin": row["is_admin"], "created_at": row["created_at"], "profile_image": row.get("profile_image") if hasattr(row, "get") else None, "has_purchase_pin": bool(row.get("purchase_pin")) if hasattr(row, "get") else False}
 
 
 def nigeria_phone(phone: str) -> bool:
     return bool(re.fullmatch(r"(?:\+234|234|0)\d{10}", str(phone).strip()))
 
 
+# --- Automatic requery sweep -------------------------------------------
+# ISQUAREDATA purchases finalize through signed webhooks. When a callback is
+# missed the debit would otherwise sit pending until an admin runs
+# reconciliation (real incident 2026-10-23: a customer waited a full day for
+# a purchase the supplier had already delivered). The keep-alive cron pings
+# /api/status every 5 minutes, so the sweep runs there: any ISQUAREDATA
+# debit still pending after AUTO_REQUERY_STALE_MINUTES is requeried at the
+# supplier and a CONFIRMED delivery is finalized with the exact webhook
+# semantics. Refunds are NEVER automatic here - failures and unknown
+# statuses stay pending-held for admin reconciliation (the double-confirmed
+# webhook+requery gate stays the only automatic refund path).
+AUTO_REQUERY_STALE_MINUTES = 10
+AUTO_REQUERY_MIN_INTERVAL_SECONDS = 180
+AUTO_REQUERY_BATCH_LIMIT = 25
+_auto_requery_last_ran = 0.0
+_auto_requery_running = False
+
+
+def _as_datetime(value):
+    if isinstance(value, datetime):
+        return value
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+
+
+async def _auto_requery_stale_purchases() -> None:
+    """Self-heal stale pending ISQUAREDATA purchases (webhook missed)."""
+    global _auto_requery_last_ran, _auto_requery_running
+    if _auto_requery_running:
+        return
+    if time.time() - _auto_requery_last_ran < AUTO_REQUERY_MIN_INTERVAL_SECONDS:
+        return
+    _auto_requery_running = True
+    _auto_requery_last_ran = time.time()
+    try:
+        adapter = get_adapter("isquaredata")
+        if adapter is None or not adapter.is_configured():
+            return
+        cutoff = datetime.now() - timedelta(minutes=AUTO_REQUERY_STALE_MINUTES)
+        with db_session() as db:
+            rows = q(db, "SELECT id, reference, provider_reference, description, created_at FROM transactions "
+                         "WHERE type='debit' AND provider='isquaredata' AND status='pending' "
+                         "ORDER BY id ASC LIMIT :limit", {"limit": AUTO_REQUERY_BATCH_LIMIT}).mappings().all()
+        stale = [row for row in rows
+                 if (dt := _as_datetime(row["created_at"])) is not None and dt <= cutoff]
+        for transaction in stale:
+            reference = transaction["provider_reference"] or transaction["reference"]
+            outcome = await adapter.transaction_status(reference)
+            if not (outcome.recognized and outcome.status == "successful"):
+                continue
+            with db_session() as db:
+                done = q(db, "UPDATE transactions SET status='successful', provider_reference=:pref, "
+                             "description=:description WHERE id=:id AND status='pending'",
+                         {"pref": reference,
+                          "description": str(transaction["description"]).split(" | Pending ISQUAREDATA confirmation")[0]
+                                         + " | ISQUAREDATA confirmed delivery (auto requery sweep)",
+                          "id": transaction["id"]})
+            if done.rowcount == 1:
+                logger.info("Auto-requery sweep finalized ISQUAREDATA purchase %s (webhook never arrived)", reference)
+    except Exception:
+        logger.exception("Auto-requery sweep failed")
+    finally:
+        _auto_requery_running = False
+
+
 @app.get("/api/status")
-def status():
+async def status(background_tasks: BackgroundTasks):
+    # The keep-alive cron pings this endpoint every 5 minutes; touching the
+    # database here keeps the serverless Neon compute from idling so real
+    # customer requests never pay a cold-start round trip.
+    try:
+        with db_session() as db:
+            q(db, "SELECT 1")
+    except Exception:
+        logger.warning("status database warm-up failed", exc_info=False)
+    background_tasks.add_task(_auto_requery_stale_purchases)
     return {"success": True, "message": "MELODEXS CONNECT API is running"}
 
 
@@ -170,13 +329,59 @@ def session_status(request: Request, response: Response):
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, proxy-revalidate"
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
-    user_id = current_user_id(request)
-    if not user_id:
-        return {"success": True, "loggedIn": False, "user": None, "has_purchase_pin": False}
-    with db_session() as db:
-        user = user_row(db, user_id, True)
+    sid = session_id(request)
+    user = None
+    if sid:
+        with db_session() as db:
+            user = _session_user_row(db, sid)
     if not user:
         clear_session(request, response)
+        return {"success": True, "loggedIn": False, "user": None, "has_purchase_pin": False}
+    result = public_user(user)
+    result["has_purchase_pin"] = bool(user["purchase_pin"])
+    return {"success": True, "loggedIn": True, "user": result, "has_purchase_pin": result["has_purchase_pin"]}
+
+
+_SESSION_USER_COLUMNS = ("u.id, u.name, u.email, u.phone, u.balance, u.virtual_account_number, "
+                          "u.virtual_bank_name, u.kyc_status, u.is_admin, u.created_at, "
+                          "u.profile_image, u.purchase_pin, u.password")
+
+
+def _session_user_row(db, sid: str):
+    """Session owner + profile in ONE statement.
+
+    Every statement costs a full network round trip to the database, so the
+    page boot and session probe join the two lookups instead of paying for
+    them separately. The JSON user id is extracted with the dialect's own
+    function (json_extract for SQLite, jsonb for PostgreSQL).
+    """
+    if engine.dialect.name == "sqlite":
+        join = "CAST(json_extract(s.sess, '$.userId') AS INTEGER)"
+    else:
+        join = "CAST(s.sess::jsonb->>'userId' AS INTEGER)"
+    return q(db, f"SELECT {_SESSION_USER_COLUMNS} FROM sessions s JOIN users u "
+                 f"ON u.id = {join} WHERE s.sid=:sid AND s.expire > :now",
+             {"sid": sid, "now": int(time.time() * 1000)}).mappings().first()
+
+
+@app.get("/api/bootstrap")
+def bootstrap(request: Request, response: Response):
+    """Single-round-trip page boot: session + user in ONE connection.
+
+    Page boot previously needed /api/session then /api/user/{id} - two
+    sequential requests, each acquiring its own database connection. Every
+    connection acquisition costs a full network round trip, so the pages
+    now boot from this single call instead.
+    """
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, proxy-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    sid = session_id(request)
+    user = None
+    if sid:
+        with db_session() as db:
+            user = _session_user_row(db, sid)
+    if not user:
         return {"success": True, "loggedIn": False, "user": None, "has_purchase_pin": False}
     result = public_user(user)
     result["has_purchase_pin"] = bool(user["purchase_pin"])
@@ -193,32 +398,70 @@ def register(request: Request, response: Response, body: dict):
     if len(password) < 8:
         raise HTTPException(400, "Password must be at least 8 characters")
     email, phone = str(email).strip().lower(), str(phone).strip()
+    # Rate limit, duplicate check, insert, and session all share ONE
+    # connection: each acquisition is a network round trip.
     with db_session() as db:
+        rate_ok, rate_message = allowed("/api/register", _rate_key(request), db=db)
+        if not rate_ok:
+            raise HTTPException(429, rate_message)
         if q(db, "SELECT id FROM users WHERE email=:email OR phone=:phone", {"email": email, "phone": phone}).first():
             raise HTTPException(400, "Email or phone number already exists")
         row = q(db, "INSERT INTO users(name,email,phone,password,balance,kyc_status,is_admin) VALUES(:name,:email,:phone,:password,0,'pending',0) RETURNING id", {"name": name, "email": email, "phone": phone, "password": password_hash(password)}).mappings().first()
         user = user_row(db, int(row["id"]), True)
-    new_session(response, int(user["id"]))
-    return {"success": True, "message": "Account created successfully", "user": public_user(user)}
+        session_token = new_session(response, int(user["id"]), db=db)
+    return {"success": True, "message": "Account created successfully", "user": public_user(user), "session_token": session_token}
 
 
 @app.post("/api/login")
-def login(response: Response, body: dict):
+def login(request: Request, response: Response, body: dict):
     email, password = body.get("email"), body.get("password")
     if not email or not password:
         raise HTTPException(400, "Email and password are required")
+    # Rate limit, user lookup, and session insert share ONE connection.
     with db_session() as db:
+        rate_ok, rate_message = allowed("/api/login", _rate_key(request), db=db)
+        if not rate_ok:
+            raise HTTPException(429, rate_message)
         user = q(db, "SELECT * FROM users WHERE LOWER(email)=:email", {"email": str(email).strip().lower()}).mappings().first()
-    if not user or not password_check(str(password), user["password"]):
-        raise HTTPException(401, "Invalid email or password")
-    new_session(response, int(user["id"]))
-    return {"success": True, "message": "Login successful", "user": public_user(user)}
+        if not user or not password_check(str(password), user["password"]):
+            raise HTTPException(401, "Invalid email or password")
+        session_token = new_session(response, int(user["id"]), db=db)
+    return {"success": True, "message": "Login successful", "user": public_user(user), "session_token": session_token}
 
 
 @app.post("/api/logout")
 def logout(request: Request, response: Response):
     clear_session(request, response)
     return {"success": True, "message": "Logged out"}
+
+
+@app.get("/api/auth/google/config")
+def google_auth_config():
+    """The static frontend asks which sign-in options are actually enabled
+    before rendering any third-party button."""
+    enabled = bool(settings.google_client_id)
+    return {"success": True, "enabled": enabled, "client_id": settings.google_client_id or None}
+
+
+@app.post("/api/auth/google")
+def google_auth(response: Response, body: dict):
+    credential = body.get("credential")
+    claims = verify_google_credential(credential)
+    email = claims["email"]
+    with db_session() as db:
+        user = q(db, "SELECT id FROM users WHERE LOWER(email)=:email", {"email": email}).mappings().first()
+        created = False
+        if not user:
+            # Google accounts have no phone yet; users can set one from the
+            # Profile page later. The password column keeps its NOT NULL
+            # contract with an unusable random secret.
+            row = q(db, "INSERT INTO users(name,email,phone,password,balance,kyc_status,is_admin) VALUES(:name,:email,NULL,:password,0,'pending',0) RETURNING id",
+                   {"name": claims["name"], "email": email, "password": password_hash(secrets.token_hex(32))}).mappings().first()
+            user = {"id": int(row["id"])}
+            created = True
+        user = user_row(db, int(user["id"]), True)
+    session_token = new_session(response, int(user["id"]))
+    return {"success": True, "message": "Signed in with Google", "user": public_user(user), "created": created, "session_token": session_token}
 
 
 @app.post("/api/forgot-password")
@@ -324,8 +567,100 @@ def profile(request: Request, user_id: str):
     return {"success": True, "user": result, "has_purchase_pin": has_pin}
 
 
+@app.get("/api/favorites")
+def list_favorites(request: Request):
+    """Saved recipient numbers for the authenticated user only."""
+    user_id = require_user(request)
+    with db_session() as db:
+        rows = q(db, "SELECT id,label,phone,network,created_at FROM favorite_recipients WHERE user_id=:id ORDER BY id DESC", {"id": user_id}).mappings().all()
+    return {"success": True, "favorites": [dict(x) for x in rows]}
+
+
+@app.post("/api/profile-image")
+def set_profile_image(request: Request, body: dict):
+    """Set or remove the authenticated user's profile picture.
+
+    Accepts {image: "data:image/jpeg;base64,..." } produced by the client-side
+    canvas resizer, or {image: null} to remove the photo. The decoded payload
+    is capped server-side; anything malformed is rejected without a write.
+    """
+    user_id = require_user(request)
+    if not isinstance(body, dict):
+        raise HTTPException(400, "Invalid request")
+    image = body.get("image")
+    if image is None or (isinstance(image, str) and not image.strip()):
+        with db_session() as db:
+            q(db, "UPDATE users SET profile_image=NULL WHERE id=:id", {"id": user_id})
+        return {"success": True, "message": "Profile picture removed", "profile_image": None}
+    if not isinstance(image, str):
+        raise HTTPException(400, "Profile picture must be an image string")
+    match = re.fullmatch(r"data:image/(jpeg|png|webp);base64,([A-Za-z0-9+/]+={0,2})", image.strip())
+    if not match:
+        raise HTTPException(400, "Unsupported image format. Use a JPEG, PNG or WebP picture.")
+    try:
+        decoded = base64.b64decode(match.group(2), validate=True)
+    except (ValueError, binascii.Error):
+        raise HTTPException(400, "Profile picture data is malformed")
+    if not decoded:
+        raise HTTPException(400, "Profile picture is empty")
+    # ~250 KB decoded cap keeps the row small; the frontend resizes to 256x256.
+    if len(decoded) > 250_000:
+        raise HTTPException(400, "Profile picture is too large. Please use a smaller image.")
+    with db_session() as db:
+        q(db, "UPDATE users SET profile_image=:img WHERE id=:id", {"id": user_id, "img": image.strip()})
+    return {"success": True, "message": "Profile picture updated", "profile_image": image.strip()}
+
+
+@app.post("/api/favorites")
+def add_favorite(request: Request, body: dict):
+    user_id = require_user(request)
+    phone = str(body.get("phone") or "").strip()
+    network = str(body.get("network") or "").strip().upper()
+    label = str(body.get("label") or "").strip()
+    if not phone or not nigeria_phone(phone):
+        raise HTTPException(400, "Please enter a valid Nigerian phone number")
+    if network not in {"MTN", "Airtel", "Glo", "9mobile"}:
+        raise HTTPException(400, "Invalid network")
+    if len(label) > 60:
+        label = label[:60]
+    with db_session() as db:
+        existing = q(db, "SELECT id FROM favorite_recipients WHERE user_id=:id AND phone=:phone", {"id": user_id, "phone": phone}).first()
+        if existing:
+            raise HTTPException(409, "This number is already saved")
+        count = q(db, "SELECT COUNT(*) FROM favorite_recipients WHERE user_id=:id", {"id": user_id}).scalar()
+        if int(count) >= 20:
+            raise HTTPException(400, "You can save up to 20 recipients. Remove one first.")
+        q(db, "INSERT INTO favorite_recipients(user_id,label,phone,network) VALUES(:id,:label,:phone,:network)",
+          {"id": user_id, "label": label or None, "phone": phone, "network": network})
+    return {"success": True, "message": "Recipient saved"}
+
+
+@app.delete("/api/favorites/{favorite_id}")
+def delete_favorite(request: Request, favorite_id: str):
+    user_id = require_user(request)
+    try:
+        favorite = int(favorite_id)
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Invalid favorite ID")
+    if favorite <= 0:
+        raise HTTPException(400, "Invalid favorite ID")
+    with db_session() as db:
+        deleted = q(db, "DELETE FROM favorite_recipients WHERE id=:fid AND user_id=:id", {"fid": favorite, "id": user_id})
+    if deleted.rowcount != 1:
+        raise HTTPException(404, "Saved recipient not found")
+    return {"success": True, "message": "Recipient removed"}
+
+
 @app.get("/api/transactions/{user_id}")
-def transactions(request: Request, user_id: str):
+def transactions(request: Request, user_id: str, type: str | None = None,
+                 status: str | None = None, search: str | None = Query(None, alias="q"),
+                 limit: int = 0, offset: int = 0):
+    """Transaction history with optional server-side filtering.
+
+    All parameters are optional and backward compatible: without them the
+    full history is returned exactly as before. `type`/`status` are
+    exact matches; `q` searches descriptions and references.
+    """
     current_id = require_user(request)
     try:
         requested_id = int(user_id)
@@ -338,28 +673,94 @@ def transactions(request: Request, user_id: str):
             is_admin = q(auth_db, "SELECT is_admin FROM users WHERE id=:id", {"id": current_id}).scalar()
         if is_admin != 1:
             raise HTTPException(403, "You can only view your own transactions")
+    conditions = ["user_id=:id"]
+    params: dict = {"id": requested_id}
+    if type:
+        if type not in {"credit", "debit"}:
+            raise HTTPException(400, "Invalid transaction type")
+        conditions.append("type=:type")
+        params["type"] = type
+    if status:
+        if status not in {"successful", "pending", "failed"}:
+            raise HTTPException(400, "Invalid transaction status")
+        conditions.append("status=:status")
+        params["status"] = status
+    if search:
+        needle = f"%{search.strip()}%"
+        conditions.append("(LOWER(description) LIKE :q OR LOWER(COALESCE(reference,'')) LIKE :q)")
+        params["q"] = needle.lower()
+    if limit < 0 or limit > 500:
+        limit = 0
+    if offset < 0:
+        offset = 0
+    where = " AND ".join(conditions)
     with db_session() as db:
-        rows = q(db, "SELECT id,type,amount,status,reference,description,created_at FROM transactions WHERE user_id=:id ORDER BY id DESC", {"id": requested_id}).mappings().all()
-    return {"success": True, "transactions": [dict(x) for x in rows]}
+        total = q(db, f"SELECT COUNT(*) FROM transactions WHERE {where}", params).scalar()
+        sql = f"SELECT id,type,amount,status,reference,description,created_at FROM transactions WHERE {where} ORDER BY id DESC"
+        if limit:
+            sql += " LIMIT :limit OFFSET :offset"
+            params.update({"limit": limit, "offset": offset})
+        rows = q(db, sql, params).mappings().all()
+    return {"success": True, "transactions": [dict(x) for x in rows], "total": int(total)}
+
+
+def visible_data_sources() -> list[str]:
+    """Catalog sources whose plans are customer-visible and purchasable.
+
+    With multi-provider routing disabled this is just the primary provider
+    (single-catalog behavior). With routing enabled, every eligible
+    (configured + enabled + not selection-excluded) provider's plans are
+    visible; the purchase flow fulfills each plan through the provider
+    that owns it (plan rows carry their source, and plan names are
+    unique per network across sources).
+    """
+    primary = primary_provider()
+    if not settings.multi_provider_routing_enabled:
+        return [primary]
+    return [primary] + sorted(slug for slug in eligible_provider_slugs() if slug != primary)
+
+
+def _plan_owner_provider(network: str, plan: str | None) -> str | None:
+    """Which visible provider owns a data plan row (or None if absent)."""
+    sources = visible_data_sources()
+    if not plan or not sources:
+        return None
+    placeholders = ",".join(f":src{i}" for i in range(len(sources)))
+    params = {f"src{i}": slug for i, slug in enumerate(sources)}
+    params.update({"network": network, "plan": plan})
+    with db_session() as db:
+        row = q(db, f"""SELECT LOWER(TRIM(source)) AS source FROM data_plans
+                       WHERE network=:network AND plan=:plan
+                         AND active=1 AND provider_available=1
+                         AND selling_price>=provider_cost
+                         AND category IS NOT NULL AND TRIM(category)<>''
+                         AND LOWER(TRIM(source)) IN ({placeholders})
+                       ORDER BY CASE LOWER(TRIM(source)) WHEN :primary_source THEN 0 ELSE 1 END
+                       LIMIT 1""", {**params, "primary_source": sources[0]}).mappings().first()
+    return row["source"] if row else None
 
 
 @app.get("/api/data-categories")
 def data_categories(network: str):
+    sources = visible_data_sources()
+    source_params = {f"src{i}": slug for i, slug in enumerate(sources)}
+    placeholders = ",".join(f":src{i}" for i in range(len(sources)))
     with db_session() as db:
-        rows = q(db, "SELECT category,COUNT(*) plan_count FROM data_plans WHERE network=:network AND active=1 AND provider_available=1 AND selling_price>=provider_cost AND LOWER(TRIM(source))='wisesub' AND category IS NOT NULL AND TRIM(category)<>'' GROUP BY category ORDER BY " + category_sort_sql() + "", {"network": network}).mappings().all()
+        rows = q(db, "SELECT category,COUNT(*) plan_count FROM data_plans WHERE network=:network AND active=1 AND provider_available=1 AND selling_price>=provider_cost AND LOWER(TRIM(source)) IN (" + placeholders + ") AND category IS NOT NULL AND TRIM(category)<>'' GROUP BY category ORDER BY " + category_sort_sql() + "", {"network": network, **source_params}).mappings().all()
     return {"success": True, "categories": [dict(x) for x in rows]}
 
 
 @app.get("/api/data-plans")
 def data_plans(network: str | None = None, category: str | None = None):
-    conditions = ["active=1", "provider_available=1", "selling_price>=provider_cost", "LOWER(TRIM(source))='wisesub'", "category IS NOT NULL", "TRIM(category)<>''"]
-    params = {}
+    conditions = ["active=1", "provider_available=1", "selling_price>=provider_cost", "category IS NOT NULL", "TRIM(category)<>''"]
+    params = {f"src{i}": slug for i, slug in enumerate(visible_data_sources())}
+    conditions.append("LOWER(TRIM(source)) IN (" + ",".join(f":src{i}" for i in range(len(params))) + ")")
     if network:
         conditions.append("network=:network"); params["network"] = network
     if category:
         conditions.append("category=:category"); params["category"] = category
     with db_session() as db:
-        rows = q(db, "SELECT id,network,plan,category,selling_price,data_size,validity FROM data_plans WHERE " + " AND ".join(conditions) + " ORDER BY CASE LOWER(network) WHEN 'mtn' THEN 1 WHEN 'airtel' THEN 2 WHEN 'glo' THEN 3 WHEN '9mobile' THEN 4 ELSE 5 END,selling_price,id", params).mappings().all()
+        rows = q(db, "SELECT id,network,plan,category,selling_price,data_size,validity,LOWER(TRIM(source)) AS source FROM data_plans WHERE " + " AND ".join(conditions) + " ORDER BY CASE LOWER(network) WHEN 'mtn' THEN 1 WHEN 'airtel' THEN 2 WHEN 'glo' THEN 3 WHEN '9mobile' THEN 4 ELSE 5 END,selling_price,LOWER(TRIM(source)),id", params).mappings().all()
     return {"success": True, "plans": [dict(x) for x in rows]}
 
 
@@ -434,6 +835,519 @@ def add_pending_purchase_note(reference: str, user_id: int, note: str):
         q(db, "UPDATE transactions SET description=description || :note WHERE reference=:reference AND user_id=:user_id AND type='debit' AND status='pending'", {"note": " | " + note, "reference": reference, "user_id": user_id})
 
 
+class SupplierPreFlightRefusal(HTTPException):
+    """The primary supplier cannot serve a purchase BEFORE any customer
+    debit happens (not configured, or its wallet cannot cover it).
+
+    Distinct from a plain 503 on purpose: the dispatcher catches exactly
+    this class to attempt the WiseSub airtime fallback. Because nothing has
+    been charged or recorded at this point, retrying through another
+    supplier is always safe. Post-debit failures (submission errors,
+    uncertain outcomes) must NEVER use this class: they stay pending and
+    are reconciled instead."""
+
+    def __init__(self, message: str):
+        super().__init__(503, message)
+
+
+async def isquaredata_purchase_flow(user_id: int, body: dict, service: str, network: str, phone: str, pin: str):
+    """Fulfillment through the ISQUAREDATA adapter (active supplier).
+
+    Safety mirrors the WiseSub path exactly: backend-validated price,
+    Purchase PIN, pending-duplicate guard, idempotency key, atomic wallet
+    debit, pending-held outcomes. Additional supplier-side pre-flight: the
+    ISQUAREDATA wallet balance must cover the purchase BEFORE the customer
+    is debited, so an unfunded supplier fails cleanly instead of hanging
+    customer money.
+    """
+    adapter = get_adapter("isquaredata")
+    if adapter is None or not adapter.is_configured():
+        raise SupplierPreFlightRefusal("The data provider is not available right now. Please try again later.")
+    selected = None
+    amount = 0.0
+    plan = body.get("plan")
+    if service == "data":
+        with db_session() as db:
+            selected = q(db, "SELECT * FROM data_plans WHERE network=:network AND plan=:plan AND active=1 AND provider_available=1 AND selling_price>=provider_cost AND category IS NOT NULL AND LOWER(TRIM(source))='isquaredata'", {"network": network, "plan": plan}).mappings().first()
+        if not selected: raise HTTPException(400, "That data plan is not currently available")
+        if not selected["provider_package_code"]:
+            raise HTTPException(500, "This data plan is not properly configured. Please try another plan.")
+        amount = float(selected["selling_price"])
+        if not math.isfinite(amount) or amount <= 0: raise HTTPException(409, "That data plan price is invalid. Refresh the plan list.")
+        try: expected_price = float(body.get("expectedPrice", body.get("amount", amount)))
+        except (TypeError, ValueError): expected_price = float("nan")
+        if not math.isfinite(expected_price) or abs(expected_price - amount) >= 0.005:
+            raise HTTPException(409, "The plan price changed. Review the current price and confirm again.")
+        description = f"{network} {plan} data purchase for {phone} | Category: {selected['category']} | Price: {amount:.2f}"
+    else:
+        try:
+            amount = float(body.get("amount") or 0)
+        except (TypeError, ValueError):
+            amount = 0
+        if not amount.is_integer() or amount < 50 or amount > 50000: raise HTTPException(400, "Airtime amount must be between \u20a650 and \u20a650,000")
+        amount = int(amount)
+        if amount <= 0: raise HTTPException(400, "A valid airtime amount is required")
+        description = f"{network} airtime purchase for {phone}"
+    with db_session() as db:
+        user = q(db, "SELECT id,balance,purchase_pin FROM users WHERE id=:id", {"id": user_id}).mappings().first()
+        if engine.dialect.name != "sqlite":
+            user = q(db, "SELECT id,balance,purchase_pin FROM users WHERE id=:id FOR UPDATE", {"id": user_id}).mappings().first()
+        if not user: raise HTTPException(404, "User not found")
+        if not user["purchase_pin"]:
+            raise HTTPException(400, "Please create a Purchase PIN before buying data")
+        if not password_check(pin, user["purchase_pin"]): raise HTTPException(401, "Incorrect Purchase PIN")
+        pending_prefix = description.split(" | Category:", 1)[0]
+        pending_purchase = q(db, "SELECT reference FROM transactions WHERE user_id=:uid AND type='debit' AND status='pending' AND SUBSTR(description,1,LENGTH(:prefix))=:prefix ORDER BY id DESC LIMIT 1", {"uid": user_id, "prefix": pending_prefix}).mappings().first()
+        if pending_purchase:
+            return JSONResponse({"success": False, "pending": True, "message": "A matching purchase is still being confirmed. Please do not submit it again.", "reference": pending_purchase["reference"]}, status_code=202)
+        if user["balance"] < amount: raise HTTPException(400, "Insufficient wallet balance")
+        idempotency_key = str(body.get("requestId") or "").strip()
+        if idempotency_key:
+            if len(idempotency_key) > 100: raise HTTPException(400, "Invalid request ID")
+            previous = q(db, "SELECT reference,status,amount,description FROM transactions WHERE user_id=:uid AND idempotency_key=:key", {"uid": user_id, "key": idempotency_key}).mappings().first()
+            if previous:
+                if previous["status"] == "pending":
+                    return JSONResponse({"success": False, "pending": True, "message": "This purchase is still being confirmed. Please do not retry it.", "reference": previous["reference"]}, status_code=202)
+                return {"success": previous["status"] == "successful", "status": previous["status"], "message": "This purchase request was already processed.", "reference": previous["reference"], "amount": float(previous["amount"])}
+    # Supplier pre-flight: refuse cleanly BEFORE any customer debit when the
+    # supplier wallet cannot cover the purchase (read-only balance call).
+    supplier_amount = None
+    try:
+        supplier_balance = await adapter.account_balance()
+        if supplier_balance.supported and supplier_balance.balance is not None:
+            supplier_amount = float(supplier_balance.balance)
+    except Exception:
+        supplier_amount = None
+    if supplier_amount is None or supplier_amount < float(amount):
+        logger.warning("ISQUAREDATA pre-flight balance check refused a purchase (supplier balance unavailable or insufficient)")
+        raise SupplierPreFlightRefusal("The data provider is temporarily unavailable. Your wallet was not charged. Please try again shortly.")
+    reference = ref()
+    with db_session() as db:
+        debit = q(db, "UPDATE users SET balance=balance-:amount WHERE id=:id AND balance>=:amount", {"amount": amount, "id": user_id})
+        if debit.rowcount != 1: raise HTTPException(400, "Insufficient wallet balance")
+        q(db, "INSERT INTO transactions(user_id,type,amount,status,reference,description,idempotency_key,provider) VALUES(:uid,'debit',:amount,'pending',:reference,:description,:idem,'isquaredata')",
+          {"uid": user_id, "amount": amount, "reference": reference, "description": description + " | Pending ISQUAREDATA confirmation", "idem": idempotency_key or None})
+    try:
+        if service == "data":
+            result = await adapter.submit_data_purchase(network=network, package_code=str(selected["provider_package_code"]), phone=phone, reference=reference)
+        else:
+            result = await adapter.submit_airtime_purchase(network=network, phone=phone, amount=amount, reference=reference)
+    except Exception:
+        add_pending_purchase_note(reference, user_id, "ISQUAREDATA submission failed; outcome requires reconciliation")
+        return JSONResponse({"success": False, "pending": True, "message": "We could not immediately confirm your purchase. Please do not retry this purchase.", "reference": reference}, status_code=202)
+    if result.outcome == PurchaseOutcome.SUCCESSFUL:
+        # The adapter never returns SUCCESSFUL from the purchase response
+        # alone; this branch exists only for the documented future state.
+        with db_session() as db:
+            q(db, "UPDATE transactions SET status='successful',provider_reference=:pref,description=:description WHERE reference=:reference AND user_id=:id AND type='debit' AND status='pending'",
+              {"pref": reference, "description": description + " | ISQUAREDATA reference: " + reference, "reference": reference, "id": user_id})
+        return {"success": True, "status": "successful", "message": "Purchase successful.", "reference": reference, "amount": float(amount)}
+    add_pending_purchase_note(reference, user_id, result.message or "outcome pending reconciliation")
+    return JSONResponse({"success": False, "pending": True, "message": "Your purchase was accepted and is being confirmed. You will be notified once delivery is confirmed. Please do not retry.", "reference": reference}, status_code=202)
+
+
+@app.post("/api/webhooks/isquaredata")
+async def isquaredata_webhook(request: Request):
+    """ISQUAREDATA transaction webhooks.
+
+    Signature: x-isquare-signature = HMAC-SHA512(raw body, user key),
+    the key being the dashboard USER ID (ISQUAREDATA_WEBHOOK_USER_KEY).
+    A signed 'success' webhook finalizes the pending transaction; a
+    'failed' webhook must ALSO be confirmed by the status requery before
+    the customer wallet is refunded (double-source confirmation).
+    """
+    raw = await request.body()
+    user_key = (getattr(settings, "isquaredata_webhook_user_key", "") or "").strip()
+    if not user_key:
+        raise HTTPException(503, "Webhook verification is not configured")
+    signature = request.headers.get("x-isquare-signature") or ""
+    if not verify_webhook_signature(raw, signature, user_key):
+        raise HTTPException(401, "Invalid signature")
+    try:
+        payload = json.loads(raw or b"{}")
+    except (ValueError, UnicodeDecodeError):
+        raise HTTPException(400, "Invalid payload")
+    if not isinstance(payload, dict):
+        raise HTTPException(400, "Invalid payload")
+    reference = str(payload.get("reference") or "").strip()
+    status = str(payload.get("status") or "").strip().lower()
+    if not reference or status not in {"success", "failed", "pending"}:
+        raise HTTPException(400, "Invalid webhook payload")
+    if status == "pending":
+        return {"success": True, "status": "pending"}
+    with db_session() as db:
+        transaction = q(db, "SELECT id,user_id,amount,status,description FROM transactions WHERE reference=:reference AND type='debit' AND provider='isquaredata' ORDER BY id DESC LIMIT 1", {"reference": reference}).mappings().first()
+    if not transaction:
+        logger.info("ISQUAREDATA webhook referenced an unknown transaction; ignored")
+        return {"success": True, "ignored": True}
+    if transaction["status"] != "pending":
+        return {"success": True, "status": transaction["status"], "note": "already final"}
+    if status == "success":
+        with db_session() as db:
+            q(db, "UPDATE transactions SET status='successful',provider_reference=:pref,description=:description WHERE id=:id AND status='pending'",
+              {"pref": reference, "description": str(transaction["description"]).split(" | Pending ISQUAREDATA confirmation")[0] + " | ISQUAREDATA confirmed delivery", "id": transaction["id"]})
+        return {"success": True, "status": "successful", "reference": reference}
+    # failed: double-confirm through the status requery before refunding
+    adapter = get_adapter("isquaredata")
+    confirmed_failure = False
+    if adapter is not None and adapter.is_configured():
+        try:
+            outcome = await adapter.transaction_status(reference)
+            confirmed_failure = bool(outcome.recognized and outcome.status == "failed")
+        except Exception:
+            confirmed_failure = False
+    if not confirmed_failure:
+        add_pending_purchase_note(reference, transaction["user_id"], "ISQUAREDATA webhook reported failure but the requery did not confirm; held for admin review")
+        return {"success": True, "status": "failed_unconfirmed", "note": "held for admin review"}
+    with db_session() as db:
+        if engine.dialect.name != "sqlite":
+            q(db, "SELECT pg_advisory_xact_lock(712034, 3)")
+        refund = q(db, "UPDATE transactions SET status='failed',description=:description WHERE id=:id AND status='pending'",
+                   {"description": str(transaction["description"]).split(" | Pending ISQUAREDATA confirmation")[0] + " | ISQUAREDATA confirmed failure; wallet refunded", "id": transaction["id"]})
+        if refund.rowcount == 1:
+            q(db, "UPDATE users SET balance=balance+:amount WHERE id=:id", {"amount": transaction["amount"], "id": transaction["user_id"]})
+    return {"success": True, "status": "failed_refunded", "reference": reference}
+
+
+# =====================================================================
+# BILLER SERVICES (ISQUAREDATA: electricity, cable TV, education).
+# These products exist only on ISQUAREDATA; they are available whenever
+# the ISQUAREDATA provider row is enabled and configured, independent of
+# which supplier serves the data catalog. While ISQUAREDATA stays
+# disabled (current production state) every biller endpoint answers 503
+# and the frontend shows the services as "coming soon".
+# =====================================================================
+
+def _biller_adapter():
+    adapter = get_adapter("isquaredata")
+    if adapter is None or not adapter.is_configured():
+        return None
+    with db_session() as db:
+        row = q(db, "SELECT enabled FROM providers WHERE slug='isquaredata'").first()
+    if not row or not row[0]:
+        return None
+    return adapter
+
+
+def _biller_unavailable():
+    raise HTTPException(503, "This service is not available yet. We are rolling it out shortly.")
+
+
+async def _biller_purchase_core(user_id: int, body: dict, amount, description: str, submit):
+    """Shared biller purchase core; mirrors the ISQUAREDATA data/airtime
+    flow: Purchase PIN, pending-duplicate guard, idempotency key, atomic
+    wallet debit, supplier pre-flight balance, pending-held outcomes."""
+    adapter = _biller_adapter()
+    if adapter is None:
+        _biller_unavailable()
+    pin = validate_pin(body.get("pin"))
+    with db_session() as db:
+        user = q(db, "SELECT id,balance,purchase_pin FROM users WHERE id=:id", {"id": user_id}).mappings().first()
+        if engine.dialect.name != "sqlite":
+            user = q(db, "SELECT id,balance,purchase_pin FROM users WHERE id=:id FOR UPDATE", {"id": user_id}).mappings().first()
+        if not user:
+            raise HTTPException(404, "User not found")
+        if not user["purchase_pin"]:
+            raise HTTPException(400, "Please create a Purchase PIN before making this purchase")
+        if not password_check(pin, user["purchase_pin"]):
+            raise HTTPException(401, "Incorrect Purchase PIN")
+        pending_purchase = q(db, "SELECT reference FROM transactions WHERE user_id=:uid AND type='debit' AND status='pending' AND SUBSTR(description,1,LENGTH(:prefix))=:prefix ORDER BY id DESC LIMIT 1", {"uid": user_id, "prefix": description}).mappings().first()
+        if pending_purchase:
+            return JSONResponse({"success": False, "pending": True, "message": "A matching purchase is still being confirmed. Please do not submit it again.", "reference": pending_purchase["reference"]}, status_code=202)
+        if user["balance"] < amount:
+            raise HTTPException(400, "Insufficient wallet balance")
+        idempotency_key = str(body.get("requestId") or "").strip()
+        if idempotency_key:
+            if len(idempotency_key) > 100:
+                raise HTTPException(400, "Invalid request ID")
+            previous = q(db, "SELECT reference,status,amount FROM transactions WHERE user_id=:uid AND idempotency_key=:key", {"uid": user_id, "key": idempotency_key}).mappings().first()
+            if previous:
+                if previous["status"] == "pending":
+                    return JSONResponse({"success": False, "pending": True, "message": "This purchase is still being confirmed. Please do not retry it.", "reference": previous["reference"]}, status_code=202)
+                return {"success": previous["status"] == "successful", "status": previous["status"], "message": "This purchase request was already processed.", "reference": previous["reference"], "amount": float(previous["amount"])}
+    supplier_amount = None
+    try:
+        supplier_balance = await adapter.account_balance()
+        if supplier_balance.supported and supplier_balance.balance is not None:
+            supplier_amount = float(supplier_balance.balance)
+    except Exception:
+        supplier_amount = None
+    if supplier_amount is None or supplier_amount < float(amount):
+        logger.warning("ISQUAREDATA pre-flight balance check refused a biller purchase (supplier balance unavailable or insufficient)")
+        raise HTTPException(503, "This service is temporarily unavailable. Your wallet was not charged. Please try again shortly.")
+    reference = ref()
+    with db_session() as db:
+        debit = q(db, "UPDATE users SET balance=balance-:amount WHERE id=:id AND balance>=:amount", {"amount": amount, "id": user_id})
+        if debit.rowcount != 1:
+            raise HTTPException(400, "Insufficient wallet balance")
+        q(db, "INSERT INTO transactions(user_id,type,amount,status,reference,description,idempotency_key,provider) VALUES(:uid,'debit',:amount,'pending',:reference,:description,:idem,'isquaredata')",
+          {"uid": user_id, "amount": amount, "reference": reference, "description": description + " | Pending ISQUAREDATA confirmation", "idem": idempotency_key or None})
+    try:
+        result = await submit(reference)
+    except Exception:
+        add_pending_purchase_note(reference, user_id, "ISQUAREDATA submission failed; outcome requires reconciliation")
+        return JSONResponse({"success": False, "pending": True, "message": "We could not immediately confirm your purchase. Please do not retry this purchase.", "reference": reference}, status_code=202)
+    if result.outcome == PurchaseOutcome.SUCCESSFUL:
+        final_description = description + (" | " + result.message if result.message else "")
+        with db_session() as db:
+            q(db, "UPDATE transactions SET status='successful',provider_reference=:pref,description=:description WHERE reference=:reference AND user_id=:id AND type='debit' AND status='pending'",
+              {"pref": reference, "description": final_description, "reference": reference, "id": user_id})
+        return {"success": True, "status": "successful",
+                "message": "Purchase successful.", "reference": reference,
+                "amount": float(amount), "detail": result.message or None}
+    add_pending_purchase_note(reference, user_id, result.message or "outcome pending reconciliation")
+    return JSONResponse({"success": False, "pending": True, "message": "Your purchase was accepted and is being confirmed. You will be notified once delivery is confirmed. Please do not retry.", "reference": reference}, status_code=202)
+
+
+@app.get("/api/billers")
+def billers_status(request: Request):
+    require_user(request)
+    adapter = _biller_adapter()
+    return {"electricity": adapter is not None, "cable": adapter is not None,
+            "education": adapter is not None}
+
+
+@app.get("/api/billers/electricity")
+async def billers_electricity(request: Request):
+    require_user(request)
+    adapter = _biller_adapter()
+    if adapter is None:
+        _biller_unavailable()
+    try:
+        services = await adapter.fetch_electricity_services()
+    except Exception:
+        raise HTTPException(502, "The electricity service list is unavailable right now. Please try again shortly.")
+    return {"success": True, "services": services}
+
+
+@app.get("/api/billers/electricity/verify")
+async def billers_electricity_verify(request: Request, service_id: int | None = None,
+                                        meter_type: str = "", meter_number: str = ""):
+    require_user(request)
+    adapter = _biller_adapter()
+    if adapter is None:
+        _biller_unavailable()
+    meter_type = str(meter_type or "").strip().lower()
+    meter_number = re.sub(r"\D", "", str(meter_number or ""))
+    if meter_type not in ("prepaid", "postpaid"):
+        raise HTTPException(400, "Choose a valid meter type (prepaid or postpaid)")
+    if not (8 <= len(meter_number) <= 15):
+        raise HTTPException(400, "Enter a valid meter number")
+    try:
+        outcome = await adapter.verify_meter(service_id=service_id, meter_type=meter_type, meter_number=meter_number)
+    except Exception:
+        raise HTTPException(502, "Meter verification is unavailable right now. Please try again shortly.")
+    if not outcome.get("status"):
+        raise HTTPException(400, outcome.get("message") or "Invalid meter number. Please check and try again")
+    return {"success": True, "customer_name": outcome.get("customer_name")}
+
+
+@app.post("/api/purchase-electricity")
+async def purchase_electricity(request: Request, body: dict):
+    user_id = require_user(request)
+    adapter = _biller_adapter()
+    if adapter is None:
+        _biller_unavailable()
+    try:
+        service_id = int(body.get("service_id") or 0)
+    except (TypeError, ValueError):
+        service_id = 0
+    meter_type = str(body.get("meter_type") or "").strip().lower()
+    meter_number = re.sub(r"\D", "", str(body.get("meter_number") or ""))
+    phone = str(body.get("phone_number") or "").strip()
+    customer_name = str(body.get("customer_name") or "").strip()[:80]
+    if service_id <= 0:
+        raise HTTPException(400, "Choose your electricity distribution company")
+    if meter_type not in ("prepaid", "postpaid"):
+        raise HTTPException(400, "Choose a valid meter type (prepaid or postpaid)")
+    if not (8 <= len(meter_number) <= 15):
+        raise HTTPException(400, "Enter a valid meter number")
+    if not nigeria_phone(phone):
+        raise HTTPException(400, "Please enter a valid Nigerian phone number")
+    try:
+        amount = float(body.get("amount") or 0)
+    except (TypeError, ValueError):
+        amount = 0
+    if not amount.is_integer() or amount < 500 or amount > 100000:
+        raise HTTPException(400, "Electricity amount must be between \u20a6500 and \u20a6100,000")
+    amount = int(amount)
+    try:
+        services = await adapter.fetch_electricity_services()
+        disco = next((sv for sv in services if sv["id"] == service_id), None)
+    except Exception:
+        raise HTTPException(502, "The electricity service list is unavailable right now. Please try again shortly.")
+    if not disco:
+        raise HTTPException(400, "That electricity distribution company is not available")
+    description = (f"Electricity {meter_type} token ({disco['name']}) for meter {meter_number}"
+                   + (f" | Customer: {customer_name}" if customer_name else "")
+                   + f" | Phone: {phone} | Amount: {amount:.2f}")
+    async def submit(reference: str):
+        return await adapter.submit_electricity_purchase(service_id=service_id, meter_type=meter_type,
+                                                         meter_number=meter_number, amount=amount,
+                                                         phone=phone, reference=reference)
+    return await _biller_purchase_core(user_id, body, amount, description, submit)
+
+
+@app.get("/api/billers/cable")
+async def billers_cable(request: Request):
+    require_user(request)
+    adapter = _biller_adapter()
+    if adapter is None:
+        _biller_unavailable()
+    try:
+        services = await adapter.fetch_cable_services()
+    except Exception:
+        raise HTTPException(502, "The TV subscription service list is unavailable right now. Please try again shortly.")
+    return {"success": True, "services": services}
+
+
+@app.post("/api/billers/cable/verify")
+async def billers_cable_verify(request: Request, body: dict):
+    require_user(request)
+    adapter = _biller_adapter()
+    if adapter is None:
+        _biller_unavailable()
+    plan_id = body.get("plan_id")
+    smartcard = re.sub(r"\D", "", str(body.get("smartcard") or ""))
+    if plan_id in (None, ""):
+        raise HTTPException(400, "Choose a TV package first")
+    if not (5 <= len(smartcard) <= 15):
+        raise HTTPException(400, "Enter a valid smartcard number")
+    try:
+        outcome = await adapter.verify_smartcard(plan_id=plan_id, smartcard=smartcard)
+    except Exception:
+        raise HTTPException(502, "Smartcard verification is unavailable right now. Please try again shortly.")
+    if not outcome.get("status"):
+        raise HTTPException(400, outcome.get("message") or "Invalid smartcard number. Please check and try again")
+    return {"success": True, "customer_name": outcome.get("customer_name")}
+
+
+@app.post("/api/purchase-cable")
+async def purchase_cable(request: Request, body: dict):
+    user_id = require_user(request)
+    adapter = _biller_adapter()
+    if adapter is None:
+        _biller_unavailable()
+    try:
+        service_id = int(body.get("service_id") or 0)
+    except (TypeError, ValueError):
+        service_id = 0
+    plan_id = body.get("plan_id")
+    smartcard = re.sub(r"\D", "", str(body.get("smartcard") or ""))
+    phone = str(body.get("phone_number") or "").strip()
+    customer_name = str(body.get("customer_name") or "").strip()[:80]
+    subscription_type = str(body.get("subscription_type") or "renew").strip().lower()
+    if service_id <= 0:
+        raise HTTPException(400, "Choose your TV provider")
+    if plan_id in (None, ""):
+        raise HTTPException(400, "Choose a TV package")
+    if not (5 <= len(smartcard) <= 15):
+        raise HTTPException(400, "Enter a valid smartcard number")
+    if not nigeria_phone(phone):
+        raise HTTPException(400, "Please enter a valid Nigerian phone number")
+    if subscription_type not in ("change", "renew"):
+        raise HTTPException(400, "Choose a valid subscription type (new or renewal)")
+    try:
+        services = await adapter.fetch_cable_services()
+    except Exception:
+        raise HTTPException(502, "The TV subscription service list is unavailable right now. Please try again shortly.")
+    operator = next((sv for sv in services if sv["id"] == service_id), None)
+    plan = None
+    if operator:
+        plan = next((pl for pl in operator["plans"] if str(pl["id"]) == str(plan_id)), None)
+    if not operator or not plan:
+        raise HTTPException(400, "That TV package is not currently available")
+    amount = float(plan["amount"])
+    if not math.isfinite(amount) or amount <= 0 or not float(amount).is_integer():
+        raise HTTPException(409, "That TV package price is invalid. Refresh the package list.")
+    amount = int(amount)
+    try:
+        expected_price = float(body.get("expectedPrice", amount))
+    except (TypeError, ValueError):
+        expected_price = float("nan")
+    if not math.isfinite(expected_price) or abs(expected_price - float(amount)) >= 0.005:
+        raise HTTPException(409, "The package price changed. Review the current price and confirm again.")
+    description = (f"{operator['name']} {plan['name']} subscription ({'new package' if subscription_type == 'change' else 'renewal'}) for smartcard {smartcard}"
+                   + (f" | Customer: {customer_name}" if customer_name else "")
+                   + f" | Phone: {phone} | Amount: {amount:.2f}")
+    async def submit(reference: str):
+        return await adapter.submit_cable_purchase(service_id=service_id, plan_id=plan["id"],
+                                                    smartcard=smartcard, phone=phone,
+                                                    amount=amount, subscription_type=subscription_type,
+                                                    reference=reference)
+    return await _biller_purchase_core(user_id, body, amount, description, submit)
+
+
+@app.get("/api/billers/education")
+async def billers_education(request: Request):
+    require_user(request)
+    adapter = _biller_adapter()
+    if adapter is None:
+        _biller_unavailable()
+    try:
+        services = await adapter.fetch_education_services()
+    except Exception:
+        raise HTTPException(502, "The education service list is unavailable right now. Please try again shortly.")
+    services = [sv for sv in services if sv.get("is_active")]
+    for sv in services:
+        sv["selling_price"] = math.ceil(float(sv["api_amount"]) * 1.02)
+    return {"success": True, "services": services}
+
+
+@app.post("/api/purchase-education")
+async def purchase_education(request: Request, body: dict):
+    user_id = require_user(request)
+    adapter = _biller_adapter()
+    if adapter is None:
+        _biller_unavailable()
+    try:
+        service_id = int(body.get("service_id") or 0)
+        quantity = int(body.get("quantity") if body.get("quantity") is not None else 1)
+    except (TypeError, ValueError):
+        service_id, quantity = 0, 0
+    phone = str(body.get("phone_number") or "").strip()
+    email = str(body.get("email_address") or "").strip()
+    if service_id <= 0:
+        raise HTTPException(400, "Choose an examination service")
+    if not (1 <= quantity <= 20):
+        raise HTTPException(400, "Quantity must be between 1 and 20")
+    if not nigeria_phone(phone):
+        raise HTTPException(400, "Please enter a valid Nigerian phone number")
+    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+        raise HTTPException(400, "Please enter a valid email address")
+    try:
+        services = await adapter.fetch_education_services()
+    except Exception:
+        raise HTTPException(502, "The education service list is unavailable right now. Please try again shortly.")
+    service = next((sv for sv in services if sv["id"] == service_id and sv.get("is_active")), None)
+    if not service:
+        raise HTTPException(400, "That examination service is not currently available")
+    unit_price = math.ceil(float(service["api_amount"]) * 1.02)
+    amount = unit_price * quantity
+    try:
+        expected_price = float(body.get("expectedPrice", amount))
+    except (TypeError, ValueError):
+        expected_price = float("nan")
+    if not math.isfinite(expected_price) or abs(expected_price - amount) >= 0.005:
+        raise HTTPException(409, "The service price changed. Review the current price and confirm again.")
+    description = f"{service['name']} result checker PIN x{quantity} | Phone: {phone} | Email: {email} | Price: {amount:.2f}"
+    async def submit(reference: str):
+        return await adapter.submit_education_purchase(service_id=service_id, quantity=quantity,
+                                                        phone=phone, email=email, reference=reference)
+    return await _biller_purchase_core(user_id, body, amount, description, submit)
+
+
+def _airtime_wisesub_ready() -> bool:
+    """WiseSub is ready to fulfill airtime (configured + enabled, never
+    excluded). Owner directive (Oct 24, 2026): airtime ALWAYS fulfills
+    through WiseSub only - independent of the multi-provider routing
+    flag, which stays a gate for data-side routing."""
+    adapter = get_adapter("wisesub")
+    if adapter is None or adapter.selection_excluded:
+        return False
+    return bool(adapter.is_configured() and provider_enabled("wisesub"))
+
+
 async def purchase(request: Request, body: dict, service: str):
     user_id = require_user(request)
     network, phone, pin = body.get("network"), body.get("phone"), body.get("pin")
@@ -442,6 +1356,23 @@ async def purchase(request: Request, body: dict, service: str):
     pin = validate_pin(pin)
     if not network or not phone or not nigeria_phone(phone): raise HTTPException(400, "Please enter a valid Nigerian phone number")
     if network not in {"MTN", "Airtel", "Glo", "9mobile"}: raise HTTPException(400, "Invalid network")
+    if primary_provider() == "isquaredata":
+        if service == "airtime":
+            # Owner directive (Oct 24, 2026): airtime purchases ALWAYS
+            # fulfill through WiseSub only - never the primary supplier
+            # (airtime is fully defined by network + amount, so no product
+            # equivalence question arises). When WiseSub is not ready the
+            # purchase is refused cleanly BEFORE any customer debit.
+            if not _airtime_wisesub_ready():
+                raise SupplierPreFlightRefusal("Airtime purchases are temporarily unavailable. Your wallet was not charged. Please try again shortly.")
+            # fall through to the WiseSub purchase flow below
+        elif service == "data" and _plan_owner_provider(network, body.get("plan")) == "wisesub":
+            # A WiseSub catalog plan: multi-provider routing is enabled and
+            # WiseSub is eligible, so fulfill through the WiseSub flow below
+            # (which re-validates the plan row under lock).
+            pass
+        else:
+            return await isquaredata_purchase_flow(user_id, body, service, network, phone, pin)
     selected = None
     plan = body.get("plan")
     if service == "data":
