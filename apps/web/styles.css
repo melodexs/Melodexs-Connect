@@ -2290,6 +2290,25 @@ body.spotlight-on .spotlight { opacity: 1; }
     .landing-phone { transition: none; }
 }
 
+/* The desktop shell moves things on hover; respect a reduced-motion request
+   the same way the landing page does. */
+@media (prefers-reduced-motion: reduce) {
+    body.has-sidebar .sidebar-nav a,
+    body.has-sidebar .service-tile,
+    body.has-sidebar .plan-card,
+    body.has-sidebar .btn {
+        transition: none !important;
+    }
+    body.has-sidebar .sidebar-nav a:hover,
+    body.has-sidebar .sidebar-nav a:focus-visible,
+    body.has-sidebar .service-tile:hover,
+    body.has-sidebar .plan-card:hover,
+    body.has-sidebar .btn:hover,
+    body.has-sidebar .btn:active {
+        transform: none !important;
+    }
+}
+
 /* =========================
    FAVORITE CHIPS
    ========================= */
