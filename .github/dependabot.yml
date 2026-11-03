@@ -1,0 +1,18 @@
+# Keep the dependency surface small and current: a stale HTTP client or
+# crypto library is the most likely route to a real vulnerability here.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /apps/api-python
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "deps"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "ci"
