@@ -1060,6 +1060,36 @@ h1, h2, h3 { line-height: 1.2; }
 }
 
 /* ============================================================
+   PRINTING
+   Customers print receipts and transaction details. Drop the chrome,
+   keep the numbers, and stop the coloured surfaces from eating ink.
+   ============================================================ */
+@media print {
+    .appbar, .bottom-nav, .app-sidebar, .desktop-tabs,
+    .boot-loading, #boot-loading, .toast, .modal-backdrop,
+    .install-banner, .no-print { display: none !important; }
+
+    body, body.app-body, body.app-body.has-sidebar {
+        background: #fff !important;
+        padding: 0 !important;
+    }
+
+    .page { margin: 0 !important; padding: 0 !important; max-width: none !important; }
+
+    .card, .balance-card, .receipt {
+        box-shadow: none !important;
+        border: 1px solid #d0d5dd !important;
+        break-inside: avoid;
+    }
+
+    .balance-card, .hero-head { background: #fff !important; color: #101828 !important; }
+    .balance-amount, .hero-title, .hero-greeting { color: #101828 !important; }
+
+    a[href]::after { content: ""; }
+    a { color: #101828 !important; text-decoration: none; }
+}
+
+/* ============================================================
    KEYBOARD FOCUS
    Pointer users never see this; keyboard users depend on it. The
    sidebar and the app bar sit on dark surfaces, so the ring uses the
