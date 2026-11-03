@@ -7,6 +7,6 @@ pydantic-settings>=2.6,<3
 python-multipart>=0.0.9,<1
 bcrypt>=4.2,<5
 itsdangerous>=2.2,<3
-pytest>=8,<9
+pytest>=9.2.0,<10
 pytest-asyncio>=0.24,<1
 
