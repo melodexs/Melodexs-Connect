@@ -1060,6 +1060,31 @@ h1, h2, h3 { line-height: 1.2; }
 }
 
 /* ============================================================
+   KEYBOARD FOCUS
+   Pointer users never see this; keyboard users depend on it. The
+   sidebar and the app bar sit on dark surfaces, so the ring uses the
+   lime accent rather than the browser's default blue.
+   ============================================================ */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid var(--lime);
+    outline-offset: 2px;
+    border-radius: 6px;
+}
+
+.app-sidebar :is(a, button):focus-visible,
+.appbar :is(a, button):focus-visible {
+    outline-color: var(--lime);
+}
+
+/* The input's own border already indicates focus; a second ring is noise. */
+.input:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+    outline-offset: 1px;
+}
+
+/* ============================================================
    MODALS / DIALOGS
    ============================================================ */
 .modal-backdrop {
