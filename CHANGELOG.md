@@ -4,6 +4,24 @@ Notable changes, newest first. Dates are deployment dates.
 
 ## November 2026
 
+### Documentation and guard rails
+* Added the guides that were living in people's heads: architecture, frontend,
+  API, database, providers, operations, deployment, testing and local setup, plus
+  an index and two decision records.
+* Added correctness-only lint (CI and pre-commit), a Makefile that forces a
+  scratch test database, an `.editorconfig`, Dependabot for pip and Actions, and
+  a pull-request template that asks for evidence.
+* New tests cover the user payload (no credential leaks), Nigerian phone
+  validation, the 2% markup rounding, session cookie flags, safe configuration
+  defaults, page/asset wiring, the PWA manifest, the service worker, the
+  navigation contract, the desktop shell layout, `security.txt`, the crawl files,
+  provider capabilities, the health and error contracts and repository hygiene
+  (no committed secrets or database files).
+* Fixed two real defects the new tests found: `privacy.html` pointed at two icons
+  that do not exist, and `security.txt` had no `Policy` line.
+* Accessibility: keyboard focus is now visible on every control, the desktop
+  shell honours `prefers-reduced-motion`, and receipts print without the chrome.
+
 ### Database moved next to the application
 Production PostgreSQL moved from London to `us-west-2`, the same region as the
 API. Login went from ~1.8s to ~0.67s, page boot to 0.14s and catalogue reads to
