@@ -26,3 +26,6 @@ npm-debug.log*
 # Additional local recovery backups
 apps/api/src/app-postgresql-migration-current.js
 melodexs-connect-tested-backup.zip
+
+# Local backup archives never belong in the repository
+*.zip

@@ -47,7 +47,14 @@ def test_no_live_credentials_in_source():
     assert not hits, f"possible live credentials: {hits}"
 
 
+def test_no_backup_archives_are_committed():
+    """Zipped snapshots bloat a public repo and can hide anything inside them."""
+    zips = [str(p.relative_to(ROOT)) for p in ROOT.rglob("*.zip")
+            if not any(part in SKIP_DIRS for part in p.parts)]
+    assert not zips, f"archives committed to the repository: {zips}"
+
+
 def test_gitignore_covers_build_and_runtime_artifacts():
     ignore = (ROOT / ".gitignore").read_text()
-    for pattern in ("*.db", ".env", "__pycache__", "node_modules"):
+    for pattern in ("*.db", ".env", "__pycache__", "node_modules", "*.zip"):
         assert pattern in ignore, f"{pattern} must be ignored"

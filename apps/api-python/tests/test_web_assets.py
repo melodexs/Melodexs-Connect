@@ -17,7 +17,7 @@ APP_PAGES = {
 }
 # Public and standalone pages: they keep the design system but not the shell.
 # offline.html is self-contained by design; admin.html ships its own styles.
-NO_SHELL = {"offline.html", "create-pin.html", "change-pin.html", "admin.html", "privacy.html",
+NO_SHELL = {"offline.html", "create-pin.html", "change-pin.html", "admin.html", "privacy.html", "help.html",
             "index.html", "login.html", "register.html", "forgot-password.html", "reset-password.html"}
 
 REQUIRED_SCRIPTS = ("api.js", "ui.js")
