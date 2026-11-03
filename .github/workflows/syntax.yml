@@ -1,0 +1,23 @@
+name: syntax
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  python-syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Install ruff
+        run: pip install "ruff>=0.6"
+      # Correctness only: syntax errors, undefined names, invalid escapes.
+      - name: Lint for correctness
+        run: ruff check apps/api-python/app apps/api-python/tests
+        continue-on-error: false
+      - name: Compile all Python modules
+        run: python -m compileall -q apps/api-python/app
