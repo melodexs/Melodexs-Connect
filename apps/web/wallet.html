@@ -193,7 +193,7 @@ function openDetail(t) {
     const isCredit = t.type === "wallet_funding";
     const statusBadge = { successful: "badge-success", pending: "badge-pending", failed: "badge-failed" }[t.status] || "badge-pending";
     const pendingNote = t.status === "pending"
-        ? '<div class="form-success" style="margin-top:12px">This transaction is still being confirmed with the provider. Please do not retry it; your wallet is protected from double charges while it settles.</div>'
+        ? '<div class="form-success" style="margin-top:12px">This transaction is still being confirmed with the provider. Please do not retry it; your wallet is protected from double charges while it settles. Still pending after 10 minutes? <a href="/help.html" style="color:inherit;font-weight:700;text-decoration:underline">Get help</a> and have this reference ready.</div>'
         : "";
     const receipt = t.status === "successful"
         ? '<button class="btn btn-lime btn-block mt-2" id="printReceipt">View receipt</button><div class="receipt hidden mt-2" id="receiptBox"></div>'

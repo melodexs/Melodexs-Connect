@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Help &amp; Support | MELODEXS CONNECT</title>
+    <meta name="description" content="Get help with data, airtime, electricity, TV and result PIN purchases on MELODEXS CONNECT. Chat on WhatsApp, call, or read the answers to common questions.">
+    <meta name="theme-color" content="#020817">
+    <link rel="icon" href="/icons/melodexs-connect-192.png" sizes="192x192">
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="MELODEXS">
+    <link rel="stylesheet" href="/styles.css">
+    <style>
+        .help-body { max-width: 760px; margin: 0 auto; padding: 40px 20px 64px; }
+        .help-body h1 { color: #fff; font-size: 28px; margin: 0 0 6px; }
+        .help-sub { color: var(--ink-soft, #C7D1DD); font-size: 14.5px; margin: 0 0 24px; line-height: 1.6; }
+        .help-card { background: rgba(255,255,255,.05); border: 1px solid rgba(199,209,221,.18); border-radius: 16px; padding: 22px 24px; margin-bottom: 18px; }
+        .help-card h2 { color: #fff; font-size: 17px; margin: 0 0 10px; }
+        .help-card p { color: var(--ink-soft, #C7D1DD); font-size: 14.5px; line-height: 1.65; margin: 0 0 10px; }
+        .help-card a:not(.help-btn) { color: #D1FF42; }
+        .help-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+        .help-btn { display: inline-flex; align-items: center; justify-content: center; min-height: 46px; padding: 0 20px; border-radius: 12px; font-weight: 700; font-size: 15px; text-decoration: none; }
+        .help-btn-primary { background: #D1FF42; color: #020817; }
+        .help-btn-ghost { border: 1px solid rgba(199,209,221,.35); color: #fff; }
+        .help-btn:hover { filter: brightness(1.08); }
+        details.faq { border-top: 1px solid rgba(199,209,221,.14); padding: 14px 0; }
+        details.faq:first-of-type { border-top: 0; padding-top: 4px; }
+        details.faq summary { cursor: pointer; color: #fff; font-weight: 600; font-size: 15px; list-style: none; display: flex; justify-content: space-between; gap: 12px; }
+        details.faq summary::-webkit-details-marker { display: none; }
+        details.faq summary::after { content: "+"; color: #D1FF42; font-size: 20px; line-height: 1; }
+        details.faq[open] summary::after { content: "\2212"; }
+        details.faq p { margin: 10px 0 0; }
+        .help-home { display: inline-block; margin-top: 8px; color: #D1FF42; text-decoration: none; font-weight: 600; }
+        .help-home:hover { text-decoration: underline; }
+        .help-hours { font-size: 13px; opacity: .85; }
+    </style>
+</head>
+<body class="auth-body">
+    <main class="help-body" aria-labelledby="helpTitle">
+        <h1 id="helpTitle">Help &amp; Support</h1>
+        <p class="help-sub">Something not right? Most purchases complete in seconds. If yours hasn't, we're here and we'll sort it out.</p>
+
+        <section class="help-card" aria-labelledby="contactTitle">
+            <h2 id="contactTitle">Talk to us</h2>
+            <p>The fastest way is WhatsApp. Please send your <strong>transaction reference</strong> (find it in Wallet &rarr; tap the transaction) so we can find it immediately.</p>
+            <div class="help-actions">
+                <a class="help-btn help-btn-primary" href="https://wa.me/2348068347514?text=Hello%20MELODEXS%20CONNECT%2C%20I%20need%20help%20with%20a%20transaction." rel="noopener" target="_blank">Chat on WhatsApp</a>
+                <a class="help-btn help-btn-ghost" href="tel:+2348068347514">Call 0806 834 7514</a>
+                <a class="help-btn help-btn-ghost" href="mailto:okohmelody30@gmail.com?subject=MELODEXS%20CONNECT%20support">Email us</a>
+            </div>
+        </section>
+
+        <section class="help-card" aria-labelledby="faqTitle">
+            <h2 id="faqTitle">Common questions</h2>
+
+            <details class="faq">
+                <summary>My purchase says "pending". What should I do?</summary>
+                <p>Please <strong>don't buy it again</strong>. A pending purchase is still being confirmed with the network provider, and your wallet is protected from double charges while it settles. Most pending purchases are confirmed automatically within about 10 minutes. If it is still pending after that, message us on WhatsApp with the transaction reference.</p>
+            </details>
+
+            <details class="faq">
+                <summary>My purchase failed. Do I get my money back?</summary>
+                <p>If a purchase fails, the amount returns to your wallet. If you see a failed transaction and your balance has not been restored, contact us with the reference and we will check it straight away.</p>
+            </details>
+
+            <details class="faq">
+                <summary>I funded my wallet but my balance has not changed.</summary>
+                <p>Wallet funding through Paystack is normally instant. If your bank debited you but the balance is unchanged after a few minutes, send us the Paystack payment reference (from your bank alert or email receipt) and we will credit it once it is confirmed.</p>
+            </details>
+
+            <details class="faq">
+                <summary>I sent data or airtime to the wrong number.</summary>
+                <p>Airtime and data are delivered by the network and usually cannot be reversed once they land. Always check the number and the network before you confirm. If you made a mistake, contact us quickly and we will do what we can, but we cannot promise a recovery.</p>
+            </details>
+
+            <details class="faq">
+                <summary>What is the purchase PIN?</summary>
+                <p>It is a separate 4-digit PIN that protects your wallet. You set it in <strong>Profile</strong>, and you enter it every time you buy. If you forget it, you can change it from Profile after signing in.</p>
+            </details>
+
+            <details class="faq">
+                <summary>I forgot my password.</summary>
+                <p>On the sign-in page tap <a href="/forgot-password.html">Forgot password</a> and we will email you a reset link. If you signed up with Google, use <strong>Continue with Google</strong> instead.</p>
+            </details>
+
+            <details class="faq">
+                <summary>What can I buy on MELODEXS CONNECT?</summary>
+                <p>Mobile data and airtime for MTN, Airtel, Glo and 9mobile, electricity tokens, TV subscriptions (DStv, GOtv, Startimes) and WAEC, NECO, NABTEB and NBAIS result PINs.</p>
+            </details>
+
+            <details class="faq">
+                <summary>How do I install the app on my phone?</summary>
+                <p>Open <strong>Profile</strong> and tap <strong>Get the app</strong>. On iPhone, tap Share in Safari and choose Add to Home Screen. On Android, tap Install when your browser offers it.</p>
+            </details>
+        </section>
+
+        <section class="help-card">
+            <h2>Reporting a problem</h2>
+            <p>The more we know, the faster we fix it. Please include: the <strong>transaction reference</strong>, the phone number or meter number you bought for, the amount, and roughly what time it happened.</p>
+            <p class="help-hours">Never share your password, purchase PIN or card details with anyone, including us. We will never ask for them.</p>
+        </section>
+
+        <a class="help-home" href="/">&larr; Back to home</a>
+    </main>
+    <script src="/pwa.js" defer></script>
+</body>
+</html>
