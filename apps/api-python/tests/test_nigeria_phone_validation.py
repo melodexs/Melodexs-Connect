@@ -24,8 +24,8 @@ def test_rejects_malformed_numbers(value):
     assert nigeria_phone(value) is False
 
 
-def test_integer_input_does_not_crash_and_needs_a_prefix():
-    # Numbers arrive as strings from JSON; an integer must be rejected
-    # cleanly rather than raising, because the leading 0 carries meaning.
+def test_integer_input_is_rejected_without_raising():
+    # A JSON number cannot carry the leading 0 that the numbering plan
+    # requires, so an integer is refused cleanly instead of being coerced.
     assert nigeria_phone(8030000000) is False
-    assert nigeria_phone(80300000000) is True
+    assert nigeria_phone(80300000000) is False
