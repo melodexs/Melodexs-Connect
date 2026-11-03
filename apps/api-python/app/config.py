@@ -52,6 +52,8 @@ class Settings(BaseSettings):
     meledata_purchase_tests: bool = False
     rizpay_api_key: str | None = None
     rizpay_base_url: str | None = None
+    gndata_api_key: str | None = None
+    gndata_base_url: str | None = None
     # ISQUAREDATA (next provider, disabled-by-default until validated).
     # HTTP Basic Auth against https://isquaredata.com/api; the published
     # docs use placeholder credentials (rejected live with 403), so the

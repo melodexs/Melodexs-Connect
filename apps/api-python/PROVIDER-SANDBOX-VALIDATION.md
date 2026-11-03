@@ -165,3 +165,49 @@ purchase endpoint by accident.
   deployment. Production remains on master (unchanged by this branch).
 - No live (production) credentials used anywhere; all live traffic
   targeted sandbox/test endpoints only.
+
+---
+
+# GN Data (gndata.com.ng) readiness review — 2026-10-18
+
+Developer API access is NOT yet approved for our account (requires a
+support request per the provider's own Getting Started steps), so no
+authenticated live checks exist. All adapter tests are mocked against
+the published documentation.
+
+Live evidence gathered WITHOUT credentials (read-only):
+- The docs Base URL box prints "http://localhost:8002/api/v1" (docs
+  defect; that host is unreachable). An unauthenticated GET to
+  https://api.gndata.com.ng/api/v1/wallet/balance returns HTTP 401
+  {"detail":"Not authenticated. Provide a valid Bearer token in the
+  Authorization header."} — confirming the live host, the /api/v1
+  prefix, and the Bearer scheme. The adapter pins HTTPS and rejects
+  any non-https GN_DATA_BASE_URL override.
+
+Documentation findings (https://api.gndata.com.ng/api-docs):
+- No sandbox/test mode is documented anywhere; only a live API.
+- Idempotency-Key header (UUID) is REQUIRED on POST; 409 means
+  "duplicate in progress; wait for completion or use a new key" — but
+  no endpoint is documented to learn the original outcome.
+- NO transaction-status or requery endpoint is documented. Final
+  outcomes rely on "transaction.updated" webhook events registered in
+  the developer dashboard. Until a verified webhook receiver exists,
+  every uncertain purchase (409/504/timeout/unknown) stays pending
+  for admin review — the adapter correctly refuses to guess.
+- Refund rules are undocumented -> auto_refunds_on_failure=False.
+- Webhook payload authentication/signature is undocumented.
+
+Prepared support inquiry for support@gndata.com.ng (NOT sent; contains
+no keys or account details):
+1. Is a sandbox or test mode available for Developer API purchases,
+   or can purchases be tested safely without real funds?
+2. Please confirm the official API base URL (the documentation page
+   prints http://localhost:8002/api/v1 in its Base URL box).
+3. For an HTTP 409 "duplicate Idempotency-Key" response, what is the
+   documented way to learn the original transaction's final outcome?
+4. Is a transaction-status or requery endpoint available, or are
+   "transaction.updated" webhooks the only reconciliation path? Which
+   status values can those events carry (pending/failure/success)?
+5. How are webhook payloads authenticated (signature/secret), and
+   what is the documented behaviour for failed purchases — are
+   refunds automatic?
