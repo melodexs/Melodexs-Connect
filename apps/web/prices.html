@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta name="api-base-url" content="">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Data Prices | MELODEXS CONNECT</title>
+    <meta name="description" content="See today's MTN, Airtel, Glo and 9mobile data plan prices on MELODEXS CONNECT before you sign up. Daily, weekly and monthly bundles, updated live.">
+    <meta name="theme-color" content="#020817">
+    <link rel="icon" href="/icons/melodexs-connect-192.png" sizes="192x192">
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="MELODEXS">
+    <link rel="stylesheet" href="/styles.css">
+    <script src="api.js"></script>
+    <style>
+        .prices-body { max-width: 860px; margin: 0 auto; padding: 40px 20px 64px; }
+        .prices-body h1 { color: #fff; font-size: 28px; margin: 0 0 6px; }
+        .prices-sub { color: var(--ink-soft, #C7D1DD); font-size: 14.5px; margin: 0 0 22px; line-height: 1.6; }
+        .net-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+        .net-tab { border: 1px solid rgba(199,209,221,.3); background: transparent; color: #fff; border-radius: 999px; padding: 9px 18px; font-weight: 600; font-size: 14px; cursor: pointer; min-height: 40px; }
+        .net-tab[aria-pressed="true"] { background: #D1FF42; color: #020817; border-color: #D1FF42; }
+        .price-search { width: 100%; box-sizing: border-box; padding: 13px 16px; border-radius: 12px; border: 1px solid rgba(199,209,221,.3); background: rgba(255,255,255,.06); color: #fff; font-size: 16px; margin-bottom: 18px; }
+        .price-group { background: rgba(255,255,255,.05); border: 1px solid rgba(199,209,221,.18); border-radius: 16px; padding: 18px 20px; margin-bottom: 16px; }
+        .price-group h2 { color: #fff; font-size: 16px; margin: 0 0 8px; }
+        .price-row { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid rgba(199,209,221,.12); color: #C7D1DD; font-size: 14.5px; }
+        .price-row:first-of-type { border-top: 0; }
+        .price-row .what { color: #fff; font-weight: 600; }
+        .price-row .valid { display: block; font-size: 12.5px; color: #8ea3b8; font-weight: 400; margin-top: 2px; }
+        .price-row .cost { color: #D1FF42; font-weight: 700; white-space: nowrap; }
+        .price-cta { text-align: center; margin: 26px 0 10px; }
+        .price-cta a { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 0 26px; border-radius: 12px; background: #D1FF42; color: #020817; font-weight: 700; text-decoration: none; }
+        .price-note { color: #8ea3b8; font-size: 13px; text-align: center; line-height: 1.6; }
+        .price-state { color: #C7D1DD; text-align: center; padding: 28px 0; }
+        .price-links { margin-top: 18px; text-align: center; }
+        .price-links a { color: #D1FF42; text-decoration: none; font-weight: 600; margin: 0 10px; }
+    </style>
+</head>
+<body class="auth-body">
+    <main class="prices-body" aria-labelledby="pricesTitle">
+        <h1 id="pricesTitle">Data prices</h1>
+        <p class="prices-sub">What you pay today, before you sign up. Prices are the same ones you see after sign in and are refreshed from our supplier throughout the day.</p>
+
+        <div class="net-tabs" role="group" aria-label="Choose a network" id="netTabs"></div>
+        <input class="price-search" id="priceSearch" type="search" placeholder="Search a plan, e.g. 2GB or monthly" aria-label="Search data plans" autocomplete="off">
+        <div id="priceList" aria-live="polite"><p class="price-state">Loading today's prices&hellip;</p></div>
+
+        <div class="price-cta"><a href="/register.html">Create a free account</a></div>
+        <p class="price-note">Prices can change when networks change theirs. The price you confirm at checkout is the price you pay.</p>
+        <p class="price-links"><a href="/help.html">Help &amp; support</a><a href="/">Home</a></p>
+    </main>
+    <script>
+    (function () {
+        var NETWORKS = ["MTN", "Airtel", "Glo", "9mobile"];
+        var plans = [];
+        var network = "MTN";
+        var query = "";
+
+        function esc(v) {
+            return String(v == null ? "" : v).replace(/[&<>"']/g, function (c) {
+                return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+            });
+        }
+        function naira(n) { return "\u20A6" + Number(n).toLocaleString("en-NG", { maximumFractionDigits: 0 }); }
+
+        function renderTabs() {
+            var present = NETWORKS.filter(function (n) { return plans.some(function (p) { return p.network === n; }); });
+            if (present.length && present.indexOf(network) === -1) network = present[0];
+            document.getElementById("netTabs").innerHTML = present.map(function (n) {
+                return '<button type="button" class="net-tab" data-net="' + esc(n) + '" aria-pressed="' + (n === network) + '">' + esc(n) + "</button>";
+            }).join("");
+        }
+
+        function renderList() {
+            var box = document.getElementById("priceList");
+            var q = query.trim().toLowerCase();
+            var rows = plans.filter(function (p) {
+                if (p.network !== network) return false;
+                if (!q) return true;
+                return (p.plan + " " + p.category + " " + (p.data_size || "") + " " + (p.validity || "")).toLowerCase().indexOf(q) !== -1;
+            });
+            if (!rows.length) {
+                box.innerHTML = '<p class="price-state">' + (q ? "No plans match your search." : "No plans available for this network right now.") + "</p>";
+                return;
+            }
+            var groups = {}, order = [];
+            rows.forEach(function (p) {
+                if (!groups[p.category]) { groups[p.category] = []; order.push(p.category); }
+                groups[p.category].push(p);
+            });
+            box.innerHTML = order.map(function (cat) {
+                return '<section class="price-group"><h2>' + esc(cat) + "</h2>" + groups[cat].map(function (p) {
+                    return '<div class="price-row"><span class="what">' + esc(p.plan) +
+                        (p.validity ? '<span class="valid">' + esc(p.validity) + "</span>" : "") +
+                        '</span><span class="cost">' + esc(naira(p.selling_price)) + "</span></div>";
+                }).join("") + "</section>";
+            }).join("");
+        }
+
+        document.getElementById("netTabs").addEventListener("click", function (e) {
+            var b = e.target.closest("[data-net]"); if (!b) return;
+            network = b.getAttribute("data-net"); renderTabs(); renderList();
+        });
+        document.getElementById("priceSearch").addEventListener("input", function (e) { query = e.target.value; renderList(); });
+
+        fetch("/api/data-plans").then(function (r) { return r.json(); }).then(function (d) {
+            plans = (d && d.plans) || [];
+            renderTabs(); renderList();
+        }).catch(function () {
+            document.getElementById("priceList").innerHTML = '<p class="price-state">We couldn\'t load prices just now. Please try again in a moment or <a href="/help.html" style="color:#D1FF42">contact us</a>.</p>';
+        });
+    })();
+    </script>
+    <script src="/pwa.js" defer></script>
+</body>
+</html>
