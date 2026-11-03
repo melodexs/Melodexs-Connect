@@ -68,6 +68,11 @@ class BalanceResult:
     balance: Decimal | None = None
     currency: str | None = None
     message: str = ""
+    # Provider-reported wallet mode (e.g. MELE DATA "live"/"test") and its
+    # livemode flag. Used by sandbox-mode guards; None when the provider
+    # does not report a mode (WiseSub, VTpass balance endpoint).
+    mode: str | None = None
+    livemode: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -103,6 +108,11 @@ class ProviderAdapter(ABC):
     #: without an extra admin confirmation gate (kept conservative: the
     #: WiseSub-style confirmation flag still applies unless documented)
     failure_status_is_final: bool = False
+    #: True when the provider is deliberately EXCLUDED from selection
+    #: (routing, fallback and the admin provider-selection UI) while its
+    #: adapter code stays for compatibility (tests, historical
+    #: reconciliation). Excluded adapters can never fulfill a purchase.
+    selection_excluded: bool = False
     capabilities: tuple[str, ...] = ()
 
     @abstractmethod

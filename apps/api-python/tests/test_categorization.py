@@ -33,7 +33,7 @@ def test_known_live_packages_map_to_expected_categories():
         ("glo-night-60-1day", "350MB Night - N60", NIGHT),
         # ...but a "(Best Value) ... Night plan" Glo budget package is a duration plan
         ("glo-dg-350", "1GB (Best Value) - 366 Naira - 14 days Night plan", MONTHLY),
-        ("glo-2days-200", "250MB + 25MB Night - N200 - 2 Days", WEEKLY),
+        ("glo-2days-200", "250MB + 25MB Night - N200 - 2 Days", DAILY),
         # Campus Booster
         ("glo-campus-booster-1000", "2.2GB + 2GB Night - N1000 - 30 Days - Camp-Boost", CAMPUS),
         # Router & MiFi
@@ -48,20 +48,47 @@ def test_known_live_packages_map_to_expected_categories():
         # Duration buckets
         ("mtn-10mb-100", "110MB Daily Plan (1 Day) - N100", DAILY),
         ("airt-daily-100", "Airtel Data - 100 Naira - 110MB - 1 Day", DAILY),
-        ("mtn-2-5gb-900", "MTN N900 2.5GB - 2 days", WEEKLY),
+        ("mtn-2-5gb-900", "MTN N900 2.5GB - 2 days", DAILY),
         ("mtn-1500mb-1000", "1.5GB Weekly Plan (7 Days) - N1,000", WEEKLY),
         ("mtn-12gb-7d-4500", "12.5GB  14 days - N4,500", MONTHLY),
         ("mtn-3.5gb-2500", "MTN N,2500 3.5GB +5mins Monthly Plan", MONTHLY),
         ("mtn-260gb-monthly", "MTN 260GB + 2GB daily upon exhausting main bundle - N45,000", MONTHLY),
         ("glo-always-on-2000", "6.1GB (410MB per day) 15 Days - Always On N2000", MONTHLY),
         ("glo-sunday-200", "875MB 1 Day - Weekend N200", DAILY),
-        ("airt-200", "230MB Daily Plan (2 Days) - 200 Naira - 200MB - 1Day", WEEKLY),
+        ("airt-200", "230MB Daily Plan (2 Days) - 200 Naira - 200MB - 1Day", DAILY),
         ("eti-500", "T2 650MB - 500 Naira - 3 days", WEEKLY),
         ("t2-250mb-200", "T2 N200 - 250MB Anytime Data Plan (7 Days)", WEEKLY),
         ("eti-1000", "9mobile 2GB - 1,000 Naira - 30 Days", MONTHLY),
     ]
     for code, name, expected in cases:
         assert categorize(code, name) == expected, (code, name, expected)
+
+
+def test_two_day_plans_are_daily_across_networks():
+    """Two-day packs are budget daily buys, not weekly (regression for the
+    2026-10 re-bucketing; live MTN/Glo/Airtel/9mobile 2-day packages)."""
+    cases = [
+        ("mtn-4gb-2-1200", "MTN N1,200 4GB - (2 days)", DAILY),
+        ("mtn-7gb-1800", "MTN N1,800 7GB - (2 Days)", DAILY),
+        ("glo-special-500", "1GB + 1GB Night - N500 - 2 Days Special", DAILY),
+        ("glo-weekend-500", "2.5GB 2 Days - Weekend N500", DAILY),
+        ("airt-350-500", "500MB Daily Plan (2 Days) - 350 Naira - 500MB - 2 Days", DAILY),
+        ("mtn-2gb-ex-750", "2GB Daily Plan (2 Days) - N750", DAILY),
+        # 3-day packs stay weekly, 1-day stay daily (boundary guards)
+        ("eti-500", "T2 650MB - 500 Naira - 3 days", WEEKLY),
+        ("airt-weekend-3d", "1GB - 350 Naira - 3 Days", WEEKLY),
+        ("mtn-10mb-100", "110MB Daily Plan (1 Day) - N100", DAILY),
+    ]
+    for code, name, expected in cases:
+        assert categorize(code, name) == expected, (code, name, expected)
+
+
+def test_weekly_never_contains_two_day_plans():
+    """No 1-2 day validity package may land in Weekly Plans."""
+    for name in ("1 Day", "2 Days", "1 day", "2 days", "2 DAYS"):
+        days_name = f"Test Plan 1GB - {name}"
+        result = categorize("x-test", days_name)
+        assert result in (DAILY, SOCIAL, NIGHT), (days_name, result)
 
 
 def test_unknown_packages_stay_uncategorized():

@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     # PostgreSQL DATABASE_URL used by the existing API.
     database_url: str | None = None
     session_secret: str = "dev-only-insecure-secret"
+    # Google Sign-In (Identity Services). Empty until the owner registers an
+    # OAuth client and the ID is set in the deploy environment; the frontend
+    # hides the Continue-with-Google button while this is unset.
+    google_client_id: str = ""
     cheapdata_public_url: str = "https://melodexs-connect.onrender.com"
     paystack_secret_key: str | None = None
     wisesub_base_url: str = WISESUB_LIVE_BASE_URL
@@ -33,8 +37,52 @@ class Settings(BaseSettings):
     # configured, enabled and verified.
     multi_provider_routing_enabled: bool = False
     meledata_api_key: str | None = None
+    # MELE DATA has one base URL for live and test traffic; the API key
+    # selects the mode. When MELEDATA_TEST_MODE is true the adapter fails
+    # closed unless the provider reports mode="test" and livemode=false.
+    meledata_base_url: str | None = None
+    meledata_test_mode: bool = False
+    # Explicit opt-in for live MELE DATA verification (pytest module
+    # test_meledata_sandbox_live.py). Requires a mele_test_... token and
+    # MELEDATA_TEST_MODE=1. Never on by default.
+    meledata_live_tests: bool = False
+    # Second, independent opt-in for the ONE live test that hits a
+    # purchase endpoint (currently refused by the provider sandbox).
+    # MELEDATA_LIVE_TESTS alone is read-only: wallet/catalog/status only.
+    meledata_purchase_tests: bool = False
     rizpay_api_key: str | None = None
     rizpay_base_url: str | None = None
+    # ISQUAREDATA (next provider, disabled-by-default until validated).
+    # HTTP Basic Auth against https://isquaredata.com/api; the published
+    # docs use placeholder credentials (rejected live with 403), so the
+    # real username/password must come from the ISQUAREDATA dashboard.
+    isquaredata_username: str | None = None
+    isquaredata_password: str | None = None
+    # Webhook signature key for verifying x-isquare-signature
+    # (HMAC-SHA512 of the raw body). The provider documents this as the
+    # USER ID shown on the dashboard profile.
+    isquaredata_webhook_user_key: str | None = None
+    # The single active catalog + fulfillment source. WiseSub is the
+    # safe default; ISQUAREDATA is activated only by setting
+    # ACTIVE_CATALOG_SOURCE=isquaredata in the production environment.
+    # The retained provider stays registered, enabled and reconcilable.
+    active_catalog_source: str = "wisesub"
+    # Explicit opt-in for allowing WiseSub-confirmed failures to finalize
+    # during reconciliation (unchanged default).
+    wisesub_failure_status_confirmed: bool = False
+    # Optional webhook receiver URL sent with each purchase; the provider
+    # posts the true transaction status there. Leave unset until a signed
+    # webhook receiver is built and validated.
+    isquaredata_webhook_url: str | None = None
+    # VTpass sandbox validation tooling (app/vtpass_sandbox.py). These are
+    # SANDBOX-ONLY credentials; the tooling refuses any non-sandbox host.
+    vtpass_sandbox_api_key: str | None = None
+    vtpass_sandbox_public_key: str | None = None
+    vtpass_sandbox_secret_key: str | None = None
+    vtpass_sandbox_base_url: str = "https://sandbox.vtpass.com/api"
+    # Explicit opt-in for live sandbox HTTP tests (pytest module
+    # test_vtpass_sandbox_live). Never on by default.
+    vtpass_sandbox_live_tests: bool = False
     brevo_api_key: str | None = None
     brevo_from_email: str | None = None
     brevo_from_name: str = "MELODEXS CONNECT"

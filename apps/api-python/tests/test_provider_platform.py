@@ -99,6 +99,9 @@ class FakeResponse:
 def test_mele_purchase_success_and_autorefunded_failure(monkeypatch):
     adapter = MeleDataAdapter()
     monkeypatch.setattr(settings, "meledata_api_key", "mele_test_key", raising=False)
+    # Pin test mode OFF: this test exercises the purchase mapping itself and
+    # must not inherit a developer's live-verification MELEDATA_TEST_MODE env.
+    monkeypatch.setattr(settings, "meledata_test_mode", False, raising=False)
 
     async def ok_purchase(path, **kwargs):
         return FakeResponse(200, {"status": True, "message": "Transaction successful",
@@ -409,20 +412,37 @@ def test_provider_endpoints_require_admin():
         assert client.get("/api/admin/providers/price-comparison?network=MTN").status_code == 403
 
 
-def test_wisesub_cannot_be_disabled_and_unconfigured_cannot_be_enabled():
+def test_wisesub_cannot_be_disabled_and_unconfigured_cannot_be_enabled(monkeypatch):
+    # Isolate from live-verification env vars: this test asserts the
+    # unconfigured-provider enable guard and must not see a developer's
+    # MELEDATA_API_KEY / MELEDATA_TEST_MODE settings.
+    monkeypatch.setattr(settings, "meledata_api_key", None, raising=False)
+    monkeypatch.setattr(settings, "meledata_test_mode", False, raising=False)
     with TestClient(main.app) as client:
         _admin_client(client)
         blocked = client.patch("/api/admin/providers/wisesub", json={"enabled": False})
         assert blocked.status_code == 409
-        unavailable = client.patch("/api/admin/providers/meledata", json={"enabled": True})
+        # Retired alternatives are excluded from the selection UI entirely
+        # (2026-10 provider cleanup) and can never be enabled there.
+        for retired in ("meledata", "rizpay"):
+            excluded = client.patch(f"/api/admin/providers/{retired}",
+                                    json={"enabled": True})
+            assert excluded.status_code == 409
+        # ISQUAREDATA is the next provider: selectable, but unconfigured and
+        # disabled by default.
+        unavailable = client.patch("/api/admin/providers/isquaredata",
+                                   json={"enabled": True})
         assert unavailable.status_code == 409  # no credentials configured
         listing = client.get("/api/admin/providers")
         assert listing.status_code == 200
         body = listing.json()
         slugs = {p["slug"]: p for p in body["providers"]}
         assert slugs["wisesub"]["enabled"] is True
-        assert slugs["meledata"]["enabled"] is False
+        assert "meledata" not in slugs and "rizpay" not in slugs
+        assert slugs["isquaredata"]["enabled"] is False
+        assert slugs["isquaredata"]["configured"] is False
         assert body["routing"]["multi_provider_routing_enabled"] is False
+        assert body["routing"]["excluded_providers"] == ["meledata", "rizpay"]
         comparison = client.get("/api/admin/providers/price-comparison?network=MTN")
         assert comparison.status_code == 200
         assert comparison.json()["routing"]["primary_provider"] == "wisesub"
