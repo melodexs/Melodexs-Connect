@@ -1107,6 +1107,33 @@ def billers_status(request: Request):
             "education": adapter is not None}
 
 
+# --- Biller listing cache ---------------------------------------------
+# The three biller lists (electricity, TV, education) are read-only menus that
+# the supplier changes rarely, yet every page open used to call the supplier
+# live (0.5-1.1s). They are cached briefly in-process. Purchases and meter /
+# smartcard verification deliberately do NOT use this cache: they revalidate
+# the price against the live supplier list, which is a safety rule.
+_BILLER_LIST_TTL = 300          # seconds a fresh copy is served
+_BILLER_LIST_STALE = 3600       # seconds a copy may still be served if the supplier is down
+_biller_list_cache: dict[str, tuple[float, list]] = {}
+
+
+async def _cached_biller_list(kind: str, loader):
+    """Serve a fresh copy; on supplier failure fall back to a stale one."""
+    now = time.time()
+    hit = _biller_list_cache.get(kind)
+    if hit and now - hit[0] < _BILLER_LIST_TTL:
+        return [dict(item) for item in hit[1]]
+    try:
+        services = await loader()
+    except Exception:
+        if hit and now - hit[0] < _BILLER_LIST_STALE:
+            return [dict(item) for item in hit[1]]
+        raise
+    _biller_list_cache[kind] = (now, [dict(item) for item in services])
+    return services
+
+
 @app.get("/api/billers/electricity")
 async def billers_electricity(request: Request):
     require_user(request)
@@ -1114,7 +1141,7 @@ async def billers_electricity(request: Request):
     if adapter is None:
         _biller_unavailable()
     try:
-        services = await adapter.fetch_electricity_services()
+        services = await _cached_biller_list("electricity", adapter.fetch_electricity_services)
     except Exception:
         raise HTTPException(502, "The electricity service list is unavailable right now. Please try again shortly.")
     return {"success": True, "services": services}
@@ -1195,7 +1222,7 @@ async def billers_cable(request: Request):
     if adapter is None:
         _biller_unavailable()
     try:
-        services = await adapter.fetch_cable_services()
+        services = await _cached_biller_list("cable", adapter.fetch_cable_services)
     except Exception:
         raise HTTPException(502, "The TV subscription service list is unavailable right now. Please try again shortly.")
     return {"success": True, "services": services}
@@ -1285,7 +1312,7 @@ async def billers_education(request: Request):
     if adapter is None:
         _biller_unavailable()
     try:
-        services = await adapter.fetch_education_services()
+        services = await _cached_biller_list("education", adapter.fetch_education_services)
     except Exception:
         raise HTTPException(502, "The education service list is unavailable right now. Please try again shortly.")
     services = [sv for sv in services if sv.get("is_active")]
