@@ -133,6 +133,10 @@ def test_paystack_verify_credits_once_then_reports_already_credited(monkeypatch)
             return _PaystackResponse(200, _success_verify_data(path.rsplit("/", 1)[-1], user_id, 25000))
 
         monkeypatch.setattr(main.settings, "paystack_secret_key", "mock-secret")
+        # This test is about credit-once / replay safety, so the deposit fee is
+        # switched off to keep the arithmetic to a single concern. The fee itself
+        # is covered in test_deposit_fee.py.
+        monkeypatch.setattr(main.settings, "deposit_fee_percent", 0.0)
         monkeypatch.setattr(main, "paystack", fake_paystack)
         reference = client.post("/api/fund-wallet", json={"amount": 250}).json()["reference"]
         first = client.post("/api/fund-wallet/verify", json={"reference": reference})
