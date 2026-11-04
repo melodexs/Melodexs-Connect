@@ -257,3 +257,48 @@ def test_the_fund_page_previews_the_fee_from_the_servers_rate():
         assert needle in page, needle
     # The browser must still send the FULL typed amount; the fee is the server's job.
     assert "body: JSON.stringify({ amount: amount })" in page
+
+
+# ---- The fee must be impossible to miss BEFORE paying -----------------------
+# A customer paid and saw no warning that 3% is deducted. The old page only
+# showed the fee after a background fetch succeeded, and let the button go
+# straight to Paystack. These pin the page-level guarantees.
+
+def _fund_page():
+    from pathlib import Path
+    return (Path(__file__).resolve().parents[3] / "apps" / "web" / "fund-wallet.html").read_text(encoding="utf-8")
+
+
+def test_fund_page_has_a_permanent_fee_notice_near_the_top():
+    page = _fund_page()
+    assert 'id="feeNotice"' in page
+    # It sits above the form, so it is read before the amount box.
+    assert page.index('id="feeNotice"') < page.index('id="fundForm"')
+    # It is not behind the .hidden class, so it can never be silently absent.
+    assert 'class="fee-notice" id="feeNotice"' in page
+
+
+def test_pay_button_waits_for_the_fee_and_never_stays_dead():
+    page = _fund_page()
+    assert 'id="fundButton" disabled>Loading fee' in page, "button must start disabled until the fee is known"
+    assert "Retry loading fee" in page, "a failed fee load must offer a retry, not a dead or pay button"
+    assert "attempt < 2" in page, "a cold-starting API gets a second chance"
+    # When the fee cannot be loaded the notice still warns that a fee exists.
+    assert "could not load the exact amount" in page
+
+
+def test_customer_confirms_exact_amounts_before_leaving_for_paystack():
+    page = _fund_page()
+    submit = page[page.index('fundForm.addEventListener("submit"'):]
+    confirm_at = submit.index("MELODEXS_UI.confirm(")
+    fetch_at = submit.index('fetch("/api/fund-wallet"')
+    assert confirm_at < fetch_at, "the confirmation must come before the payment request"
+    for needle in ("You pay", "Deposit fee (", "Added to your wallet"):
+        assert needle in submit[:fetch_at]
+    assert "if (!agreed) return;" in submit[:fetch_at], "declining must stop the payment"
+
+
+def test_confirmation_dialog_keeps_line_breaks():
+    from pathlib import Path
+    css = (Path(__file__).resolve().parents[3] / "apps" / "web" / "styles.css").read_text(encoding="utf-8")
+    assert "#confirm-message { white-space: pre-line; }" in css
