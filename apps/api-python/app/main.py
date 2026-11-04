@@ -615,11 +615,15 @@ def set_profile_image(request: Request, body: dict):
 def add_favorite(request: Request, body: dict):
     user_id = require_user(request)
     phone = str(body.get("phone") or "").strip()
-    network = str(body.get("network") or "").strip().upper()
     label = str(body.get("label") or "").strip()
+    # Networks are stored under their display names ("Airtel", "Glo", "9mobile").
+    # Compare case-insensitively and keep the canonical spelling: upper-casing the
+    # input and then comparing it with mixed-case names rejected every network but MTN.
+    canonical = {name.lower(): name for name in ("MTN", "Airtel", "Glo", "9mobile")}
+    network = canonical.get(str(body.get("network") or "").strip().lower(), "")
     if not phone or not nigeria_phone(phone):
         raise HTTPException(400, "Please enter a valid Nigerian phone number")
-    if network not in {"MTN", "Airtel", "Glo", "9mobile"}:
+    if not network:
         raise HTTPException(400, "Invalid network")
     if len(label) > 60:
         label = label[:60]

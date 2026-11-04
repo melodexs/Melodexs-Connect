@@ -118,3 +118,29 @@ def test_profile_image_lifecycle():
         assert client.post("/api/profile-image", json={"image": None}).status_code == 200
         me = client.get(f"/api/user/{user_id}").json()["user"]
         assert me["profile_image"] is None
+
+
+@pytest.mark.parametrize("sent,stored", [
+    ("MTN", "MTN"), ("Airtel", "Airtel"), ("Glo", "Glo"), ("9mobile", "9mobile"),
+    ("airtel", "Airtel"), ("GLO", "Glo"), ("  9MOBILE  ", "9mobile"),
+])
+def test_every_network_can_be_saved_and_is_stored_with_its_display_name(sent, stored):
+    """Regression: the check upper-cased the input and compared it with mixed-case
+    names, so only MTN could ever be saved; Airtel, Glo and 9mobile all failed with
+    'Invalid network'. The page filters and displays by the canonical spelling."""
+    with TestClient(main.app) as client:
+        account(client)
+        response = client.post("/api/favorites", json={"phone": "08031234567", "network": sent, "label": "Mum"})
+        assert response.status_code == 200, response.text
+        saved = client.get("/api/favorites").json()["favorites"]
+        assert [f["network"] for f in saved] == [stored]
+        assert saved[0]["label"] == "Mum"
+
+
+@pytest.mark.parametrize("bad", ["", "Vodafone", "MTN2", "etisalat", None, 5])
+def test_unknown_networks_are_still_rejected(bad):
+    with TestClient(main.app) as client:
+        account(client)
+        response = client.post("/api/favorites", json={"phone": "08031234567", "network": bad})
+        assert response.status_code == 400
+        assert client.get("/api/favorites").json()["favorites"] == []
