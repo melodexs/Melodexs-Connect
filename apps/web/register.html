@@ -43,7 +43,7 @@
             </label>
             <label class="field">
                 <span class="field-label">Phone number</span>
-                <input id="phone" class="input" type="tel" inputmode="tel" autocomplete="tel" placeholder="08012345678" required>
+                <input id="phone" class="input" type="tel" inputmode="tel" autocomplete="tel" placeholder="08012345678 or +234 801 234 5678" required>
             </label>
             <label class="field">
                 <span class="field-label">Password</span>
@@ -82,11 +82,20 @@
             message.hidden = false;
         }
 
+        function normalizePhone(raw) {
+            let p = String(raw || "").replace(/[\s\-().]/g, "");
+            if (p.indexOf("+234") === 0) p = "0" + p.slice(4);
+            else if (p.indexOf("234") === 0 && p.length === 13) p = "0" + p.slice(3);
+            return p;
+        }
+
         form.addEventListener("submit", async function (event) {
             event.preventDefault();
             const name = document.getElementById("name").value.trim();
             const email = document.getElementById("email").value.trim();
-            const phone = document.getElementById("phone").value.trim();
+            // People type 0806..., +234 806 ..., 234806... with spaces or dashes.
+            // They are all the same number: send the local 0XXXXXXXXXX form.
+            const phone = normalizePhone(document.getElementById("phone").value);
             const password = document.getElementById("password").value;
             const confirmPassword = document.getElementById("confirmPassword").value;
             message.hidden = true;
@@ -94,7 +103,7 @@
             if (!name) { showMessage("Please enter your full name.", "error"); return; }
             if (!email) { showMessage("Please enter your email address.", "error"); return; }
             if (!/^0[789][01][0-9]{8}$/.test(phone)) {
-                showMessage("Please enter a valid Nigerian phone number.", "error");
+                showMessage("Please enter a valid Nigerian phone number, like 08012345678 or +234 801 234 5678.", "error");
                 return;
             }
             if (password.length < 8) {
