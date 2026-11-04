@@ -25,6 +25,9 @@ pollutes later runs with leftover rate limits and sessions.
 | Security headers and origin checks | `test_security_headers.py`, `test_origin_gate_safety.py` |
 | Public pages: price list escaping, support contact consistency | `test_public_price_list.py`, `test_help_and_support.py` |
 | Wallet CSV export and customer-facing descriptions | `test_wallet_statement_export.py` |
+| Page metadata: descriptions, `noindex` on everything not in the sitemap | `test_page_metadata.py` |
+| Form accessibility: every input nameable, password fields declare autocomplete | `test_form_accessibility.py` |
+| Error envelope, security helpers, rate limits, package matching, supplier comparison | `test_error_envelope.py`, `test_security_helpers.py`, `test_rate_limit_contract.py`, `test_package_units.py`, `test_package_family_and_keys.py`, `test_comparison_group.py` |
 
 ## Browser modules run under Node
 
