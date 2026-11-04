@@ -4,6 +4,27 @@ Notable changes, newest first. Dates are deployment dates.
 
 ## November 2026
 
+### Help centre, price list and statement download
+* **Help & Support** (`/help.html`): WhatsApp, call and email buttons plus an
+  8-question FAQ covering pending and failed purchases, funding that has not
+  credited, wrong numbers, the purchase PIN and password reset. Linked from the
+  landing footer, Profile and the Wallet pending-purchase note; the offline page
+  shows a tap-to-call line.
+* **Public price list** (`/prices.html`): today's MTN, Airtel, Glo and 9mobile
+  prices with network tabs and search, readable before signing up.
+* **Wallet statement**: a Download CSV button exports the signed-in user's own
+  history (respecting the active filter). The file opens correctly in Excel,
+  and cells that could run as spreadsheet formulas are neutralised.
+* **Privacy fix**: the Wallet list, detail view, receipt and export no longer
+  show internal supplier notes that were stored after the first `|` in a
+  transaction description.
+* **Speed**: electricity, TV and education menus are cached for 5 minutes
+  (stale copy served if the supplier is down), static assets carry browser cache
+  headers, and the API is kept awake by the platform scheduler.
+* **CI**: web-only changes now run the test suite, and Node is installed so the
+  browser-module tests can never skip silently.
+* **Repository**: removed four stale backup archives and blocked `*.zip`.
+
 ### Documentation and guard rails
 * Added the guides that were living in people's heads: architecture, frontend,
   API, database, providers, operations, deployment, testing and local setup, plus
