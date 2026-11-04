@@ -4,6 +4,9 @@ Notable changes, newest first. Dates are deployment dates.
 
 ## November 2026
 
+### Install button on Profile
+* **Fixed**: on a phone where the browser cannot show its own install prompt (app already installed, an in-app browser such as Instagram or Facebook, or a browser menu install), tapping "How to install" now shows the steps. Before, the steps were written but stayed hidden, so the button looked dead. iPhone steps and the one-tap Install button are unchanged.
+
 ### Wallet deposit fee
 * **Added**: a 3% fee is kept from each wallet deposit. A customer who pays N1,000 gets N970 in their wallet. The fund page shows the fee live before they pay; the Wallet detail and receipt show the amount paid, the fee and what was added. Set `DEPOSIT_FEE_PERCENT` to change the rate (`0` turns it off). Deposits already in progress, and every older deposit, are credited exactly as before.
 
