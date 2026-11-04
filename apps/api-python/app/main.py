@@ -243,6 +243,23 @@ def nigeria_phone(phone: str) -> bool:
     return bool(re.fullmatch(r"(?:\+234|234|0)\d{10}", str(phone).strip()))
 
 
+def normalize_nigeria_phone(phone: str) -> str:
+    """Return the local 11-digit form (0XXXXXXXXXX) for any accepted spelling.
+
+    People type +234 806 834 7514, 2348068347514, 0806-834-7514 and so on. They
+    are the same number, so they must be stored identically; otherwise the
+    duplicate-account check misses them and one person gets two accounts. The
+    caller is expected to have validated the number with nigeria_phone() on the
+    cleaned value; anything that does not look Nigerian is returned trimmed.
+    """
+    cleaned = re.sub(r"[\s\-().]", "", str(phone or "").strip())
+    if cleaned.startswith("+234"):
+        cleaned = "0" + cleaned[4:]
+    elif cleaned.startswith("234") and len(cleaned) == 13:
+        cleaned = "0" + cleaned[3:]
+    return cleaned
+
+
 # --- Automatic requery sweep -------------------------------------------
 # ISQUAREDATA purchases finalize through signed webhooks. When a callback is
 # missed the debit would otherwise sit pending until an admin runs
@@ -393,11 +410,12 @@ def register(request: Request, response: Response, body: dict):
     name, email, phone, password = (body.get(x) for x in ("name", "email", "phone", "password"))
     if not all((name, email, phone, password)):
         raise HTTPException(400, "Please fill in all fields")
+    phone = normalize_nigeria_phone(phone)
     if not nigeria_phone(phone):
         raise HTTPException(400, "Please enter a valid Nigerian phone number")
     if len(password) < 8:
         raise HTTPException(400, "Password must be at least 8 characters")
-    email, phone = str(email).strip().lower(), str(phone).strip()
+    email = str(email).strip().lower()
     # Rate limit, duplicate check, insert, and session all share ONE
     # connection: each acquisition is a network round trip.
     with db_session() as db:
