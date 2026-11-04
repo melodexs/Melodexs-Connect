@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     # semantics. Keep automated refunds disabled until staging confirms them.
     wisesub_failure_status_confirmed: bool = False
     cheapdata_markup_percent: float = 2
+    # Percentage kept from each wallet deposit (pay N1,000 at 3 -> wallet gets N970).
+    # Set DEPOSIT_FEE_PERCENT=0 to switch the fee off without a code change.
+    deposit_fee_percent: float = 3
     # Multi-provider fulfillment platform. Routing stays WiseSub-only
     # until an admin deliberately enables it after a second provider is
     # configured, enabled and verified.

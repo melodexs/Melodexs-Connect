@@ -29,6 +29,7 @@ from .provider_base import PurchaseOutcome
 from .config import settings, ROOT, validate_wisesub_configuration, wisesub_recipient
 from .database import db_session, engine, init_schema, q
 from .providers import paystack, send_brevo, wise_purchase
+from . import deposit_fee
 from .security import (clear_session, current_user_id, new_session, password_check,
                         password_hash, require_admin, require_user, session_id,
                         valid_paystack_signature)
@@ -1525,6 +1526,13 @@ async def purchase_data(request: Request, body: dict): return await purchase(req
 async def purchase_airtime(request: Request, body: dict): return await purchase(request, body, "airtime")
 
 
+@app.get("/api/deposit-fee")
+async def deposit_fee_info():
+    """Public: the percentage kept from deposits, so the fund page shows the
+    same figure the server will actually apply."""
+    return {"success": True, "percent": max(0.0, float(settings.deposit_fee_percent or 0))}
+
+
 @app.post("/api/fund-wallet")
 async def fund_wallet(request: Request, response: Response, body: dict):
     user_id = require_user(request)
@@ -1540,7 +1548,10 @@ async def fund_wallet(request: Request, response: Response, body: dict):
         user = q(db, "SELECT id,email FROM users WHERE id=:id", {"id": user_id}).mappings().first()
         if not user: raise HTTPException(404, "User account not found.")
         reference = "CD-" + str(int(time.time()*1000)) + "-" + secrets.token_hex(6)
-        q(db, "INSERT INTO transactions(user_id,type,amount,status,reference,description) VALUES(:id,'wallet_funding',:amount,'pending',:reference,'Paystack wallet funding')", {"id": user_id, "amount": amount, "reference": reference})
+        # The fee is fixed HERE, once, and stored on the deposit. Crediting reads
+        # the stored figure, so a later rate change cannot alter this deposit.
+        description = deposit_fee.describe(amount, settings.deposit_fee_percent)
+        q(db, "INSERT INTO transactions(user_id,type,amount,status,reference,description) VALUES(:id,'wallet_funding',:amount,'pending',:reference,:description)", {"id": user_id, "amount": amount, "reference": reference, "description": description})
     try:
         pay = await paystack("/transaction/initialize", "POST", {"email": user["email"], "amount": str(round(amount*100)), "currency":"NGN", "reference":reference, "callback_url":f"{settings.cheapdata_public_url}/fund-wallet.html", "metadata":{"user_id":str(user_id),"purpose":"wallet_funding"}})
         data = pay.json()
@@ -1551,20 +1562,31 @@ async def fund_wallet(request: Request, response: Response, body: dict):
         raise HTTPException(400, data.get("message", "Unable to initialize payment."))
     if data["data"].get("reference") != reference:
         raise HTTPException(502, "Payment initialization could not be verified. Please try again later.")
-    return {"success": True, "message":"Payment initialized successfully.", "authorization_url":data["data"].get("authorization_url"), "access_code":data["data"].get("access_code"), "reference":reference}
+    split = deposit_fee.split(amount, settings.deposit_fee_percent)
+    return {"success": True, "message":"Payment initialized successfully.", "authorization_url":data["data"].get("authorization_url"), "access_code":data["data"].get("access_code"), "reference":reference, "fee": split["fee"], "credit": split["credit"]}
 
 
 async def credit_paystack(reference: str, payment: dict):
     with db_session() as db:
-        tx = q(db, "SELECT id,user_id,amount,status FROM transactions WHERE reference=:reference AND type='wallet_funding'" + (" FOR UPDATE" if engine.dialect.name != "sqlite" else ""), {"reference": reference}).mappings().first()
+        tx = q(db, "SELECT id,user_id,amount,status,description FROM transactions WHERE reference=:reference AND type='wallet_funding'" + (" FOR UPDATE" if engine.dialect.name != "sqlite" else ""), {"reference": reference}).mappings().first()
         if not tx: return "Transaction not found"
         if tx["status"] == "successful": return "Already processed"
         if tx["status"] != "pending":
             raise ValueError("Funding transaction is no longer pending")
         if payment.get("status") != "success" or str(payment.get("currency", "")).upper() != "NGN" or int(payment.get("amount", 0)) != round(float(tx["amount"])*100) or str((payment.get("metadata") or {}).get("user_id")) != str(tx["user_id"]) or str(payment.get("reference")) != reference:
             raise ValueError("Payment validation failed")
-        q(db, "UPDATE users SET balance=balance+:amount WHERE id=:id", {"amount": tx["amount"], "id": tx["user_id"]})
-        updated = q(db, "UPDATE transactions SET status='successful',description='Paystack wallet funding credited' WHERE id=:id AND status='pending'", {"id": tx["id"]})
+        # Wallet gets the amount paid minus the fee stored at creation. Deposits
+        # created before the fee existed have no marker and credit in full.
+        credit = deposit_fee.credit_for(tx["description"], float(tx["amount"]))
+        q(db, "UPDATE users SET balance=balance+:amount WHERE id=:id", {"amount": credit, "id": tx["user_id"]})
+        # Keep the customer-visible first segment (it states the fee) and the
+        # stored figures; only mark it credited.
+        stored_description = str(tx["description"] or "")
+        if " | deposit_fee_kobo=" in stored_description:
+            credited_description = stored_description  # already states paid + fee; status badge shows credited
+        else:
+            credited_description = "Paystack wallet funding credited"  # unchanged wording for fee-free / older deposits
+        updated = q(db, "UPDATE transactions SET status='successful',description=:description WHERE id=:id AND status='pending'", {"description": credited_description, "id": tx["id"]})
         if updated.rowcount != 1:
             raise RuntimeError("Funding transaction changed before credit could be finalized")
     return "Webhook processed"
@@ -1590,7 +1612,9 @@ async def verify_wallet(request: Request, body: dict):
     except ValueError: raise HTTPException(400, "Payment could not be verified as a valid MELODEXS CONNECT wallet funding.")
     with db_session() as db: balance=q(db,"SELECT balance FROM users WHERE id=:id",{"id":user_id}).scalar()
     message = "Payment has already been credited." if credit_result == "Already processed" else "Payment verified and wallet credited successfully."
-    return {"success":True,"message":message,"balance":float(balance),"amount":float(tx["amount"]),"reference":reference}
+    with db_session() as db: stored=q(db,"SELECT description FROM transactions WHERE reference=:reference",{"reference":reference}).scalar()
+    fee=deposit_fee.fee_of(stored); paid=float(tx["amount"])
+    return {"success":True,"message":message,"balance":float(balance),"amount":paid,"fee":fee,"credited":deposit_fee.credit_for(stored,paid),"reference":reference}
 
 
 @app.post("/api/paystack/webhook")
