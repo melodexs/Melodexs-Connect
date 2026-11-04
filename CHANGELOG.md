@@ -4,6 +4,11 @@ Notable changes, newest first. Dates are deployment dates.
 
 ## November 2026
 
+### Quality pass
+* **Search**: every page now has a description, and sign-in, account and money pages are marked `noindex` so they stay out of search results even if linked.
+* **Accessibility**: the add-plan and per-row inputs in Admin have real labels, and the current-PIN field is marked for password managers. The purchase PIN field still never autofills.
+* **Code health**: ESLint is clean with zero warnings (unused `catch` bindings removed). New tests cover the error envelope, security helpers, rate limits, package matching and supplier comparison. Three new decision records (0003 to 0005) explain the bearer token, WiseSub-only airtime and the deposit fee.
+
 ### Cleaner desktop sidebar
 * **Changed**: the desktop sidebar no longer lists a separate Profile item. Your photo, name and phone number at the bottom of the sidebar open Profile, and that card is highlighted while you are on the Profile page. Phones are unchanged: the bottom bar still has a Profile tab.
 
