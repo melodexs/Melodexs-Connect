@@ -14,12 +14,16 @@ on:
   pull_request:
     paths:
       - "apps/api-python/**"
+      # The contract tests read the static site (navigation, PWA, help page,
+      # statement export), so a web-only change must be tested too.
+      - "apps/web/**"
       - ".github/workflows/api-python-ci.yml"
   push:
     branches:
       - master
     paths:
       - "apps/api-python/**"
+      - "apps/web/**"
       - ".github/workflows/api-python-ci.yml"
 
 permissions:
@@ -42,6 +46,17 @@ jobs:
           python-version: "3.11"
           cache: pip
           cache-dependency-path: apps/api-python/requirements.txt
+
+      # The wallet statement export (apps/web/statement.js) is executed for
+      # real by the test suite, including its spreadsheet formula-injection
+      # defence. Without Node those tests skip, so pin it explicitly.
+      - name: Set up Node.js (runs the browser-module tests)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Fail loudly if Node is missing
+        run: node --version
 
       - name: Install dependencies
         run: pip install -r requirements.txt
