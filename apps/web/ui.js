@@ -278,14 +278,18 @@
             sidebar.innerHTML =
                 '<a class="sidebar-brand" href="/dashboard.html"><span class="logo-mark">M</span><span class="sidebar-brand-text">MELODEXS<small>CONNECT</small></span></a>' +
                 '<nav class="sidebar-nav" aria-label="Sections">' +
-                ALL_FEATURES.map(f =>
+                /* Profile is not listed here: the account chip below (photo,
+                   name, phone) already opens it. Phones have no chip, so the
+                   bottom bar keeps its Profile tab. */
+                ALL_FEATURES.filter(f => f.key !== "profile").map(f =>
                     '<a href="' + f.href + '" class="' + (f.key === activeFeature ? "active" : "") + '"' +
                     (f.key === activeFeature ? ' aria-current="page"' : "") + '>' +
                     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + f.icon + "</svg>" +
                     '<span>' + f.label + '</span></a>').join("") +
                 "</nav>" +
                 '<div class="sidebar-foot">' +
-                '<a class="sidebar-user" href="/purchase-pin.html">' +
+                '<a class="sidebar-user' + (activeFeature === "profile" ? " active" : "") + '" href="/purchase-pin.html"' +
+                (activeFeature === "profile" ? ' aria-current="page"' : "") + '>' +
                 '<span class="appbar-avatar">' + (user.profile_image ? '<img class="avatar-photo" alt="" src="' + user.profile_image + '">' : UI.esc(initials || "M")) + '</span>' +
                 '<span class="sidebar-user-text"><strong>' + UI.esc(user.name || "Your account") + '</strong><small>' + UI.esc(UI.formatPhone(user.phone) || "Add phone number") + '</small></span></a>' +
                 '<button class="sidebar-signout" id="sidebarSignout" type="button">' +
