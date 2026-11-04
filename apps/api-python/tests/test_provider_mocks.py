@@ -88,6 +88,8 @@ def test_paystack_initialize_and_verify_are_mocked(monkeypatch):
 
     monkeypatch.setattr(main, "paystack", fake_paystack)
     monkeypatch.setattr(main.settings, "paystack_secret_key", "mock-paystack-secret")
+    # The production default: a 3% deposit fee. Pay N250, the wallet gets N242.50.
+    monkeypatch.setattr(main.settings, "deposit_fee_percent", 3.0)
     with TestClient(main.app) as client:
         assert client.post("/api/register", json=payload).status_code == 200
         user_id = client.get("/api/session").json()["user"]["id"]
@@ -96,16 +98,17 @@ def test_paystack_initialize_and_verify_are_mocked(monkeypatch):
         reference = initialized.json()["reference"]
         verified = client.post("/api/fund-wallet/verify", json={"reference": reference})
         assert verified.status_code == 200
-        assert verified.json()["balance"] == 250
+        assert verified.json()["balance"] == 242.5
         repeated = client.post("/api/fund-wallet/verify", json={"reference": reference})
         assert repeated.status_code == 200
-        assert repeated.json()["balance"] == 250
+        assert repeated.json()["balance"] == 242.5
 
     assert calls[0][0] == "/transaction/initialize"
+    # Paystack is still asked for the FULL amount paid; only the credit is reduced.
     assert calls[0][2]["amount"] == "25000"
     assert len(calls) == 2
     with db_session() as db:
-        assert float(q(db, "SELECT balance FROM users WHERE id=:id", {"id": user_id}).scalar()) == 250
+        assert float(q(db, "SELECT balance FROM users WHERE id=:id", {"id": user_id}).scalar()) == 242.5
 
 
 def test_password_reset_email_route_uses_mocked_brevo(monkeypatch):
