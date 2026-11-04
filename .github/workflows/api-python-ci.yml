@@ -51,7 +51,7 @@ jobs:
       # real by the test suite, including its spreadsheet formula-injection
       # defence. Without Node those tests skip, so pin it explicitly.
       - name: Set up Node.js (runs the browser-module tests)
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
 
