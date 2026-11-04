@@ -4,6 +4,9 @@ Notable changes, newest first. Dates are deployment dates.
 
 ## November 2026
 
+### Deposit fee is now impossible to miss
+* **Fixed**: a customer topped up without seeing that a fee is deducted. The Top Up page now shows a fee notice at the top (for example: 3% is deducted, pay ₦1,000 and ₦970 is added). The Continue button stays off until the fee has loaded, and retries once if the server is waking up. If the fee still cannot load, the page says so and offers Retry instead of letting you pay blind. Before going to Paystack, a confirmation lists what you pay, the fee, and what reaches your wallet.
+
 ### Install button on Profile
 * **Fixed**: on a phone where the browser cannot show its own install prompt (app already installed, an in-app browser such as Instagram or Facebook, or a browser menu install), tapping "How to install" now shows the steps. Before, the steps were written but stayed hidden, so the button looked dead. iPhone steps and the one-tap Install button are unchanged.
 
