@@ -52,6 +52,17 @@ every value through `esc()` before it reaches `innerHTML`;
 The support number is stored in `help.html`, `offline.html` and `privacy.html`.
 `tests/test_help_and_support.py` fails if the copies drift apart.
 
+## Theme and network detection
+
+* `theme.js` loads synchronously in the `<head>` of every app page so the saved
+  choice (`melodexsTheme`: `light` or `dark`; absent means follow the phone) is
+  applied before first paint. Use the colour tokens in `styles.css`; do not
+  hard-code colours on cards.
+* `network-detect.js` is a pure module (no DOM, no network) holding the NCC
+  prefix table. `bindNetworkDetection` wires a phone input to a page's network
+  selector. A prefix is a hint, not proof (number portability), so the page must
+  show what was detected and keep a manual choice.
+
 ## Customer-facing text
 
 Transaction descriptions are stored as `customer text | internal note | ...`.

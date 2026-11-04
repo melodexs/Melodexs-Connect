@@ -4,6 +4,20 @@ Notable changes, newest first. Dates are deployment dates.
 
 ## November 2026
 
+### Dark mode, recipient nicknames and network auto-detect
+* **Network auto-detect**: on Buy Data and Buy Airtime the network is picked
+  from the number as you type (prefixes from the NCC Mobile Number Allocation
+  Table), and the page says what it picked. Tapping another network keeps your
+  choice for that number, because ported numbers keep their old prefix. Saved
+  recipients and "buy again" links keep the network they were saved with.
+* **Recipient nicknames**: saving a number asks for an optional name.
+* **Dark mode**: Light, Dark or follow-my-phone on the Profile page, applied
+  before first paint so there is no flash.
+* **Fixed**: saving a recipient only worked for MTN; Airtel, Glo and 9mobile
+  failed with "Invalid network". All four now save.
+* **Fixed**: page titles and subtitles on the blue background were dark text
+  (contrast 2.5:1 and 1.2:1); now light.
+
 ### Help centre, price list and statement download
 * **Help & Support** (`/help.html`): WhatsApp, call and email buttons plus an
   8-question FAQ covering pending and failed purchases, funding that has not
