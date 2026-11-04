@@ -32,6 +32,10 @@
     <h1 class="fw-bold" style="font-size:22px">Top Up Balance</h1>
     <p class="muted small">Secure wallet funding via Paystack</p>
 
+    <div class="fee-notice" id="feeNotice" role="note">
+        <strong>Deposit fee:</strong> <span id="feeNoticeText">a deposit fee is deducted from every top-up. Checking the exact amount&hellip;</span>
+    </div>
+
     <section class="balance-card mt-2" aria-label="Wallet balance">
         <div class="wallet-chip" aria-hidden="true">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0251B0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></svg>
@@ -74,7 +78,7 @@
 
             <div id="message" class="hidden" role="alert"></div>
 
-            <button type="submit" class="btn btn-lime btn-block btn-lg" id="fundButton">Continue to Payment</button>
+            <button type="submit" class="btn btn-lime btn-block btn-lg" id="fundButton" disabled>Loading fee&hellip;</button>
             <p class="small muted mt-1 text-center">🔒 Payments are processed securely by Paystack. MELODEXS CONNECT never stores your card details.</p>
         </form>
     </section>
@@ -148,13 +152,44 @@ function renderFee() {
     box.classList.remove("hidden");
 }
 
-async function loadDepositFee() {
-    try {
-        const response = await fetch("/api/deposit-fee", { credentials: "include" });
-        const data = await response.json();
-        if (response.ok && data.success && Number(data.percent) > 0) depositFeePercent = Number(data.percent);
-    } catch (error) { /* no preview; the server still applies and reports the fee */ }
+let depositFeeKnown = false;
+
+async function fetchDepositFeeOnce() {
+    const response = await fetch("/api/deposit-fee", { credentials: "include" });
+    const data = await response.json();
+    if (!response.ok || !data.success || !(Number(data.percent) >= 0)) throw new Error("fee unavailable");
+    depositFeePercent = Number(data.percent);
+}
+
+function paintFeeNotice() {
+    const text = document.getElementById("feeNoticeText");
+    if (depositFeePercent > 0) {
+        text.textContent = depositFeePercent + "% is deducted from every top-up. Pay " + formatNaira(1000) +
+            " and " + formatNaira(1000 - depositFee(1000)) + " is added to your wallet.";
+    } else {
+        text.textContent = "no deposit fee applies right now.";
+    }
     document.querySelectorAll(".fee-hint-percent").forEach(el => { el.textContent = depositFeePercent > 0 ? depositFeePercent + "% " : ""; });
+}
+
+async function loadDepositFee() {
+    const button = document.getElementById("fundButton");
+    // The API can be asleep on a cold start, so give it a second chance before giving up.
+    for (let attempt = 0; attempt < 2 && !depositFeeKnown; attempt++) {
+        try { await fetchDepositFeeOnce(); depositFeeKnown = true; } catch (error) { /* retry */ }
+    }
+    if (depositFeeKnown) {
+        paintFeeNotice();
+        button.disabled = false;
+        button.textContent = "Continue to Payment";
+    } else {
+        // Never let someone pay without knowing there is a fee.
+        document.getElementById("feeNoticeText").textContent =
+            "a deposit fee is deducted from every top-up, but we could not load the exact amount. Check your connection and tap Retry.";
+        button.disabled = false;
+        button.textContent = "Retry loading fee";
+        button.dataset.retry = "1";
+    }
     renderFee();
 }
 
@@ -177,9 +212,22 @@ function wireForm() {
 
     fundForm.addEventListener("submit", async function (event) {
         event.preventDefault();
+        if (fundButton.dataset.retry === "1") {
+            delete fundButton.dataset.retry;
+            fundButton.disabled = true;
+            fundButton.textContent = "Loading fee\u2026";
+            await loadDepositFee();
+            return;
+        }
         const amount = Number(amountInput.value);
         if (!Number.isInteger(amount) || amount < 100) { showMessage("Please enter an amount of at least ₦100.", "error"); return; }
         if (amount > 500000) { showMessage("The maximum funding amount is ₦500,000.", "error"); return; }
+        // Say exactly what happens to the money before leaving for Paystack.
+        const fee = depositFee(amount);
+        const summary = "You pay " + formatNaira(amount) + "\nDeposit fee (" + depositFeePercent + "%): " + formatNaira(fee) +
+            "\nAdded to your wallet: " + formatNaira(amount - fee);
+        const agreed = await window.MELODEXS_UI.confirm("Confirm top-up", summary, "Pay " + formatNaira(amount));
+        if (!agreed) return;
         fundButton.disabled = true;
         fundButton.textContent = "Preparing Payment…";
         document.getElementById("message").classList.add("hidden");

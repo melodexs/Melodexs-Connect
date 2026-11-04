@@ -2699,6 +2699,9 @@ body.app-body .hero-title.compact span { color: var(--lime); }
 
 /* Deposit fee breakdown on the fund page. Reuses .confirm-row so it follows the
    app's spacing and the dark theme without extra colour rules. */
+#confirm-message { white-space: pre-line; }
+.fee-notice { margin: 12px 0 0; padding: 12px 14px; border-radius: 12px; background: var(--lime, #D1FF42); color: #10243e; font-size: 14px; line-height: 1.5; font-weight: 500; }
+.fee-notice b, .fee-notice strong { font-weight: 800; }
 .fee-breakdown { margin: 4px 0 14px; padding: 6px 14px; border-radius: 14px; background: rgba(2, 81, 176, .07); border: 1px solid rgba(2, 81, 176, .18); }
 .fee-breakdown .fee-total .k { color: inherit; font-weight: 700; }
 .fee-breakdown .fee-total .v { font-size: 16px; }
