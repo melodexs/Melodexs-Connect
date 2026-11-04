@@ -21,6 +21,9 @@ them:
 
 * [ADR 0001: one adapter per supplier](adr/0001-provider-adapter-pattern.md)
 * [ADR 0002: database in the same region as the API](adr/0002-region-co-location.md)
+* [ADR 0003: a bearer token backs up the session cookie](adr/0003-bearer-token-for-safari.md)
+* [ADR 0004: airtime goes through WiseSub only](adr/0004-airtime-through-wisesub-only.md)
+* [ADR 0005: the deposit fee is fixed at deposit creation](adr/0005-deposit-fee-stored-at-creation.md)
 
 ## Policies
 
