@@ -15,7 +15,7 @@
         try {
             var v = root.localStorage.getItem(KEY);
             return v === "light" || v === "dark" ? v : null;
-        } catch (e) { return null; }
+        } catch { return null; }
     }
 
     function systemPrefersDark() {
@@ -44,7 +44,7 @@
         try {
             if (choice === "light" || choice === "dark") root.localStorage.setItem(KEY, choice);
             else root.localStorage.removeItem(KEY);
-        } catch (e) { /* private mode: the choice just won't persist */ }
+        } catch { /* private mode: the choice just won't persist */ }
         return apply();
     }
 
