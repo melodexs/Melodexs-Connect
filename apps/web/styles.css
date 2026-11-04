@@ -25,6 +25,14 @@
     --bg: #F4F7FB;
     --card: #FFFFFF;
     --line: #E4EAF2;
+    --soft: #F1F5FB;        /* subtle fill on cards: ghost buttons, inputs, chips */
+    --soft-2: #FBFCFE;      /* even lighter panel fill */
+    --row-hover: #F7FAFE;   /* table row hover */
+    --link: #0251B0;        /* inline brand-blue text on a light card */
+    --link-strong: #033A82; /* deeper brand-blue text (labels on lime) */
+    --hover-soft: #E7EDF6;  /* hover fill for ghost buttons */
+    --hover-info: #EEF4FF;  /* hover fill for outlined buttons */
+    --on-danger: #FFFFFF;   /* text on a solid danger button */
     --success: #067647;
     --success-bg: #ECFDF3;
     --warning: #B54708;
@@ -42,6 +50,88 @@
     --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     --safe-bottom: env(safe-area-inset-bottom, 0px);
     --safe-top: env(safe-area-inset-top, 0px);
+}
+
+/* ============================================================
+   DARK THEME
+   Applies when the user chose Dark, or chose nothing and their phone
+   prefers dark. Only tokens change, so every component follows. Brand
+   colours are untouched: lime stays lime, and the app surface moves from
+   electric blue to deep navy so white cards become navy cards.
+   `--white` is deliberately NOT overridden: it is used for text on blue
+   and navy, which must stay white in both themes.
+   ============================================================ */
+:root[data-theme="dark"] {
+    color-scheme: dark;
+    --link-strong: #BBD3FF;
+    --hover-soft: #1F3157;
+    --hover-info: #162A52;
+    --on-danger: #1A0B0A;
+    --ink: #E6ECF5;
+    --muted: #93A4BC;
+    --bg: #060D1F;
+    --card: #101C36;
+    --line: #223152;
+    --soft: #172745;
+    --soft-2: #13203D;
+    --row-hover: #172745;
+    --link: #8FB9FF;
+    --success: #4ADE80;
+    --success-bg: rgba(74, 222, 128, 0.12);
+    --warning: #FBBF24;
+    --warning-bg: rgba(251, 191, 36, 0.12);
+    --danger: #FF8A80;
+    --danger-bg: rgba(255, 138, 128, 0.12);
+    --info: #8FB9FF;
+    --info-bg: rgba(143, 185, 255, 0.12);
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+    --shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    --shadow-lg: 0 18px 44px rgba(0, 0, 0, 0.6);
+}
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        color-scheme: dark;
+        --link-strong: #BBD3FF;
+        --hover-soft: #1F3157;
+        --hover-info: #162A52;
+        --on-danger: #1A0B0A;
+        --ink: #E6ECF5;
+        --muted: #93A4BC;
+        --bg: #060D1F;
+        --card: #101C36;
+        --line: #223152;
+        --soft: #172745;
+        --soft-2: #13203D;
+        --row-hover: #172745;
+        --link: #8FB9FF;
+        --success: #4ADE80;
+        --success-bg: rgba(74, 222, 128, 0.12);
+        --warning: #FBBF24;
+        --warning-bg: rgba(251, 191, 36, 0.12);
+        --danger: #FF8A80;
+        --danger-bg: rgba(255, 138, 128, 0.12);
+        --info: #8FB9FF;
+        --info-bg: rgba(143, 185, 255, 0.12);
+        --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+        --shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+        --shadow-lg: 0 18px 44px rgba(0, 0, 0, 0.6);
+    }
+}
+
+/* The logged-in surface is electric blue in light mode and deep navy in dark. */
+:root[data-theme="dark"] body.app-body {
+    background:
+        radial-gradient(900px 420px at 85% -8%, rgba(209, 255, 66, 0.08), transparent 55%),
+        linear-gradient(178deg, #0B1530 0%, #070F24 45%, #050B1C 100%);
+    background-attachment: fixed;
+}
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) body.app-body {
+        background:
+            radial-gradient(900px 420px at 85% -8%, rgba(209, 255, 66, 0.08), transparent 55%),
+            linear-gradient(178deg, #0B1530 0%, #070F24 45%, #050B1C 100%);
+        background-attachment: fixed;
+    }
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -92,6 +182,15 @@ body.app-body .screen > h2 {
     margin: 26px 0 12px;
 }
 
+/* Page titles and their one-line subtitles sit directly on the blue/navy
+   surface (not on a card), so they must be light. They were inheriting the
+   dark ink, which measured 2.5:1 for the title and 1.2:1 for the subtitle. */
+body.app-body main > h1.fw-bold,
+body.app-body main > h1.fw-bold + p.muted {
+    color: var(--white);
+}
+body.app-body main > h1.fw-bold + p.muted { opacity: 0.88; }
+
 /* Small "See All" links on blue stay lime for contrast. */
 body.app-body main .see-all,
 body.app-body .see-all {
@@ -113,7 +212,7 @@ body.auth-body {
 }
 
 img { max-width: 100%; }
-a { color: var(--blue); }
+a { color: var(--link); }
 
 /* ---------- Typography ---------- */
 h1, h2, h3 { line-height: 1.2; }
@@ -281,7 +380,7 @@ h1, h2, h3 { line-height: 1.2; }
 }
 
 .section-head h2 { font-size: 17px; }
-.section-head a { font-size: 13px; font-weight: 600; text-decoration: none; }
+.section-head a { font-size: 13px; font-weight: 600; text-decoration: none; color: var(--lime); }
 
 /* ---------- Balance card (neon lime) ---------- */
 .balance-card {
@@ -371,7 +470,7 @@ h1, h2, h3 { line-height: 1.2; }
     width: 78px;
     height: 78px;
     border-radius: 50%;
-    background: var(--white);
+    background: var(--card);
 }
 
 .donut { position: relative; }
@@ -381,7 +480,7 @@ h1, h2, h3 { line-height: 1.2; }
     text-align: center;
     font-size: 12px;
     font-weight: 700;
-    color: var(--blue-800);
+    color: var(--link-strong);
     line-height: 1.25;
 }
 
@@ -389,7 +488,7 @@ h1, h2, h3 { line-height: 1.2; }
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    background: #F1F5FB;
+    background: var(--soft);
     border: 1px solid var(--line);
     color: var(--muted);
     border-radius: 999px;
@@ -400,7 +499,7 @@ h1, h2, h3 { line-height: 1.2; }
 /* Provider pill on mixed-provider plan cards (buy-data) */
 .pill-provider {
     background: rgba(2, 81, 176, 0.10);
-    color: #0251B0;
+    color: var(--link);
     border: 1px solid rgba(2, 81, 176, 0.25);
 }
 
@@ -412,7 +511,7 @@ h1, h2, h3 { line-height: 1.2; }
 }
 
 .service-tile {
-    background: var(--white);
+    background: var(--card);
     border: 1px solid var(--line);
     border-radius: var(--radius);
     box-shadow: var(--shadow-sm);
@@ -448,7 +547,7 @@ h1, h2, h3 { line-height: 1.2; }
     font-size: 10.5px;
     font-weight: 700;
     color: var(--muted);
-    background: #F1F5FB;
+    background: var(--soft);
     border-radius: 999px;
     padding: 2px 8px;
 }
@@ -458,7 +557,7 @@ h1, h2, h3 { line-height: 1.2; }
     display: flex;
     align-items: center;
     gap: 14px;
-    background: var(--white);
+    background: var(--card);
     border: 1px solid var(--line);
     border-radius: var(--radius);
     box-shadow: var(--shadow-sm);
@@ -522,15 +621,15 @@ h1, h2, h3 { line-height: 1.2; }
 
 .btn-outline {
     background: transparent;
-    color: var(--blue);
-    border: 2px solid var(--blue);
+    color: var(--link);
+    border: 2px solid var(--link);
 }
 .btn-outline:hover { background: var(--info-bg); }
 
-.btn-ghost { background: #F1F5FB; color: var(--ink); }
-.btn-ghost:hover { background: #E7EDF6; }
+.btn-ghost { background: var(--soft); color: var(--ink); }
+.btn-ghost:hover { background: var(--hover-soft); }
 
-.btn-danger { background: var(--danger); color: var(--white); }
+.btn-danger { background: var(--danger); color: var(--on-danger); }
 .btn-danger-soft { background: var(--danger-bg); color: var(--danger); }
 
 .btn-block { width: 100%; }
@@ -557,7 +656,7 @@ h1, h2, h3 { line-height: 1.2; }
     border-radius: 12px;
     font-size: 15px;
     font-family: var(--font);
-    background: var(--white);
+    background: var(--card);
     color: var(--ink);
     transition: border-color 0.15s, box-shadow 0.15s;
 }
@@ -601,7 +700,7 @@ h1, h2, h3 { line-height: 1.2; }
 
 .chip {
     border: 2px solid var(--line);
-    background: var(--white);
+    background: var(--card);
     color: var(--ink);
     border-radius: 999px;
     padding: 10px 16px;
@@ -635,7 +734,7 @@ h1, h2, h3 { line-height: 1.2; }
 
 .amount-grid .amount-btn {
     border: 2px solid var(--line);
-    background: var(--white);
+    background: var(--card);
     border-radius: var(--radius-sm);
     padding: 12px 6px;
     font-size: 14.5px;
@@ -647,7 +746,7 @@ h1, h2, h3 { line-height: 1.2; }
 }
 
 .amount-grid .amount-btn:hover { border-color: var(--blue-600); }
-.amount-grid .amount-btn.active { border-color: var(--blue); background: var(--info-bg); color: var(--blue-800); }
+.amount-grid .amount-btn.active { border-color: var(--link); background: var(--info-bg); color: var(--link-strong); }
 
 /* ============================================================
    PLAN CARDS
@@ -659,7 +758,7 @@ h1, h2, h3 { line-height: 1.2; }
 }
 
 .plan-card {
-    background: var(--white);
+    background: var(--card);
     border: 1.5px solid var(--line);
     border-radius: var(--radius);
     padding: 16px;
@@ -786,7 +885,7 @@ h1, h2, h3 { line-height: 1.2; }
 
 .filter-chip {
     border: 1.5px solid var(--line);
-    background: var(--white);
+    background: var(--card);
     color: var(--muted);
     border-radius: 999px;
     padding: 7px 13px;
@@ -873,7 +972,7 @@ h1, h2, h3 { line-height: 1.2; }
         display: flex;
         gap: 6px;
         margin: 0 0 22px;
-        background: var(--white);
+        background: var(--card);
         border: 1px solid var(--line);
         border-radius: 999px;
         padding: 6px;
@@ -1131,7 +1230,7 @@ select:focus-visible {
 .modal-backdrop.open { display: flex; }
 
 .modal {
-    background: var(--white);
+    background: var(--card);
     border-radius: 22px 22px 0 0;
     width: 100%;
     max-width: 560px;
@@ -1160,7 +1259,7 @@ select:focus-visible {
 .modal-close {
     width: 34px; height: 34px;
     border: none;
-    background: #F1F5FB;
+    background: var(--soft);
     border-radius: 50%;
     font-size: 17px;
     color: var(--muted);
@@ -1226,7 +1325,7 @@ select:focus-visible {
     border: 1.5px dashed var(--gray);
     border-radius: var(--radius);
     padding: 18px;
-    background: #FBFCFE;
+    background: var(--soft-2);
 }
 
 .receipt-head {
@@ -1236,7 +1335,7 @@ select:focus-visible {
     border-bottom: 1.5px dashed var(--gray);
 }
 
-.receipt-head .brand { font-weight: 800; color: var(--blue); font-size: 17px; letter-spacing: 0.3px; }
+.receipt-head .brand { font-weight: 800; color: var(--link); font-size: 17px; letter-spacing: 0.3px; }
 .receipt-head .tag { font-size: 12px; color: var(--muted); }
 
 .receipt .confirm-row { font-size: 13.5px; }
@@ -1275,7 +1374,7 @@ select:focus-visible {
 .auth-brand p { font-size: 13.5px; opacity: 0.75; margin-top: 4px; }
 
 .auth-card {
-    background: var(--white);
+    background: var(--card);
     color: var(--ink);
     border-radius: 20px;
     padding: 24px 22px;
@@ -1337,7 +1436,7 @@ select:focus-visible {
 }
 
 .stat-card {
-    background: var(--white);
+    background: var(--card);
     border: 1px solid var(--line);
     border-radius: var(--radius);
     padding: 14px 16px;
@@ -1373,7 +1472,7 @@ table.data-table td {
     vertical-align: middle;
 }
 
-table.data-table tr:hover td { background: #F7FAFE; }
+table.data-table tr:hover td { background: var(--row-hover); }
 
 /* ============================================================
    UTILITIES
@@ -2487,7 +2586,7 @@ body.app-body .hero-title.compact span { color: var(--lime); }
     padding: 12px 14px;
     font-size: 16px;
     color: var(--ink);
-    background: var(--white);
+    background: var(--card);
     border: 1.5px solid var(--line);
     border-radius: 12px;
     outline: none;
@@ -2522,12 +2621,12 @@ body.app-body .hero-title.compact span { color: var(--lime); }
 .message.success { background: var(--success-bg); color: var(--success); }
 
 .btn-secondary {
-    background: var(--white);
-    color: var(--blue);
-    border: 1.5px solid var(--blue);
+    background: var(--card);
+    color: var(--link);
+    border: 1.5px solid var(--link);
 }
 
-.btn-secondary:hover { background: #EEF4FF; }
+.btn-secondary:hover { background: var(--hover-info); }
 
 .content-pad { height: 20px; }
 
@@ -2540,7 +2639,7 @@ body.app-body .hero-title.compact span { color: var(--lime); }
     font-size: 13.5px;
     line-height: 1.7;
 }
-.install-steps b { color: var(--blue); }
+.install-steps b { color: var(--link); }
 .install-help { margin: 12px 0 0; padding: 12px 14px; border-radius: 10px; background: rgba(2, 81, 176, .08); border: 1px solid rgba(2, 81, 176, .25); color: #10243e; font-size: 13.5px; line-height: 1.55; }
 .install-help.hidden { display: none; }
 /* Continue with Google (login + registration) */

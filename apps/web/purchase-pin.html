@@ -95,6 +95,16 @@
             <p class="message" id="message" role="status" aria-live="polite" hidden></p>
         </section>
 
+        <section class="card" aria-labelledby="appearanceTitle">
+            <h2 class="card-title" id="appearanceTitle">Appearance</h2>
+            <p class="muted small" style="margin:6px 0 12px">Choose how MELODEXS CONNECT looks. "Match my phone" follows your phone's light or dark setting.</p>
+            <div class="chip-row" id="themeChoices" role="group" aria-label="Theme">
+                <button type="button" class="chip" data-theme-choice="light" aria-pressed="false">Light</button>
+                <button type="button" class="chip" data-theme-choice="dark" aria-pressed="false">Dark</button>
+                <button type="button" class="chip" data-theme-choice="system" aria-pressed="false">Match my phone</button>
+            </div>
+        </section>
+
         <section class="card hidden" id="installCard" aria-labelledby="installTitle">
             <h2 class="card-title" id="installTitle">Get the app</h2>
             <p class="section-hint" id="installHint">Install MELODEXS CONNECT on your phone for one-tap access and faster checkouts.</p>
@@ -122,6 +132,8 @@
 
     <nav class="desktop-tabs" id="desktop-tabs" aria-label="Primary"></nav>
     <nav class="bottom-nav" id="bottom-nav" aria-label="Primary"></nav>
+
+    <script src="theme.js"></script>
 
     <script src="api.js"></script>
     <script src="ui.js"></script>
@@ -199,6 +211,28 @@
             });
         }
         document.addEventListener("DOMContentLoaded", setupInstallCard);
+        function setupThemeChoices() {
+            var theme = window.MELODEXS_THEME;
+            var box = document.getElementById("themeChoices");
+            if (!theme || !box) return;
+            function paint() {
+                var chosen = theme.get() || "system";
+                box.querySelectorAll("[data-theme-choice]").forEach(function (b) {
+                    var on = b.getAttribute("data-theme-choice") === chosen;
+                    b.setAttribute("aria-pressed", on ? "true" : "false");
+                    b.classList.toggle("active", on);
+                });
+            }
+            box.addEventListener("click", function (e) {
+                var b = e.target.closest("[data-theme-choice]");
+                if (!b) return;
+                theme.set(b.getAttribute("data-theme-choice"));
+                paint();
+            });
+            paint();
+        }
+        document.addEventListener("DOMContentLoaded", setupThemeChoices);
+
 
         function showMessage(text, type) {
             message.textContent = text;

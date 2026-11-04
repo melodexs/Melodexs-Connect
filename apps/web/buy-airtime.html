@@ -7,7 +7,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Buy Airtime | MELODEXS CONNECT</title>
     <link rel="stylesheet" href="/styles.css">
+    <script src="theme.js"></script>
     <script src="api.js"></script>
+    <script src="network-detect.js"></script>
     <script src="ui.js" defer></script>
     <meta name="theme-color" content="#0251B0">
     <link rel="manifest" href="/manifest.webmanifest">
@@ -38,6 +40,7 @@
         <div class="field">
             <label for="phone">Recipient phone number</label>
             <input id="phone" type="tel" inputmode="numeric" autocomplete="tel" placeholder="e.g. 08012345678" maxlength="14">
+            <p class="small muted" id="networkNote" role="status" aria-live="polite" hidden style="margin-top:6px"></p>
         </div>
         <div id="favoritesRow" class="hidden">
             <label class="small fw-bold muted">Saved recipients</label>
@@ -109,6 +112,13 @@ async function start() {
         }));
 
     document.getElementById("phone").addEventListener("input", updateSummary);
+    // Pick the network from the number's prefix as the user types (they can still override it).
+    window.networkDetection = window.MELODEXS_NETWORK.bindNetworkDetection(document.getElementById("phone"), {
+        getNetwork: () => selectedNetwork,
+        setNetwork: setNetwork,
+        noteElement: document.getElementById("networkNote"),
+        networkChips: document.getElementById("networks")
+    });
     document.getElementById("amount").addEventListener("input", () => {
         document.querySelectorAll(".amount-btn").forEach(b => b.classList.remove("active"));
         updateSummary();
@@ -131,18 +141,20 @@ async function loadBalance() {
     } catch (error) { /* cached balance */ }
 }
 
+function setNetwork(slug) {
+    const container = document.getElementById("networks");
+    selectedNetwork = slug;
+    container.querySelectorAll(".network").forEach(b => b.classList.toggle("active", b.dataset.network === slug));
+    document.getElementById("summaryNetwork").textContent = selectedNetwork;
+}
+
 function renderNetworks() {
     const container = document.getElementById("networks");
     container.innerHTML = ui().NETWORKS.map(n =>
         '<button type="button" class="chip network ' + (n.slug === selectedNetwork ? "active" : "") + '" data-network="' + n.slug + '">' +
         '<span class="chip-dot" style="background:' + n.color + '"></span>' + n.slug + "</button>").join("");
     container.querySelectorAll(".network").forEach(button =>
-        button.addEventListener("click", () => {
-            selectedNetwork = button.dataset.network;
-            container.querySelectorAll(".network").forEach(b => b.classList.remove("active"));
-            button.classList.add("active");
-            document.getElementById("summaryNetwork").textContent = selectedNetwork;
-        }));
+        button.addEventListener("click", () => setNetwork(button.dataset.network)));
 }
 
 async function loadFavorites() {
@@ -171,10 +183,10 @@ function renderFavorites() {
         chip.title = fav.network ? fav.network + " · " + fav.phone : fav.phone;
         chip.addEventListener("click", () => {
             document.getElementById("phone").value = fav.phone;
-            if (fav.network && fav.network !== selectedNetwork) {
-                const btn = document.querySelector('.network[data-network="' + fav.network + '"]');
-                if (btn) btn.click();
-            }
+            // A saved recipient remembers the network the user picked, which is
+            // right even for a ported number, so it wins over the prefix.
+            if (fav.network) setNetwork(fav.network);
+            if (window.networkDetection) window.networkDetection.pinCurrent();
             updateSummary();
             ui().toast("Recipient filled. Review and confirm your purchase.", "info");
         });
@@ -204,10 +216,15 @@ function renderFavorites() {
 async function saveFavorite() {
     const phone = document.getElementById("phone").value.trim();
     if (!/^0[7-9][0-1][0-9]{8}$/.test(phone)) { showMessage("Enter a valid recipient number before saving it.", "error"); return; }
+    // Ask for a name so the chip reads "Mum" instead of a bare number.
+    // null = cancelled (save nothing), "" = skipped (save the number only).
+    const nickname = await ui().promptText("Save this recipient", "Give " + phone + " a name so you can find it quickly, like Mum or Office.",
+        { placeholder: "e.g. Mum", okLabel: "Save", skipLabel: "Skip" });
+    if (nickname === null) return;
     try {
         const response = await fetch("/api/favorites", {
             method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
-            body: JSON.stringify({ phone: phone, network: selectedNetwork, label: "" })
+            body: JSON.stringify({ phone: phone, network: selectedNetwork, label: nickname })
         });
         const data = await response.json();
         if (!response.ok || !data.success) throw new Error(data.message || "Could not save");
