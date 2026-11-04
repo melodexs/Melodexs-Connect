@@ -56,7 +56,7 @@
            response handed us a token, send it as a bearer credential so the
            session survives browsers that drop third-party cookies. */
         const sessionToken = (function () {
-            try { return localStorage.getItem("cheapdataToken"); } catch (error) { return null; }
+            try { return localStorage.getItem("cheapdataToken"); } catch { return null; }
         })();
         if (sessionToken) {
             const headers = new Headers(requestInit.headers || {});
