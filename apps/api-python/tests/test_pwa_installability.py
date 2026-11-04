@@ -125,3 +125,21 @@ def test_install_button_is_always_actionable():
     end = profile.index("document.addEventListener(\"DOMContentLoaded\", setupInstallCard)")
     card_logic = profile[start:end]
     assert "disabled" not in card_logic, "install button must stay tappable when no native prompt is available"
+
+
+def test_install_guidance_is_actually_revealed_not_just_filled_in():
+    """Regression: the help box ships with class="hidden", and the stylesheet's
+    `.hidden { display: none !important }` wins over the `hidden` attribute.
+    Flipping only the attribute wrote the guidance but left it invisible, so
+    the button looked dead on phones. Showing and hiding must toggle the class."""
+    profile = (WEB / "purchase-pin.html").read_text()
+    css = (WEB / "styles.css").read_text()
+    assert ".hidden { display: none !important; }" in css, "premise of this test changed"
+    assert 'id="installHelp" class="install-help hidden"' in profile
+    start = profile.index("function setupInstallCard")
+    end = profile.index("document.addEventListener(\"DOMContentLoaded\", setupInstallCard)")
+    card_logic = profile[start:end]
+    assert 'classList.toggle("hidden"' in card_logic, "the hidden class must be toggled to reveal the guidance"
+    # No remaining place may flip only the attribute on the help box.
+    assert "help.hidden = false" not in card_logic.replace("help.hidden = !visible", "")
+    assert "help.hidden = true" not in card_logic
