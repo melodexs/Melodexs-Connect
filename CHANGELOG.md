@@ -4,6 +4,9 @@ Notable changes, newest first. Dates are deployment dates.
 
 ## November 2026
 
+### Wallet deposit fee
+* **Added**: a 3% fee is kept from each wallet deposit. A customer who pays N1,000 gets N970 in their wallet. The fund page shows the fee live before they pay; the Wallet detail and receipt show the amount paid, the fee and what was added. Set `DEPOSIT_FEE_PERCENT` to change the rate (`0` turns it off). Deposits already in progress, and every older deposit, are credited exactly as before.
+
 ### Quality pass
 * **Search**: every page now has a description, and sign-in, account and money pages are marked `noindex` so they stay out of search results even if linked.
 * **Accessibility**: the add-plan and per-row inputs in Admin have real labels, and the current-PIN field is marked for password managers. The purchase PIN field still never autofills.

@@ -132,6 +132,10 @@ in the deployment environment.
   `WISESUB_ENVIRONMENT`: WiseSub API configuration.
 - `CHEAPDATA_MARKUP_PERCENT`: data plan price markup. The existing name is
   retained for compatibility.
+- `DEPOSIT_FEE_PERCENT`: percentage kept from each wallet deposit (default `3`:
+  pay N1,000, wallet receives N970). `0` switches the fee off. The fee is fixed
+  when a deposit is created, so changing it never alters a deposit already in
+  flight.
 - `BREVO_API_KEY`, `BREVO_FROM_EMAIL`, `BREVO_FROM_NAME`: password reset email
   delivery through Brevo.
 - `DB_PATH`: legacy SQLite path used by some database maintenance scripts; the
