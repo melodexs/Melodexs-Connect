@@ -12,5 +12,5 @@
         if (!signedIn) return;
         var links = document.querySelectorAll("[data-home-link]");
         for (var i = 0; i < links.length; i++) links[i].setAttribute("href", "/dashboard.html");
-    } catch (error) { /* storage blocked: keep the welcome page link */ }
+    } catch { /* storage blocked: keep the welcome page link */ }
 })();
