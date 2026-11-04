@@ -7,7 +7,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Buy Data | MELODEXS CONNECT</title>
     <link rel="stylesheet" href="/styles.css">
+    <script src="theme.js"></script>
     <script src="api.js"></script>
+    <script src="network-detect.js"></script>
     <script src="ui.js" defer></script>
     <meta name="theme-color" content="#0251B0">
     <link rel="manifest" href="/manifest.webmanifest">
@@ -59,6 +61,7 @@
         <div class="field">
             <label for="phone">Recipient phone number</label>
             <input id="phone" type="tel" inputmode="numeric" autocomplete="tel" placeholder="e.g. 08012345678" maxlength="14">
+            <p class="small muted" id="networkNote" role="status" aria-live="polite" hidden style="margin-top:6px"></p>
             <div class="hint">The number that will receive the data bundle.</div>
         </div>
         <div id="favoritesRow" class="hidden">
@@ -137,6 +140,24 @@ async function start() {
     await loadBalance();
     await loadFavorites();
     loadPlans();
+
+    // Pick the network from the number's prefix as the user types (they can still override it).
+    // A detected switch goes through selectNetwork() so categories and plans reload properly.
+    window.networkDetection = window.MELODEXS_NETWORK.bindNetworkDetection(document.getElementById("phone"), {
+        getNetwork: () => selectedNetwork,
+        setNetwork: (slug) => {
+            const btn = document.querySelector('.network[data-network="' + slug + '"]');
+            if (btn) selectNetwork(slug, btn);
+        },
+        noteElement: document.getElementById("networkNote"),
+        networkChips: document.getElementById("networks")
+    });
+    if (document.getElementById("phone").value) {
+        // "Buy again" links carry both the number and the network the user used last
+        // time. That network is theirs, so keep it; otherwise just detect.
+        if (params.get("network")) window.networkDetection.pinCurrent();
+        else window.networkDetection.refresh();
+    }
 
     document.getElementById("backToCategories").addEventListener("click", backToCategories);
     document.getElementById("buyButton").addEventListener("click", purchaseData);
@@ -227,6 +248,13 @@ function renderFavorites() {
         // submits a purchase by itself.
         chip.addEventListener("click", () => {
             document.getElementById("phone").value = fav.phone;
+            // A saved recipient remembers the network the user picked, which is
+            // right even for a ported number, so it wins over the prefix.
+            if (fav.network && fav.network !== selectedNetwork) {
+                const btn = document.querySelector('.network[data-network="' + fav.network + '"]');
+                if (btn) selectNetwork(fav.network, btn);
+            }
+            if (window.networkDetection) window.networkDetection.pinCurrent();
             ui.toast("Recipient filled. Review and confirm your purchase.", "info");
         });
         const remove = document.createElement("button");
@@ -259,12 +287,17 @@ async function saveFavorite() {
         showMessage("Enter a valid recipient number before saving it.", "error");
         return;
     }
+    // Ask for a name so the chip reads "Mum" instead of a bare number.
+    // null = cancelled (save nothing), "" = skipped (save the number only).
+    const nickname = await ui.promptText("Save this recipient", "Give " + phone + " a name so you can find it quickly, like Mum or Office.",
+        { placeholder: "e.g. Mum", okLabel: "Save", skipLabel: "Skip" });
+    if (nickname === null) return;
     try {
         const response = await fetch("/api/favorites", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             credentials: "include",
-            body: JSON.stringify({ phone: phone, network: selectedNetwork, label: "" })
+            body: JSON.stringify({ phone: phone, network: selectedNetwork, label: nickname })
         });
         const data = await response.json();
         if (!response.ok || !data.success) throw new Error(data.message || "Could not save");
