@@ -2683,3 +2683,8 @@ body.app-body .hero-title.compact span { color: var(--lime); }
     animation: boot-spin 0.8s linear infinite;
 }
 @keyframes boot-spin { to { transform: rotate(360deg); } }
+
+/* First-time setup: the "add a profile picture" step after creating a PIN. */
+.onboarding-photo .onboarding-avatar { display: flex; justify-content: center; margin: 18px 0 16px; }
+.onboarding-photo .avatar-big { width: 120px; height: 120px; font-size: 40px; }
+.onboarding-photo .btn + .btn, .onboarding-photo .btn + input + .btn { margin-top: 10px; }
