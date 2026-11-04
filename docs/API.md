@@ -45,7 +45,8 @@ disabled, so the UI can hide the form without a special case.
 | Method | Path | Notes |
 | --- | --- | --- |
 | GET | `/api/transactions/{user_id}` | Ownership enforced; supports type/status/q/limit/offset. |
-| POST | `/api/fund-wallet`, `/api/fund-wallet/verify` | Paystack initialise and verify. |
+| POST | `/api/fund-wallet`, `/api/fund-wallet/verify` | Paystack initialise and verify. The customer pays the full amount; a deposit fee is kept and only the rest is credited. Both responses report `fee` and `credit`/`credited`. |
+| GET | `/api/deposit-fee` | Public. `{success, percent}`: the current deposit fee so the fund page can preview it. |
 | POST | `/api/paystack/webhook` | Signed provider callback. |
 | GET/POST/DELETE | `/api/favorites` | Saved recipients, 20 per user. |
 | POST | `/api/purchase-pin/set`, `/change`, `/verify` | Four-digit purchase PIN. |
