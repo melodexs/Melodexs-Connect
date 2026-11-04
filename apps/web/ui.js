@@ -321,14 +321,14 @@
        idempotent, so this is just an early first pass. */
     document.addEventListener("DOMContentLoaded", function () {
         if (!document.getElementById("app-sidebar") && document.getElementById("appbar")) {
-            try { UI.mountChrome(); } catch (error) { /* page boot will retry */ }
+            try { UI.mountChrome(); } catch { /* page boot will retry */ }
         }
     });
 
     UI.logoutWithConfirm = async function () {
         const confirmed = await UI.confirm("Sign out?", "You will need to log in again to access your account.", "Sign out");
         if (!confirmed) return;
-        try { await fetch("/api/logout", { method: "POST", credentials: "include" }); } catch (error) { /* network: still clear locally */ }
+        try { await fetch("/api/logout", { method: "POST", credentials: "include" }); } catch { /* network: still clear locally */ }
         localStorage.removeItem("cheapdataUser");
         localStorage.removeItem("cheapdataNewUserId");
         localStorage.removeItem("cheapdataToken");
