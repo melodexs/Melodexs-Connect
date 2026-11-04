@@ -191,6 +191,26 @@ body.app-body main > h1.fw-bold + p.muted {
 }
 body.app-body main > h1.fw-bold + p.muted { opacity: 0.88; }
 
+/* Profile page: line the welcome block up with the text inside the cards.
+   The hero had no rules, so "Hello, Melody!" sat at the very edge of the
+   content while "Account Profile" and the field labels sat a card-padding
+   (20px plus its 1px border) further in. The cards also ran edge to edge on a phone. Give the
+   page a side gutter, and inset the welcome block by the cards' own padding
+   so every left edge is the same. */
+body.app-body main.screen {
+    padding: 18px 16px calc(96px + var(--safe-bottom));
+}
+body.app-body main.screen > .hero {
+    /* 20px card padding + 1px card border = where the card's own text starts */
+    padding: 4px 21px 14px;
+}
+body.app-body main.screen > .hero .hero-hello { margin: 0; font-size: 17px; opacity: 0.92; color: var(--white); }
+body.app-body main.screen > .hero .hero-title { margin: 2px 0 0; }
+body.app-body main.screen > .hero .hero-sub { margin: 6px 0 0; }
+@media (min-width: 900px) {
+    body.has-sidebar.app-body main.screen { max-width: 940px; margin: 0 auto; padding: 30px 36px 56px; }
+}
+
 /* Small "See All" links on blue stay lime for contrast. */
 body.app-body main .see-all,
 body.app-body .see-all {
