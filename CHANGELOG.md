@@ -4,6 +4,9 @@ Notable changes, newest first. Dates are deployment dates.
 
 ## November 2026
 
+### Back to home
+* **Fixed**: on the Help, Privacy and Prices pages, "Back to home" now takes a signed-in customer to their dashboard instead of the welcome page. Visitors who are not signed in still go to the welcome page.
+
 ### Sign-up with +234 and first-time setup
 * **Sign-up accepts +234**: `+234 806 834 7514`, `2348068347514`, and numbers with spaces or dashes all work. They are stored as the local `0806...` form, so the same person cannot register twice under two spellings.
 * **First-time setup**: after creating an account and a Purchase PIN, new users are asked to add a profile picture (or skip), then land on the home page. Existing users changing their PIN are not affected.
