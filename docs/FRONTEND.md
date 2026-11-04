@@ -78,3 +78,10 @@ official receipt and CSV export all do.
 * A new page joins `APP_PAGES` in `tests/test_web_assets.py`, or the suite fails.
 * Phone layout is the default; desktop is the `min-width: 900px` override.
 * Every control needs a label; icons carry `aria-hidden`.
+* Every page needs a `<meta name="description">`. A page that is not in
+  `sitemap.xml` also needs `<meta name="robots" content="noindex, nofollow">`:
+  `robots.txt` only stops crawling, while `noindex` keeps a linked URL out of
+  search results. `tests/test_page_metadata.py` enforces both.
+* Password fields declare `autocomplete` (`current-password` or `new-password`).
+  The purchase PIN field is the one exception and stays `autocomplete="off"` so a
+  browser never saves the PIN that authorises spending.
