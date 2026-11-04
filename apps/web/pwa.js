@@ -22,7 +22,7 @@
     function wasDismissed() {
         try {
             return window.localStorage.getItem(DISMISSED_KEY) === "true";
-        } catch (error) {
+        } catch {
             return false;
         }
     }
@@ -30,7 +30,7 @@
     function dismissPermanently() {
         try {
             window.localStorage.setItem(DISMISSED_KEY, "true");
-        } catch (error) {
+        } catch {
             // The current page still hides the banner when storage is unavailable.
         }
         hideBanner();
@@ -45,7 +45,7 @@
 
     function notifyListeners() {
         listeners.forEach(fn => {
-            try { fn(!!installPrompt); } catch (error) { /* listener errors never break install UX */ }
+            try { fn(!!installPrompt); } catch { /* listener errors never break install UX */ }
         });
     }
 
