@@ -99,6 +99,17 @@ function describe(transaction) {
     return (S ? S.customerDescription(raw) : String(raw).split(" | ")[0].trim());
 }
 
+/* For a wallet funding that carried a deposit fee: the fee and what reached the
+   wallet. Empty for purchases and for deposits made before the fee existed. */
+function feeRows(t) {
+    const S = window.MELODEXS_STATEMENT, UI = window.MELODEXS_UI;
+    if (!S || t.type !== "wallet_funding") return "";
+    const b = S.depositBreakdown(t);
+    if (!b.hasFee) return "";
+    return '<div class="confirm-row"><span class="k">Deposit fee</span><span class="v">− ' + UI.esc(UI.formatNaira(b.fee)) + "</span></div>" +
+           '<div class="confirm-row"><span class="k">Added to wallet</span><span class="v">' + UI.esc(UI.formatNaira(b.credited)) + "</span></div>";
+}
+
 const PAGE_SIZE = 20;
 let currentOffset = 0;
 let filters = { type: "", status: "", q: "" };
@@ -264,7 +275,8 @@ function openDetail(t) {
     document.getElementById("txDetail").innerHTML =
         '<div class="confirm-row"><span class="k">Reference</span><span class="v">' + UI.esc(t.reference || "—") + "</span></div>" +
         '<div class="confirm-row"><span class="k">Type</span><span class="v">' + UI.esc(isCredit ? "Wallet funding" : "Purchase") + "</span></div>" +
-        '<div class="confirm-row"><span class="k">Amount</span><span class="v">' + (isCredit ? "+ " : "− ") + UI.esc(UI.formatNaira(t.amount)) + "</span></div>" +
+        '<div class="confirm-row"><span class="k">' + (isCredit ? "Amount paid" : "Amount") + '</span><span class="v">' + (isCredit ? "+ " : "− ") + UI.esc(UI.formatNaira(t.amount)) + "</span></div>" +
+        feeRows(t) +
         '<div class="confirm-row"><span class="k">Date</span><span class="v">' + UI.esc(new Date(t.created_at).toLocaleString("en-NG")) + "</span></div>" +
         '<div class="confirm-row"><span class="k">Details</span><span class="v">' + UI.esc(describe(t) || "—") + "</span></div>" +
         '<div class="confirm-row"><span class="k">Status</span><span class="v"><span class="badge ' + statusBadge + '"><span class="dot"></span>' + UI.esc(t.status) + "</span></span></div>" +
@@ -281,7 +293,8 @@ function openDetail(t) {
                     '<div class="confirm-row"><span class="k">Type</span><span class="v">' + UI.esc(isCredit ? "Wallet funding" : "Purchase") + "</span></div>" +
                     '<div class="confirm-row"><span class="k">Date</span><span class="v">' + UI.esc(new Date(t.created_at).toLocaleString("en-NG")) + "</span></div>" +
                     '<div class="confirm-row"><span class="k">Details</span><span class="v">' + UI.esc(describe(t) || "—") + "</span></div>" +
-                    '<div class="receipt-total">Amount: ' + UI.esc(UI.formatNaira(t.amount)) + "</div>" +
+                    feeRows(t) +
+                    '<div class="receipt-total">' + (feeRows(t) ? "Amount paid: " : "Amount: ") + UI.esc(UI.formatNaira(t.amount)) + "</div>" +
                     '<div class="text-center small muted mt-1">Thank you for choosing MELODEXS CONNECT</div>';
             }
         });

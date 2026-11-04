@@ -74,8 +74,24 @@
         return new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" });
     }
 
+    // A deposit made with a fee stores, after the customer-visible text,
+    //   "... | deposit_fee_kobo=3000 | credit_kobo=97000"
+    // These read those figures back so the screen and receipt can show the fee
+    // and what actually reached the wallet. Deposits made before the fee existed
+    // have no markers: fee 0, and the whole amount was credited.
+    function depositBreakdown(t) {
+        var text = t && t.description ? String(t.description) : "";
+        var m = /\|\s*deposit_fee_kobo=(\d+)\s*\|\s*credit_kobo=(\d+)/.exec(text);
+        var paid = Number(t && t.amount);
+        if (!m || !isFinite(paid)) return { fee: 0, credited: isFinite(paid) ? paid : 0, hasFee: false };
+        var fee = Number(m[1]) / 100, credited = Number(m[2]) / 100;
+        // The two figures must add up to what was paid; if not, trust nothing.
+        if (Math.round((fee + credited) * 100) !== Math.round(paid * 100)) return { fee: 0, credited: paid, hasFee: false };
+        return { fee: fee, credited: credited, hasFee: fee > 0 };
+    }
+
     var api = { COLUMNS: COLUMNS, toCsv: toCsv, cell: cell, fileName: fileName, toBlob: toBlob,
-                customerDescription: customerDescription };
+                customerDescription: customerDescription, depositBreakdown: depositBreakdown };
     if (typeof module !== "undefined" && module.exports) module.exports = api;
     root.MELODEXS_STATEMENT = api;
 })(typeof window !== "undefined" ? window : globalThis);
