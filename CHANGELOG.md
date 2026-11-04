@@ -4,6 +4,9 @@ Notable changes, newest first. Dates are deployment dates.
 
 ## November 2026
 
+### Cleaner desktop sidebar
+* **Changed**: the desktop sidebar no longer lists a separate Profile item. Your photo, name and phone number at the bottom of the sidebar open Profile, and that card is highlighted while you are on the Profile page. Phones are unchanged: the bottom bar still has a Profile tab.
+
 ### Back to home
 * **Fixed**: on the Help, Privacy and Prices pages, "Back to home" now takes a signed-in customer to their dashboard instead of the welcome page. Visitors who are not signed in still go to the welcome page.
 
