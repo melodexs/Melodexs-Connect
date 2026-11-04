@@ -128,6 +128,67 @@
         });
     };
 
+    /* ---------- Text prompt (e.g. naming a saved recipient) ----------
+       Builds its own markup on first use so no page has to ship modal HTML:
+       an empty modal shell on a page once made UI.confirm() throw and
+       silently killed purchases. Resolves to the trimmed text, "" when the
+       user chooses to skip, or null when they cancel. */
+    UI.promptText = function (title, message, options) {
+        const opts = options || {};
+        return new Promise((resolve) => {
+            let backdrop = document.getElementById("prompt-modal");
+            if (!backdrop) {
+                backdrop = document.createElement("div");
+                backdrop.className = "modal-backdrop";
+                backdrop.id = "prompt-modal";
+                backdrop.setAttribute("role", "dialog");
+                backdrop.setAttribute("aria-modal", "true");
+                backdrop.setAttribute("aria-labelledby", "prompt-title");
+                backdrop.innerHTML = '<div class="modal"><div class="modal-head"><h3 id="prompt-title"></h3>' +
+                    '<button type="button" class="modal-close" id="prompt-cancel" aria-label="Cancel">\u2715</button></div>' +
+                    '<p class="muted" id="prompt-message" style="margin-bottom:12px"></p>' +
+                    '<input class="input" id="prompt-input" type="text" autocomplete="off" style="margin-bottom:18px">' +
+                    '<div class="row" style="justify-content:flex-end">' +
+                    '<button type="button" class="btn btn-ghost" id="prompt-skip"></button>' +
+                    '<button type="button" class="btn btn-primary" id="prompt-ok"></button></div></div>';
+                document.body.appendChild(backdrop);
+            }
+            const input = document.getElementById("prompt-input");
+            const ok = document.getElementById("prompt-ok");
+            const skip = document.getElementById("prompt-skip");
+            const cancel = document.getElementById("prompt-cancel");
+            document.getElementById("prompt-title").textContent = title;
+            document.getElementById("prompt-message").textContent = message || "";
+            input.value = "";
+            input.placeholder = opts.placeholder || "";
+            input.maxLength = opts.maxLength || 60;
+            ok.textContent = opts.okLabel || "Save";
+            skip.textContent = opts.skipLabel || "Skip";
+            skip.style.display = opts.allowSkip === false ? "none" : "";
+            const done = (answer) => {
+                UI.closeModal("prompt-modal");
+                ok.onclick = skip.onclick = cancel.onclick = backdrop.onclick = null;
+                document.removeEventListener("keydown", onKey, true);
+                resolve(answer);
+            };
+            ok.onclick = () => done(input.value.trim());
+            skip.onclick = () => done("");
+            cancel.onclick = () => done(null);
+            backdrop.onclick = (e) => { if (e.target === backdrop) done(null); };
+            // Listen on the document while the dialog is open, not on the dialog:
+            // tapping the card's text moves focus to <body>, and Escape must
+            // still close it. The listener is removed in done().
+            const onKey = (e) => {
+                if (e.key === "Escape") { e.preventDefault(); done(null); }
+                else if (e.key === "Enter" && e.target === input) { e.preventDefault(); done(input.value.trim()); }
+            };
+            document.addEventListener("keydown", onKey, true);
+            UI.openModal("prompt-modal");
+            input.focus();
+            setTimeout(() => input.focus(), 50);
+        });
+    };
+
     /* ---------- HTML escaping ---------- */
     UI.esc = function (value) {
         return String(value == null ? "" : value)
