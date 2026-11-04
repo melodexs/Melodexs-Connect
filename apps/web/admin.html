@@ -565,9 +565,9 @@
             <tr>
                 <td>${escapeHtml(plan.network)}</td>
                 <td><strong>${escapeHtml(plan.plan)}</strong></td>
-                <td><input id="cost-${plan.id}" type="number" min="0" step="0.01" value="${Number(plan.provider_cost)}"></td>
-                <td><input id="price-${plan.id}" type="number" min="1" step="0.01" value="${Number(plan.selling_price)}"><label style="display:block;font-size:12px"><input id="fixed-${plan.id}" type="checkbox" ${plan.selling_price_override !== null ? "checked" : ""}> Fixed override</label></td>
-                <td><input id="category-${plan.id}" maxlength="80" placeholder="Unclassified" value="${escapeHtml(plan.category || "")}"></td>
+                <td><input id="cost-${plan.id}" aria-label="Provider cost for plan ${plan.id}" type="number" min="0" step="0.01" value="${Number(plan.provider_cost)}"></td>
+                <td><input id="price-${plan.id}" aria-label="Selling price for plan ${plan.id}" type="number" min="1" step="0.01" value="${Number(plan.selling_price)}"><label style="display:block;font-size:12px"><input id="fixed-${plan.id}" type="checkbox" ${plan.selling_price_override !== null ? "checked" : ""}> Fixed override</label></td>
+                <td><input id="category-${plan.id}" aria-label="Category for plan ${plan.id}" maxlength="80" placeholder="Unclassified" value="${escapeHtml(plan.category || "")}"></td>
                 <td>${!Number(plan.provider_available) ? "Unavailable" : Number(plan.selling_price) < Number(plan.provider_cost) ? "Review price" : "Provider available"}</td>
                 <td>${escapeHtml(plan.validity || "—")}</td>
                 <td class="margin">${formatMoney(plan.margin)}</td>
@@ -577,8 +577,8 @@
         ` : `
             <tr>
                 <td>${escapeHtml(plan.network)}</td><td><strong>${escapeHtml(plan.plan)}</strong></td>
-                <td><input id="cost-${plan.id}" type="number" min="0" step="0.01" value="${Number(plan.provider_cost)}"></td>
-                <td><input id="price-${plan.id}" type="number" min="1" step="0.01" value="${Number(plan.selling_price)}"></td>
+                <td><input id="cost-${plan.id}" aria-label="Provider cost for plan ${plan.id}" type="number" min="0" step="0.01" value="${Number(plan.provider_cost)}"></td>
+                <td><input id="price-${plan.id}" aria-label="Selling price for plan ${plan.id}" type="number" min="1" step="0.01" value="${Number(plan.selling_price)}"></td>
                 <td>Managed by Python catalog</td><td>Managed by Node API</td>
                 <td>—</td>
                 <td class="margin">${formatMoney(plan.margin)}</td>
