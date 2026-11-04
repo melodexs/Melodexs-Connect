@@ -192,10 +192,17 @@
             const help = document.getElementById("installHelp");
             const ua = window.navigator.userAgent || "";
             const inAppBrowser = /wv\)|FBAV|FBAN|Instagram|Twitter|Snapchat|LinkedIn|TikTok|Messenger|Line\//i.test(ua);
+            // The box ships with the .hidden class (display:none !important), so
+            // flipping only the hidden attribute leaves it invisible. Toggle the class.
+            function setHelpVisible(visible) {
+                if (!help) return;
+                help.classList.toggle("hidden", !visible);
+                help.hidden = !visible;
+            }
             function showHelp(text) {
                 if (!help) return;
                 help.textContent = text;
-                help.hidden = false;
+                setHelpVisible(true);
             }
             installer.onAvailabilityChange(available => {
                 if (available) {
@@ -203,7 +210,7 @@
                 } else {
                     button.textContent = "How to install";
                 }
-                if (help) help.hidden = true;
+                setHelpVisible(false);
             });
             button.addEventListener("click", async () => {
                 if (installer.canPrompt()) {
