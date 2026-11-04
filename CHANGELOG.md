@@ -4,6 +4,9 @@ Notable changes, newest first. Dates are deployment dates.
 
 ## November 2026
 
+### Profile alignment
+* **Fixed**: on the Profile page the welcome text ("Hello, ...", "Welcome to MELODEXS CONNECT") now starts exactly where the card text does, and the cards no longer touch the screen edge on a phone.
+
 ### Dark mode, recipient nicknames and network auto-detect
 * **Network auto-detect**: on Buy Data and Buy Airtime the network is picked
   from the number as you type (prefixes from the NCC Mobile Number Allocation
