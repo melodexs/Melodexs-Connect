@@ -2696,3 +2696,9 @@ body.app-body .hero-title.compact span { color: var(--lime); }
 .onboarding-photo .onboarding-avatar { display: flex; justify-content: center; margin: 18px 0 16px; }
 .onboarding-photo .avatar-big { width: 120px; height: 120px; font-size: 40px; }
 .onboarding-photo .btn + .btn, .onboarding-photo .btn + input + .btn { margin-top: 10px; }
+
+/* Deposit fee breakdown on the fund page. Reuses .confirm-row so it follows the
+   app's spacing and the dark theme without extra colour rules. */
+.fee-breakdown { margin: 4px 0 14px; padding: 6px 14px; border-radius: 14px; background: rgba(2, 81, 176, .07); border: 1px solid rgba(2, 81, 176, .18); }
+.fee-breakdown .fee-total .k { color: inherit; font-weight: 700; }
+.fee-breakdown .fee-total .v { font-size: 16px; }

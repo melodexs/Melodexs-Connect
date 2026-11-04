@@ -54,7 +54,7 @@
             <div class="field">
                 <label for="amount">Amount (₦100 – ₦500,000)</label>
                 <input id="amount" type="number" inputmode="numeric" min="100" max="500000" step="1" placeholder="e.g. 5000" required>
-                <div class="hint">Your wallet is credited only after Paystack confirms the payment on the server.</div>
+                <div class="hint">A small <span class="fee-hint-percent"></span>deposit fee applies and is shown below before you pay. Your wallet is credited only after Paystack confirms the payment on the server.</div>
             </div>
 
             <div class="amount-grid mb-2" role="group" aria-label="Quick amounts">
@@ -64,6 +64,12 @@
                 <button type="button" class="amount-btn quick-btn" data-amount="10000">₦10,000</button>
                 <button type="button" class="amount-btn quick-btn" data-amount="20000">₦20,000</button>
                 <button type="button" class="amount-btn quick-btn" data-amount="50000">₦50,000</button>
+            </div>
+
+            <div class="fee-breakdown hidden" id="feeBreakdown" aria-live="polite">
+                <div class="confirm-row"><span class="k">You pay</span><span class="v" id="feePay">₦0</span></div>
+                <div class="confirm-row"><span class="k">Deposit fee (<span id="feePercent">3</span>%)</span><span class="v" id="feeAmount">₦0</span></div>
+                <div class="confirm-row fee-total"><span class="k">Added to your wallet</span><span class="v" id="feeCredit">₦0</span></div>
             </div>
 
             <div id="message" class="hidden" role="alert"></div>
@@ -119,16 +125,52 @@ async function loadBalance() {
     } catch (error) { /* cached balance */ }
 }
 
+/* Deposit fee preview. The server is the source of truth: it fixes the fee when
+   the deposit is created and credits exactly that. This mirrors its whole-kobo
+   half-up rounding so the figure shown here is the figure applied. */
+let depositFeePercent = 0;
+
+function depositFee(amount) {
+    const paidKobo = Math.round(amount * 100);
+    const feeKobo = Math.min(paidKobo, Math.floor((paidKobo * Math.round(depositFeePercent * 1000) + 50000) / 100000));
+    return feeKobo / 100;
+}
+
+function renderFee() {
+    const box = document.getElementById("feeBreakdown");
+    const amount = Number(document.getElementById("amount").value);
+    if (!(depositFeePercent > 0) || !Number.isInteger(amount) || amount < 100) { box.classList.add("hidden"); return; }
+    const fee = depositFee(amount);
+    document.getElementById("feePercent").textContent = String(depositFeePercent);
+    document.getElementById("feePay").textContent = formatNaira(amount);
+    document.getElementById("feeAmount").textContent = "− " + formatNaira(fee);
+    document.getElementById("feeCredit").textContent = formatNaira(amount - fee);
+    box.classList.remove("hidden");
+}
+
+async function loadDepositFee() {
+    try {
+        const response = await fetch("/api/deposit-fee", { credentials: "include" });
+        const data = await response.json();
+        if (response.ok && data.success && Number(data.percent) > 0) depositFeePercent = Number(data.percent);
+    } catch (error) { /* no preview; the server still applies and reports the fee */ }
+    document.querySelectorAll(".fee-hint-percent").forEach(el => { el.textContent = depositFeePercent > 0 ? depositFeePercent + "% " : ""; });
+    renderFee();
+}
+
 function wireForm() {
     const amountInput = document.getElementById("amount");
     const fundForm = document.getElementById("fundForm");
     const fundButton = document.getElementById("fundButton");
+    amountInput.addEventListener("input", renderFee);
+    loadDepositFee();
 
     document.querySelectorAll(".quick-btn").forEach(button => {
         button.addEventListener("click", () => {
             document.querySelectorAll(".quick-btn").forEach(b => b.classList.remove("active"));
             button.classList.add("active");
             amountInput.value = button.dataset.amount;
+            renderFee();
             amountInput.focus();
         });
     });
@@ -192,7 +234,9 @@ async function verifyReturnedPayment() {
         const data = await response.json();
         if (response.ok && data.success) {
             document.getElementById("verifyTitle").textContent = "Payment verified 🎉";
-            document.getElementById("verifyText").textContent = data.message || "Payment verified successfully. Your wallet has been funded.";
+            document.getElementById("verifyText").textContent = (Number(data.fee) > 0)
+                ? "You paid " + formatNaira(data.amount) + ". After the " + formatNaira(data.fee) + " deposit fee, " + formatNaira(data.credited) + " was added to your wallet."
+                : (data.message || "Payment verified successfully. Your wallet has been funded.");
             UI.toast("Wallet funded successfully.", "success");
             if (data.user && typeof data.user.balance !== "undefined") {
                 document.getElementById("balance").textContent = formatNaira(data.user.balance);
@@ -206,6 +250,7 @@ async function verifyReturnedPayment() {
                 fundButton.disabled = false;
                 fundButton.textContent = "Continue to Payment";
                 document.getElementById("amount").value = "";
+                renderFee();
             }, 2500);
         } else {
             document.getElementById("verifyState").classList.add("hidden");
