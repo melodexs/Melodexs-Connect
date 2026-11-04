@@ -42,3 +42,20 @@ def test_each_page_maps_to_its_own_entry():
 
 def test_the_mobile_bar_keeps_the_four_primary_destinations():
     assert '["home", "data", "wallet", "profile"]' in UI
+
+
+def test_the_desktop_sidebar_menu_leaves_out_profile_but_the_chip_opens_it():
+    """The account chip (photo, name, phone) already leads to Profile, so a
+    separate Profile menu item on desktop is redundant. Phones have no chip and
+    keep the Profile tab in the bottom bar."""
+    menu = UI[UI.index('<nav class="sidebar-nav"'):UI.index('"</nav>"')]
+    assert 'f.key !== "profile"' in menu, "Profile must be filtered out of the sidebar menu"
+    chip = UI[UI.index('<a class="sidebar-user'):UI.index("sidebar-user-text")]
+    assert 'href="/purchase-pin.html"' in chip, "the account chip must open Profile"
+    assert 'activeFeature === "profile"' in chip, "the chip carries the highlight on the Profile page"
+    assert '["home", "data", "wallet", "profile"]' in UI, "the phone bottom bar keeps Profile"
+
+
+def test_the_account_chip_has_an_active_style():
+    css = (WEB / "styles.css").read_text()
+    assert ".sidebar-user.active" in css
