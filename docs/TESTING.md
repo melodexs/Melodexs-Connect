@@ -23,6 +23,23 @@ pollutes later runs with leftover rate limits and sessions.
 | Catalogue pricing and categories | `test_plan_catalog.py`, `test_categorization.py` |
 | Frontend contract: routes the UI calls, CSS tokens, installability | `test_frontend_contract.py`, `test_css_tokens.py`, `test_pwa_installability.py` |
 | Security headers and origin checks | `test_security_headers.py`, `test_origin_gate_safety.py` |
+| Public pages: price list escaping, support contact consistency | `test_public_price_list.py`, `test_help_and_support.py` |
+| Wallet CSV export and customer-facing descriptions | `test_wallet_statement_export.py` |
+
+## Browser modules run under Node
+
+`apps/web/statement.js` is plain JavaScript with no DOM access, so
+`test_wallet_statement_export.py` executes it for real with Node rather than
+only reading its source. This is how the spreadsheet formula-injection defence
+is proven. Those tests skip when `node` is missing, so CI installs Node
+explicitly (`api-python-ci.yml`) to make sure they always run. Locally, install
+Node 22 or newer.
+
+## When CI runs
+
+The workflow runs for changes under `apps/api-python/**` **and** `apps/web/**`,
+because the contract tests read the static site. A web-only change used to skip
+CI entirely.
 
 ## Rules
 
