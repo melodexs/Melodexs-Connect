@@ -95,6 +95,21 @@
             <p class="message" id="message" role="status" aria-live="polite" hidden></p>
         </section>
 
+        <section class="card onboarding-photo hidden" id="photoStep" aria-labelledby="photoStepTitle">
+            <div class="card-title-row">
+                <h2 class="card-title" id="photoStepTitle">Add a profile picture</h2>
+                <span class="pin-state">Last step</span>
+            </div>
+            <p class="section-hint">Your PIN is set. Add a photo so your account feels like yours, or skip and do it later from Profile.</p>
+            <div class="onboarding-avatar">
+                <div class="avatar-big" id="photoStepAvatar" aria-label="Your profile picture">…</div>
+            </div>
+            <label class="btn btn-primary btn-block btn-lg" for="photoStepInput" id="photoStepChoose">Choose a photo</label>
+            <input type="file" id="photoStepInput" accept="image/*" class="visually-hidden">
+            <button type="button" class="btn btn-ghost btn-block" id="photoStepSkip">Skip for now</button>
+            <p class="message" id="photoStepMessage" role="status" aria-live="polite" hidden></p>
+        </section>
+
         <section class="card" aria-labelledby="appearanceTitle">
             <h2 class="card-title" id="appearanceTitle">Appearance</h2>
             <p class="muted small" style="margin:6px 0 12px">Choose how MELODEXS CONNECT looks. "Match my phone" follows your phone's light or dark setting.</p>
@@ -321,8 +336,10 @@
                 renderAvatar(stored);
                 ui.mountChrome("profile");
                 ui.toast("Profile picture updated.", "success");
+                return true;
             } catch (error) {
                 ui.toast(error.message || "Could not update your picture.", "error");
+                return false;
             }
         }
 
@@ -372,6 +389,14 @@
                 document.getElementById("pinState").textContent = data.has_purchase_pin ? "PIN active" : "No PIN yet";
 
                 if (data.has_purchase_pin) {
+                    // A PIN already exists, so first-time setup is over (they may
+                    // have closed the app at the photo step). Drop the flag so a
+                    // later PIN change is never mistaken for a new sign-up.
+                    if (!document.getElementById("photoStep").classList.contains("hidden")) {
+                        window.MELODEXS_UI.mountChrome("profile");
+                        return;
+                    }
+                    try { localStorage.removeItem("cheapdataNewUserId"); } catch (e) { /* storage blocked */ }
                     document.getElementById("setSection").classList.add("hidden");
                     document.getElementById("changeSection").classList.remove("hidden");
                 } else {
@@ -404,7 +429,11 @@
                 const data = await response.json();
                 if (response.ok && data.success) {
                     window.MELODEXS_UI.toast("Purchase PIN created. Purchases are now PIN-protected.", "success");
-                    loadUser();
+                    if (isNewAccount()) {
+                        showPhotoStep();
+                    } else {
+                        loadUser();
+                    }
                 } else {
                     showMessage(data.message || "Could not create your PIN. Please try again.", "error");
                 }
@@ -461,6 +490,47 @@
         document.getElementById("logoutButton").addEventListener("click", function () {
             window.MELODEXS_UI.logoutWithConfirm();
         });
+
+        /* ---- First-time setup: PIN -> profile picture -> home ----------------
+           Only a brand-new account (flagged at registration) sees this. Whether
+           they add a photo or skip, they land on the home page and the flag is
+           cleared so the step never appears again. */
+        function isNewAccount() {
+            try { return !!localStorage.getItem("cheapdataNewUserId"); } catch (e) { return false; }
+        }
+        function finishOnboarding() {
+            try { localStorage.removeItem("cheapdataNewUserId"); } catch (e) { /* storage blocked */ }
+            window.location.href = "dashboard.html";
+        }
+        function showPhotoStep() {
+            ["setSection", "changeSection"].forEach(function (id) { document.getElementById(id).classList.add("hidden"); });
+            document.getElementById("pinState").textContent = "PIN active";
+            const step = document.getElementById("photoStep");
+            step.classList.remove("hidden");
+            const stored = JSON.parse(localStorage.getItem("cheapdataUser") || "{}");
+            const box = document.getElementById("photoStepAvatar");
+            const initials = (stored.name || "M").trim().split(/\s+/).map(function (w) { return w[0]; }).slice(0, 2).join("").toUpperCase();
+            box.textContent = initials || "M";
+            step.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+        document.getElementById("photoStepInput").addEventListener("change", async function (event) {
+            const file = event.target.files && event.target.files[0];
+            event.target.value = "";
+            if (!file) return;
+            const choose = document.getElementById("photoStepChoose");
+            const skip = document.getElementById("photoStepSkip");
+            skip.disabled = true;
+            choose.textContent = "Uploading…";
+            const ok = await uploadAvatar(file);
+            if (ok) {
+                choose.textContent = "Photo added \u2713";
+                setTimeout(finishOnboarding, 900);
+            } else {
+                choose.textContent = "Choose a photo";
+                skip.disabled = false;
+            }
+        });
+        document.getElementById("photoStepSkip").addEventListener("click", finishOnboarding);
 
         loadUser();
     </script>
