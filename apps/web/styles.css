@@ -2705,3 +2705,53 @@ body.app-body .hero-title.compact span { color: var(--lime); }
 .fee-breakdown { margin: 4px 0 14px; padding: 6px 14px; border-radius: 14px; background: rgba(2, 81, 176, .07); border: 1px solid rgba(2, 81, 176, .18); }
 .fee-breakdown .fee-total .k { color: inherit; font-weight: 700; }
 .fee-breakdown .fee-total .v { font-size: 16px; }
+
+
+/* ---------- Auth pages: one centred column ----------
+   Login, Create account, Forgot and Reset password share the same markup:
+   nav, hero heading, card. The card and hero had no width of their own, so
+   each sized itself to its content. A form with more fields (Create account)
+   therefore stretched across a whole laptop screen while Login looked fine.
+   Pin all three to the same column so every auth page lines up identically.
+   Scoped away from the landing page, which is a different layout. */
+body.auth-body:not(.landing) {
+    justify-content: flex-start;
+    padding: 0 16px max(32px, env(safe-area-inset-bottom));
+}
+
+body.auth-body:not(.landing) .landing-nav,
+body.auth-body:not(.landing) .auth-hero,
+body.auth-body:not(.landing) .auth-card {
+    width: 100%;
+    max-width: 460px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+body.auth-body:not(.landing) .landing-nav { padding-left: 0; padding-right: 0; }
+
+body.auth-body:not(.landing) .auth-hero {
+    text-align: center;
+    padding: 18px 4px 22px;
+    color: #fff;
+}
+
+body.auth-body:not(.landing) .auth-hero h1 {
+    font-size: clamp(24px, 6.2vw, 30px);
+    font-weight: 800;
+    letter-spacing: -.02em;
+    line-height: 1.18;
+    margin: 0 0 8px;
+}
+
+body.auth-body:not(.landing) .auth-hero p {
+    margin: 0;
+    font-size: 15px;
+    line-height: 1.5;
+    color: var(--gray, #C7D1DD);
+}
+
+.auth-accent { color: var(--lime, #D1FF42); }
+
+body.auth-body:not(.landing) .auth-card { padding: 26px 24px 22px; }
+body.auth-body:not(.landing) .auth-card .form-label { font-size: 18px; font-weight: 800; margin-bottom: 14px; }
