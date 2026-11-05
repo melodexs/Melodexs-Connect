@@ -4,6 +4,9 @@ Notable changes, newest first. Dates are deployment dates.
 
 ## November 2026
 
+### Create account page matches Login
+* **Fixed**: on a laptop or desktop the Create Account form stretched across the whole screen while Login sat in a neat centred card. Login, Create Account, Forgot password and Reset password now share one centred column of the same width, with the heading centred above it and the brand name highlighted in lime. Phones are unchanged in width (the card still fills the screen with a small margin).
+
 ### Deposit fee is now impossible to miss
 * **Fixed**: a customer topped up without seeing that a fee is deducted. The Top Up page now shows a fee notice at the top (for example: 3% is deducted, pay ₦1,000 and ₦970 is added). The Continue button stays off until the fee has loaded, and retries once if the server is waking up. If the fee still cannot load, the page says so and offers Retry instead of letting you pay blind. Before going to Paystack, a confirmation lists what you pay, the fee, and what reaches your wallet.
 
