@@ -19,8 +19,16 @@ The admin page (`apps/web/admin.html`) opens with a **Needs attention** strip: p
 purchases, failed transactions among the latest 100, today's activity (Africa/Lagos
 day) and customers with a N0 wallet. Pending is the one to clear first; the nav badge
 shows the same count. Users and Transactions are searchable in the browser from the rows
-already loaded, so a search makes no extra request. Transactions are the latest 100, so
-older ones need the database or a statement export.
+already loaded, so a search makes no extra request. The Transactions list is the latest 100
+across everyone; for one person's full history use the **View** button on their row in
+Registered Users.
+
+**Customer detail** (read-only) answers "my purchase did not arrive": balance, total topped
+up, total spent (successful purchases only), pending and failed counts, and every
+transaction newest first with its supplier and supplier reference. Unlike the customer's
+own Wallet, it shows the full internal description (supplier rejections, reconciliation
+notes). It has no refund or balance buttons by design; reconcile and resolve still go
+through the endpoints below.
 
 ```
 GET  /api/admin/purchases/pending          # what is stuck

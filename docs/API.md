@@ -57,6 +57,7 @@ disabled, so the UI can hide the form without a special case.
 | --- | --- | --- |
 | GET | `/api/status` | Health probe; also schedules the pending-purchase requery sweep. |
 | GET | `/api/admin/*` | Admin only: catalogue, providers, users, transactions, reconciliation. |
+| GET | `/api/admin/users/{id}` | Admin only, read-only. One customer: safe profile fields, a summary (pending, failed, purchases, `totalSpent`, `totalFunded`, `lastActivity`) and their transactions newest first. `?limit=` (1 to 500, default 100) and `?offset=`; `paging.hasMore` says whether older rows exist. Never returns password, PIN or reset-token fields. Descriptions are the full internal text, including supplier notes. 404 `Customer not found`, 403 for non-admins. |
 | POST | `/api/webhooks/isquaredata` | HMAC-SHA512 over the raw body, `x-isquare-signature`. |
 
 ## Errors

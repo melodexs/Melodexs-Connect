@@ -4,6 +4,11 @@ Notable changes, newest first. Dates are deployment dates.
 
 ## November 2026
 
+### Admin: customer detail
+* **Added**: a **View** button on every row of Registered Users opens that customer: wallet balance, total topped up, total spent (successful purchases only), pending and failed counts, and their full transaction history, newest first, with the supplier and supplier reference. Search the history by reference, description or supplier, filter by status, and load older rows 100 at a time. Support can now answer "my purchase did not arrive" in one click.
+* **Read-only**: it shows data and changes nothing. There are no refund or balance buttons. Passwords, purchase PINs and reset tokens are never sent to the page.
+* **Admin only**: the new `GET /api/admin/users/{id}` endpoint rejects signed-out visitors and ordinary customers.
+
 ### Admin dashboard: see what needs you first
 * **Needs attention strip** at the top: pending purchases (customers waiting), failed transactions in recent activity, today's activity with the value of completed purchases, and customers with a N0 wallet. Each card jumps to the section where you act on it.
 * **Section menu** that stays at the top while you scroll (Overview, Pricing, Providers, Pending, Users, Transactions), with a count badge on Pending. On a phone it scrolls sideways inside itself.
