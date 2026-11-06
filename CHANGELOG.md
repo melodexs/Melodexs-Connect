@@ -4,6 +4,12 @@ Notable changes, newest first. Dates are deployment dates.
 
 ## November 2026
 
+### Renamed to MELODEX
+* **Changed**: the product is now called **MELODEX** (was MELODEXS CONNECT). Customers see it on every page title, the logo, headings, the sidebar, the installed app name on a phone's home screen (web and Android), the offline page, receipts' wording, the Help and Privacy pages, the WhatsApp and email help messages, and the password-reset email subject and sender name.
+* **Deliberately unchanged**: the live web addresses (`melodexs-connect.onrender.com` and the API), the Render service names, the GitHub repository, the Android package id, the session cookie and its signing salt, saved settings keys and the internal code names. Customers never read these, and changing them would sign everyone out, stop Android installs updating, or point people at addresses that do not exist. `tests/test_brand_name.py` pins both halves.
+* **Domain**: when a MELODEX domain is bought, the address, sitemap, social-preview tags, security contact, Google sign-in origin and Paystack callback move together as a separate step.
+* **Old records**: past transactions, runbooks and earlier changelog entries keep the name that was true when they were written.
+
 ### Admin: customer detail
 * **Added**: a **View** button on every row of Registered Users opens that customer: wallet balance, total topped up, total spent (successful purchases only), pending and failed counts, and their full transaction history, newest first, with the supplier and supplier reference. Search the history by reference, description or supplier, filter by status, and load older rows 100 at a time. Support can now answer "my purchase did not arrive" in one click.
 * **Read-only**: it shows data and changes nothing. There are no refund or balance buttons. Passwords, purchase PINs and reset tokens are never sent to the page.
