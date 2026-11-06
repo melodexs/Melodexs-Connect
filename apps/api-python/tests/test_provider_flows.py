@@ -585,12 +585,12 @@ async def test_brevo_sender_configuration_and_auth_payload(monkeypatch):
     monkeypatch.setattr(providers.httpx, "AsyncClient", CapturingClient)
     monkeypatch.setattr(settings, "brevo_api_key", "brevo-mock-key")
     monkeypatch.setattr(settings, "brevo_from_email", "noreply@mcx.example")
-    monkeypatch.setattr(settings, "brevo_from_name", "MELODEXS CONNECT")
+    monkeypatch.setattr(settings, "brevo_from_name", "MELODEX")
     await providers.send_brevo("dest@example.com", "Subject", "<p>x</p>")
     assert captured["url"] == "https://api.brevo.com/v3/smtp/email"
     assert captured["headers"].get("api-key") == "brevo-mock-key"
     assert captured["json"]["sender"]["email"] == "noreply@mcx.example"
-    assert captured["json"]["sender"]["name"] == "MELODEXS CONNECT"
+    assert captured["json"]["sender"]["name"] == "MELODEX"
     assert captured["json"]["to"] == [{"email": "dest@example.com"}]
     assert captured["json"]["subject"] == "Subject"
     assert captured["json"]["htmlContent"] == "<p>x</p>"

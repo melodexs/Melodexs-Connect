@@ -18,7 +18,7 @@ client = TestClient(app)
 @pytest.mark.asyncio
 async def test_application_lifespan_startup():
     async with app.router.lifespan_context(app):
-        assert app.title == "MELODEXS CONNECT API"
+        assert app.title == "MELODEX API"
 
 
 def test_status_and_frontend():
