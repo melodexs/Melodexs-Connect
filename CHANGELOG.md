@@ -4,6 +4,14 @@ Notable changes, newest first. Dates are deployment dates.
 
 ## November 2026
 
+### Admin dashboard: see what needs you first
+* **Needs attention strip** at the top: pending purchases (customers waiting), failed transactions in recent activity, today's activity with the value of completed purchases, and customers with a N0 wallet. Each card jumps to the section where you act on it.
+* **Section menu** that stays at the top while you scroll (Overview, Pricing, Providers, Pending, Users, Transactions), with a count badge on Pending. On a phone it scrolls sideways inside itself.
+* **Search and filters**: find a customer by name, email, phone or ID, and filter by N0 wallet, has balance or admin. Find a transaction by reference, customer or description, and filter by status and type. Each shows "X of Y".
+* **One broken section no longer blanks the page**: if statistics or transactions fail to load, the rest still show and a message names what failed.
+* **Honest wording**: the button now says "Synchronize catalog plans", and the providers note no longer claims every purchase goes through WiseSub.
+* No change to what any admin action does, no new endpoints, no database change.
+
 ### Create account page matches Login
 * **Fixed**: on a laptop or desktop the Create Account form stretched across the whole screen while Login sat in a neat centred card. Login, Create Account, Forgot password and Reset password now share one centred column of the same width, with the heading centred above it and the brand name highlighted in lime. Phones are unchanged in width (the card still fills the screen with a small margin).
 
