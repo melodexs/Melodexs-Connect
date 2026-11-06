@@ -23,7 +23,7 @@ def all_pages():
 
 def test_manifest_is_valid_and_installable():
     manifest = json.loads((WEB / "manifest.webmanifest").read_text())
-    assert manifest["name"] == "MELODEXS CONNECT"
+    assert manifest["name"] == "MELODEX"
     assert manifest["short_name"]
     assert manifest["display"] == "standalone"
     assert manifest["start_url"].startswith("/")
