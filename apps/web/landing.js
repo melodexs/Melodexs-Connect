@@ -1,4 +1,4 @@
-/* MELODEXS CONNECT — premium 3D landing motion.
+/* MELODEX — premium 3D landing motion.
    Transform/opacity only, rAF-throttled, and fully disabled under
    prefers-reduced-motion. No dependencies. */
 (function () {

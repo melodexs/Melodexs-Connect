@@ -77,10 +77,10 @@
         banner = document.createElement("aside");
         banner.className = "melodexs-install-banner";
         banner.setAttribute("role", "region");
-        banner.setAttribute("aria-label", "Install MELODEXS CONNECT");
+        banner.setAttribute("aria-label", "Install MELODEX");
 
         const message = document.createElement("p");
-        message.textContent = "Install MELODEXS CONNECT on your phone for faster access.";
+        message.textContent = "Install MELODEX on your phone for faster access.";
         banner.append(message);
 
         if (appleFallback) {
@@ -91,7 +91,7 @@
         } else {
             const installButton = document.createElement("button");
             installButton.type = "button";
-            installButton.textContent = "Install MELODEXS CONNECT";
+            installButton.textContent = "Install MELODEX";
             installButton.addEventListener("click", async () => {
                 const outcome = await promptInstall();
                 if (outcome === "dismissed") {

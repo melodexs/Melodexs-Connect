@@ -5,9 +5,9 @@
     <meta name="api-base-url" content="">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <meta name="description" content="Fund your MELODEXS CONNECT wallet, review every transaction and download your statement.">
+    <meta name="description" content="Fund your MELODEX wallet, review every transaction and download your statement.">
     <meta name="robots" content="noindex, nofollow">
-    <title>Wallet | MELODEXS CONNECT</title>
+    <title>Wallet | MELODEX</title>
     <link rel="stylesheet" href="/styles.css">
     <script src="theme.js"></script>
     <script src="api.js"></script>
@@ -17,7 +17,7 @@
     <link rel="manifest" href="/manifest.webmanifest">
     <script src="/pwa.js" defer></script>
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-title" content="MELODEXS">
+    <meta name="apple-mobile-web-app-title" content="MELODEX">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
     <link rel="icon" type="image/png" href="/icons/melodexs-connect-192.png">
@@ -26,7 +26,7 @@
 <body class="app-body">
 
 <header class="appbar" id="appbar"></header>
-<div class="boot-loading" id="boot-loading" role="status" aria-live="polite"><span class="spin"></span><span>Connecting to MELODEXS…</span></div>
+<div class="boot-loading" id="boot-loading" role="status" aria-live="polite"><span class="spin"></span><span>Connecting to MELODEX…</span></div>
 <nav class="desktop-tabs" id="desktop-tabs" aria-label="Primary"></nav>
 
 <main class="page page-narrow">
@@ -288,14 +288,14 @@ function openDetail(t) {
             box.classList.toggle("hidden");
             if (!box.classList.contains("hidden")) {
                 box.innerHTML =
-                    '<div class="receipt-head"><div class="brand">MELODEXS CONNECT</div><div class="tag">Official receipt</div></div>' +
+                    '<div class="receipt-head"><div class="brand">MELODEX</div><div class="tag">Official receipt</div></div>' +
                     '<div class="confirm-row"><span class="k">Reference</span><span class="v">' + UI.esc(t.reference || "—") + "</span></div>" +
                     '<div class="confirm-row"><span class="k">Type</span><span class="v">' + UI.esc(isCredit ? "Wallet funding" : "Purchase") + "</span></div>" +
                     '<div class="confirm-row"><span class="k">Date</span><span class="v">' + UI.esc(new Date(t.created_at).toLocaleString("en-NG")) + "</span></div>" +
                     '<div class="confirm-row"><span class="k">Details</span><span class="v">' + UI.esc(describe(t) || "—") + "</span></div>" +
                     feeRows(t) +
                     '<div class="receipt-total">' + (feeRows(t) ? "Amount paid: " : "Amount: ") + UI.esc(UI.formatNaira(t.amount)) + "</div>" +
-                    '<div class="text-center small muted mt-1">Thank you for choosing MELODEXS CONNECT</div>';
+                    '<div class="text-center small muted mt-1">Thank you for choosing MELODEX</div>';
             }
         });
     }

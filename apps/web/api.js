@@ -1,6 +1,6 @@
 (function () {
     /*
-     * MELODEXS CONNECT API configuration
+     * MELODEX API configuration
      *
      * The API origin is resolved in one place, in this order:
      *   1. The per-page <meta name="api-base-url"> tag (staging/preview).
