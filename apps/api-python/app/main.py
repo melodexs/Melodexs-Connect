@@ -803,6 +803,47 @@ def admin_users(request: Request):
     return {"success": True, "users": [dict(x) for x in rows]}
 
 
+# Admin customer detail. Strictly read-only. The users table also holds the
+# password and purchase-PIN hashes, so the profile is an explicit allow-list of
+# columns, never SELECT *.
+_CUSTOMER_HISTORY_LIMIT = 500
+
+
+@app.get("/api/admin/users/{customer_id}")
+def admin_user_detail(customer_id: int, request: Request, limit: int = 100, offset: int = 0):
+    require_admin(request)
+    limit = max(1, min(int(limit), _CUSTOMER_HISTORY_LIMIT))
+    offset = max(0, int(offset))
+    with db_session() as db:
+        user = q(db, "SELECT id,name,email,phone,balance,virtual_account_number,virtual_bank_name,kyc_status,is_admin,created_at FROM users WHERE id=:id", {"id": customer_id}).mappings().first()
+        if not user:
+            raise HTTPException(404, "Customer not found")
+        totals = q(db, """SELECT
+            COUNT(*) AS total,
+            COALESCE(SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END),0) AS pending,
+            COALESCE(SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END),0) AS failed,
+            COALESCE(SUM(CASE WHEN type='debit' AND status='successful' THEN 1 ELSE 0 END),0) AS purchases,
+            COALESCE(SUM(CASE WHEN type='debit' AND status='successful' THEN amount ELSE 0 END),0) AS spent,
+            COALESCE(SUM(CASE WHEN type='wallet_funding' AND status='successful' THEN amount ELSE 0 END),0) AS funded,
+            MAX(created_at) AS last_activity
+            FROM transactions WHERE user_id=:id""", {"id": customer_id}).mappings().first()
+        rows = q(db, "SELECT id,type,amount,status,reference,provider,provider_reference,description,created_at FROM transactions WHERE user_id=:id ORDER BY id DESC LIMIT :limit OFFSET :offset",
+                 {"id": customer_id, "limit": limit, "offset": offset}).mappings().all()
+    profile = dict(user)
+    profile["balance"] = float(profile["balance"] or 0)
+    return {
+        "success": True,
+        "customer": profile,
+        "summary": {
+            "totalTransactions": int(totals["total"]), "pending": int(totals["pending"]), "failed": int(totals["failed"]),
+            "purchases": int(totals["purchases"]), "totalSpent": float(totals["spent"]), "totalFunded": float(totals["funded"]),
+            "lastActivity": str(totals["last_activity"]) if totals["last_activity"] is not None else None,
+        },
+        "transactions": [dict(x) for x in rows],
+        "paging": {"limit": limit, "offset": offset, "returned": len(rows), "hasMore": offset + len(rows) < int(totals["total"])},
+    }
+
+
 @app.get("/api/admin/transactions")
 def admin_transactions(request: Request):
     require_admin(request)
