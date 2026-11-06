@@ -292,6 +292,27 @@
         .pager { display: flex; gap: 10px; align-items: center; justify-content: flex-end; margin-top: 12px; font-size: 13.5px; color: var(--mc-muted); }
         .pager button { padding: 8px 14px; border-radius: 10px; border: 1px solid #CBD5E1; background: #fff; cursor: pointer; font-weight: 600; }
         .pager button:disabled { opacity: .45; cursor: default; }
+        /* customer detail dialog: visibility is ONE class (.open) so it can never be half-hidden */
+        .cust-backdrop { display: none; position: fixed; inset: 0; z-index: 100; background: rgba(2, 8, 23, .62); align-items: flex-start; justify-content: center; padding: 4vh 12px; overflow-y: auto; }
+        .cust-backdrop.open { display: flex; }
+        .cust-panel { width: 100%; max-width: 980px; background: #fff; border-radius: 18px; box-shadow: 0 30px 80px rgba(2, 8, 23, .45); overflow: hidden; }
+        .cust-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 20px 24px; background: linear-gradient(120deg, var(--mc-blue) 0%, var(--mc-blue-dark) 100%); color: #fff; }
+        .cust-head h2 { font-size: 22px; margin: 0 0 4px; color: #fff; }
+        .cust-head .meta { font-size: 14px; opacity: .92; line-height: 1.6; word-break: break-word; }
+        .cust-close { flex: 0 0 auto; min-width: 44px; min-height: 44px; border-radius: 12px; border: 0; background: rgba(255, 255, 255, .18); color: #fff; font-size: 24px; line-height: 1; cursor: pointer; }
+        .cust-close:hover { background: rgba(255, 255, 255, .3); }
+        .cust-body { padding: 20px 24px 26px; }
+        .cust-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 18px; }
+        .cust-stat { padding: 12px 14px; border-radius: 12px; background: #F4F7FB; border: 1px solid #E4EAF2; }
+        .cust-stat .v { font-size: 20px; font-weight: 800; }
+        .cust-stat .k { font-size: 12.5px; color: var(--mc-muted); margin-top: 2px; }
+        .cust-stat.warn { background: #FFFBEB; border-color: #F2D98B; }
+        .cust-stat.bad { background: #FFF4F4; border-color: #F1B5B7; }
+        .cust-note { font-size: 13px; color: var(--mc-muted); margin: 0 0 12px; }
+        .cust-state { padding: 30px 10px; text-align: center; color: var(--mc-muted); }
+        body.cust-open { overflow: hidden; }
+        .view-btn { padding: 7px 14px; border-radius: 10px; border: 1px solid var(--mc-blue); background: #fff; color: var(--mc-blue); font-weight: 700; font-size: 13.5px; cursor: pointer; min-height: 36px; }
+        .view-btn:hover { background: var(--mc-blue); color: #fff; }
         .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
         @media (max-width: 1000px) {
@@ -475,13 +496,14 @@
                         <th>Balance</th>
                         <th>KYC</th>
                         <th>Admin</th>
+                        <th aria-label="Actions"></th>
                     </tr>
                 </thead>
 
                 <tbody id="usersTable">
 
                     <tr>
-                        <td colspan="7" class="empty">
+                        <td colspan="8" class="empty">
                             Loading users...
                         </td>
                     </tr>
@@ -556,6 +578,19 @@
 
 </div>
 
+
+<div class="cust-backdrop" id="custBackdrop" role="presentation">
+    <div class="cust-panel" role="dialog" aria-modal="true" aria-labelledby="custName" tabindex="-1" id="custPanel">
+        <div class="cust-head">
+            <div>
+                <h2 id="custName">Customer</h2>
+                <div class="meta" id="custMeta"></div>
+            </div>
+            <button type="button" class="cust-close" id="custClose" aria-label="Close customer details">&times;</button>
+        </div>
+        <div class="cust-body" id="custBody"></div>
+    </div>
+</div>
 
 <script>
 
@@ -1069,7 +1104,7 @@
 
             table.innerHTML = `
                 <tr>
-                    <td colspan="7" class="empty">
+                    <td colspan="8" class="empty">
                         No users found.
                     </td>
                 </tr>
@@ -1323,7 +1358,7 @@
         });
         document.getElementById("userCount").textContent = `${rows.length} of ${adminData.users.length}`;
         if (!rows.length) {
-            table.innerHTML = `<tr><td colspan="7" class="empty">${adminData.users.length ? "No customers match your search." : "No users found."}</td></tr>`;
+            table.innerHTML = `<tr><td colspan="8" class="empty">${adminData.users.length ? "No customers match your search." : "No users found."}</td></tr>`;
             return;
         }
         table.innerHTML = rows.map(user => `<tr>
@@ -1334,6 +1369,7 @@
             <td>${formatMoney(user.balance)}</td>
             <td><span class="badge ${user.kyc_status === "approved" ? "badge-success" : "badge-pending"}">${escapeHtml(user.kyc_status || "pending")}</span></td>
             <td>${Number(user.is_admin) === 1 ? `<span class="badge badge-admin">Yes</span>` : "No"}</td>
+            <td><button type="button" class="view-btn" data-customer="${escapeHtml(user.id)}" aria-label="View details for ${escapeHtml(user.name)}">View</button></td>
         </tr>`).join("");
     }
 
@@ -1403,6 +1439,171 @@
 
     ["userSearch", "userFilter"].forEach(id => document.getElementById(id).addEventListener("input", renderUsers));
     ["txSearch", "txStatus", "txType"].forEach(id => document.getElementById(id).addEventListener("input", renderTransactions));
+
+
+    // =========================
+    // CUSTOMER DETAIL DIALOG (read-only)
+    // =========================
+    const cust = { id: null, token: 0, rows: [], opener: null, hasMore: false, nextOffset: 0 };
+
+    function custEl(id) { return document.getElementById(id); }
+
+    function openCustomerDialog() {
+        custEl("custBackdrop").classList.add("open");
+        document.body.classList.add("cust-open");
+        custEl("custPanel").focus();
+    }
+
+    function closeCustomerDialog() {
+        custEl("custBackdrop").classList.remove("open");
+        document.body.classList.remove("cust-open");
+        cust.token++;            // any request still in flight is now stale
+        cust.id = null;
+        if (cust.opener && document.body.contains(cust.opener)) cust.opener.focus();
+        cust.opener = null;
+    }
+
+    function custState(text) {
+        custEl("custBody").innerHTML = `<div class="cust-state">${escapeHtml(text)}</div>`;
+    }
+
+    function custStat(value, label, level) {
+        return `<div class="cust-stat${level ? " " + level : ""}"><div class="v">${escapeHtml(value)}</div><div class="k">${escapeHtml(label)}</div></div>`;
+    }
+
+    function renderCustomerRows() {
+        const body = custEl("custRows");
+        if (!body) return;
+        const term = custEl("custSearch").value.trim().toLowerCase();
+        const status = custEl("custStatus").value;
+        const rows = cust.rows.filter(t => {
+            if (status !== "all" && String(t.status).toLowerCase() !== status) return false;
+            if (!term) return true;
+            return matches(t.reference, term) || matches(t.description, term) || matches(t.provider, term) || matches(t.provider_reference, term);
+        });
+        custEl("custCount").textContent = `${rows.length} of ${cust.rows.length} loaded`;
+        if (!rows.length) {
+            body.innerHTML = `<tr><td colspan="7" class="empty">${cust.rows.length ? "No transactions match your filters." : "This customer has no transactions yet."}</td></tr>`;
+            return;
+        }
+        body.innerHTML = rows.map(t => `<tr>
+            <td>${escapeHtml(t.created_at)}</td>
+            <td>${escapeHtml(t.type)}</td>
+            <td>${formatMoney(t.amount)}</td>
+            <td>${statusBadge(t.status)}</td>
+            <td>${escapeHtml(t.reference)}</td>
+            <td>${escapeHtml(t.provider || "")}${t.provider_reference ? `<br><small>${escapeHtml(t.provider_reference)}</small>` : ""}</td>
+            <td>${escapeHtml(t.description)}</td>
+        </tr>`).join("");
+    }
+
+    function renderCustomer(data) {
+        const c = data.customer, sm = data.summary;
+        custEl("custName").textContent = c.name || "Customer";
+        custEl("custMeta").innerHTML = [
+            escapeHtml(c.email), escapeHtml(c.phone || "No phone"),
+            `Joined ${escapeHtml(c.created_at)}`,
+            c.virtual_account_number ? `Virtual account ${escapeHtml(c.virtual_account_number)}${c.virtual_bank_name ? " (" + escapeHtml(c.virtual_bank_name) + ")" : ""}` : "",
+        ].filter(Boolean).join("<br>");
+        cust.rows = data.transactions || [];
+        cust.hasMore = !!(data.paging && data.paging.hasMore);
+        cust.nextOffset = cust.rows.length;
+        custEl("custBody").innerHTML = `
+            <div class="cust-stats">
+                ${custStat(formatMoney(c.balance), "Wallet balance", "")}
+                ${custStat(formatMoney(sm.totalFunded), "Total topped up", "")}
+                ${custStat(formatMoney(sm.totalSpent), `Spent on ${Number(sm.purchases) || 0} purchase${Number(sm.purchases) === 1 ? "" : "s"}`, "")}
+                ${custStat(sm.pending, "Pending", sm.pending ? "warn" : "")}
+                ${custStat(sm.failed, "Failed", sm.failed ? "bad" : "")}
+                ${custStat(sm.totalTransactions, "All transactions", "")}
+            </div>
+            <p class="cust-note">Read-only view. The description column shows internal notes (supplier and reconciliation details) that customers never see.</p>
+            <div class="toolbar" role="search">
+                <label class="sr-only" for="custSearch">Search this customer's transactions</label>
+                <input type="search" id="custSearch" placeholder="Search reference, description or supplier" autocomplete="off">
+                <label class="sr-only" for="custStatus">Filter by status</label>
+                <select id="custStatus"><option value="all">All statuses</option><option value="pending">Pending</option><option value="failed">Failed</option><option value="successful">Successful</option></select>
+                <span class="result-count" id="custCount" aria-live="polite"></span>
+            </div>
+            <div class="table-container"><table>
+                <thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>Status</th><th>Reference</th><th>Supplier</th><th>Description</th></tr></thead>
+                <tbody id="custRows"></tbody>
+            </table></div>
+            <div class="pager"><span id="custMoreNote"></span><button type="button" id="custMore">Load older</button></div>`;
+        custEl("custSearch").addEventListener("input", renderCustomerRows);
+        custEl("custStatus").addEventListener("input", renderCustomerRows);
+        custEl("custMore").addEventListener("click", loadMoreCustomerRows);
+        syncMoreButton();
+        renderCustomerRows();
+    }
+
+    function syncMoreButton() {
+        const btn = custEl("custMore"), note = custEl("custMoreNote");
+        if (!btn) return;
+        btn.hidden = !cust.hasMore;
+        note.textContent = cust.hasMore ? "Showing the newest transactions." : (cust.rows.length ? "That is the full history." : "");
+    }
+
+    async function fetchCustomer(id, offset) {
+        const response = await fetch(`/api/admin/users/${encodeURIComponent(id)}?limit=100&offset=${offset}`);
+        let data = {};
+        try { data = await response.json(); } catch (_) { /* non-JSON error body */ }
+        if (!response.ok || !data.success) throw new Error(data.message || `Could not load this customer (${response.status}).`);
+        return data;
+    }
+
+    async function showCustomer(id, opener) {
+        const token = ++cust.token;
+        cust.id = id; cust.opener = opener || null;
+        custEl("custName").textContent = "Loading customer…";
+        custEl("custMeta").textContent = "";
+        custState("Loading…");
+        openCustomerDialog();
+        try {
+            const data = await fetchCustomer(id, 0);
+            if (token !== cust.token) return;       // closed or replaced meanwhile
+            renderCustomer(data);
+        } catch (error) {
+            if (token !== cust.token) return;
+            custEl("custName").textContent = "Customer";
+            custState(error.message || "Could not load this customer.");
+        }
+    }
+
+    async function loadMoreCustomerRows() {
+        const token = cust.token, btn = custEl("custMore");
+        btn.disabled = true; btn.textContent = "Loading…";
+        try {
+            const data = await fetchCustomer(cust.id, cust.nextOffset);
+            if (token !== cust.token) return;
+            cust.rows = cust.rows.concat(data.transactions || []);
+            cust.nextOffset = cust.rows.length;
+            cust.hasMore = !!(data.paging && data.paging.hasMore);
+            renderCustomerRows(); syncMoreButton();
+        } catch (error) {
+            if (token === cust.token) custEl("custMoreNote").textContent = error.message || "Could not load more.";
+        } finally {
+            if (token === cust.token && btn) { btn.disabled = false; btn.textContent = "Load older"; }
+        }
+    }
+
+    document.getElementById("usersTable").addEventListener("click", event => {
+        const button = event.target.closest("[data-customer]");
+        if (button) showCustomer(button.getAttribute("data-customer"), button);
+    });
+    custEl("custClose").addEventListener("click", closeCustomerDialog);
+    custEl("custBackdrop").addEventListener("click", event => { if (event.target === custEl("custBackdrop")) closeCustomerDialog(); });
+    document.addEventListener("keydown", event => {
+        if (event.key === "Escape" && custEl("custBackdrop").classList.contains("open")) closeCustomerDialog();
+        // keep Tab inside the dialog while it is open
+        if (event.key === "Tab" && custEl("custBackdrop").classList.contains("open")) {
+            const items = [...custEl("custPanel").querySelectorAll("button, input, select, [href]")].filter(el => !el.disabled && !el.hidden && el.offsetParent !== null);
+            if (!items.length) return;
+            const first = items[0], last = items[items.length - 1];
+            if (event.shiftKey && (document.activeElement === first || document.activeElement === custEl("custPanel"))) { event.preventDefault(); last.focus(); }
+            else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+        }
+    });
 
     // Highlight the section being read.
     (function trackActiveSection() {
