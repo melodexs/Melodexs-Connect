@@ -1,6 +1,6 @@
 # Architecture
 
-MELODEXS CONNECT is two deployables that share one origin-agnostic contract.
+MELODEX is two deployables that share one origin-agnostic contract.
 
 ```
 apps/web  (static site, CDN)      apps/api-python  (FastAPI on Render, Oregon)
