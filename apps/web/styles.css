@@ -1880,14 +1880,19 @@ body.spotlight-on .spotlight { opacity: 1; }
 }
 
 .landing-phone {
-    width: min(296px, 82%);
-    border-radius: 40px;
-    background: linear-gradient(160deg, #0A5FCC, #0251B0 55%, #04479d);
+    /* modern slim smartphone: 9:19.5 body, thin bezel, metal rim */
+    width: 280px;
+    max-width: 78vw;
+    aspect-ratio: 9 / 19.5;
+    border-radius: 46px;
+    background: #0b0f1a;
     box-shadow:
+        0 0 0 2px #aeb6c4,
+        0 0 0 4px #3a4152,
         0 46px 90px rgba(2, 8, 23, .6),
         0 18px 40px rgba(2, 8, 23, .4),
-        inset 0 0 0 8px rgba(255, 255, 255, .1);
-    padding: 12px;
+        0 0 70px rgba(2, 81, 176, .35);
+    padding: 7px;
     position: relative;
     transform-style: preserve-3d;
     transform: rotateY(-13deg) rotateX(5deg);
@@ -1896,9 +1901,9 @@ body.spotlight-on .spotlight { opacity: 1; }
 
 .phone-screen {
     background: var(--navy);
-    border-radius: 30px;
-    padding: 20px 16px 24px;
-    min-height: 460px;
+    border-radius: 40px;
+    padding: 44px 16px 30px;
+    height: 100%;
     position: relative;
     overflow: hidden;
     display: flex;
@@ -1916,6 +1921,38 @@ body.spotlight-on .spotlight { opacity: 1; }
     transform: skewX(-16deg);
     animation: screenSheen 6.5s ease-in-out infinite;
     pointer-events: none;
+}
+
+.landing-phone::before {
+    /* punch-hole camera */
+    content: "";
+    position: absolute;
+    top: 19px; left: 50%;
+    width: 11px; height: 11px;
+    margin-left: -5.5px;
+    border-radius: 50%;
+    background: #000;
+    box-shadow: inset 0 0 0 2px #11182b;
+    z-index: 3;
+    pointer-events: none;
+}
+
+.landing-phone::after {
+    /* home indicator */
+    content: "";
+    position: absolute;
+    bottom: 15px; left: 50%;
+    width: 84px; height: 4px;
+    margin-left: -42px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, .8);
+    z-index: 3;
+    pointer-events: none;
+}
+
+.landing-phone .phone-screen {
+    /* side buttons sit on the rim via the screen's sibling-free wrapper shadows */
+    box-shadow: none;
 }
 
 @keyframes screenSheen {
@@ -2248,8 +2285,7 @@ body.spotlight-on .spotlight { opacity: 1; }
     .landing-nav-links { gap: 10px; }
     /* balanced hero: bigger mock, tighter rhythm */
     .landing-hero { gap: 36px; padding-bottom: 56px; }
-    .landing-phone { width: min(300px, 88vw); }
-    .phone-screen { min-height: 420px; }
+    .landing-phone { width: 270px; max-width: 74vw; }
     .landing-art { overflow: hidden; padding-bottom: 26px; }
     .scene-glow { inset: -8% -6%; }
     .hero-trust { gap: 12px 18px; }
