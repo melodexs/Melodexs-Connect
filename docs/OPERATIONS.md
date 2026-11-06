@@ -15,6 +15,13 @@ bundle the customer actually received.
 
 ## Reconciling by hand
 
+The admin page (`apps/web/admin.html`) opens with a **Needs attention** strip: pending
+purchases, failed transactions among the latest 100, today's activity (Africa/Lagos
+day) and customers with a N0 wallet. Pending is the one to clear first; the nav badge
+shows the same count. Users and Transactions are searchable in the browser from the rows
+already loaded, so a search makes no extra request. Transactions are the latest 100, so
+older ones need the database or a statement export.
+
 ```
 GET  /api/admin/purchases/pending          # what is stuck
 POST /api/admin/purchases/reconcile        # requery a batch
