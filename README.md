@@ -1,6 +1,6 @@
-# MELODEXS CONNECT
+# MELODEX
 
-MELODEXS CONNECT is a Nigerian digital services platform for wallet funding,
+MELODEX is a Nigerian digital services platform for wallet funding,
 mobile data, airtime, and related digital services. Customers register, fund a
 wallet, and use it to pay for services. The web app is a set of HTML, CSS, and
 browser JavaScript pages currently served by the Express API.
@@ -19,7 +19,7 @@ browser JavaScript pages currently served by the Express API.
 - PostgreSQL persistence and deployment support for Render
 - Installable progressive web app (PWA)
 
-## MELODEXS CONNECT architecture
+## MELODEX architecture
 
 The project is a Node.js/Express API and a static browser app. The API is in
 `apps/api/src`; `app.js` composes middleware and routers, and `server.js` starts

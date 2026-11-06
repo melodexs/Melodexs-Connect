@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for improving MELODEXS CONNECT.
+Thanks for improving MELODEX.
 
 ## Before you start
 
