@@ -91,7 +91,7 @@ async def lifespan(application):
                 pass
 
 
-app = FastAPI(title="MELODEXS CONNECT API", docs_url=None if settings.production else "/docs", lifespan=lifespan)
+app = FastAPI(title="MELODEX API", docs_url=None if settings.production else "/docs", lifespan=lifespan)
 from fastapi.exceptions import RequestValidationError
 from .errors import http_error_handler, validation_error_handler, unexpected_error_handler
 from .rate_limit import allowed, init_rate_limit_table
@@ -339,7 +339,7 @@ async def status(background_tasks: BackgroundTasks):
     except Exception:
         logger.warning("status database warm-up failed", exc_info=False)
     background_tasks.add_task(_auto_requery_stale_purchases)
-    return {"success": True, "message": "MELODEXS CONNECT API is running"}
+    return {"success": True, "message": "MELODEX API is running"}
 
 
 @app.get("/api/session")
@@ -500,7 +500,7 @@ async def forgot_password(request: Request, body: dict):
     if user and settings.production:
         url = f"{settings.cheapdata_public_url}/reset-password.html?token={quote(token)}"
         try:
-            await send_brevo(user["email"], "MELODEXS CONNECT Password Reset", f"<p>Reset your password: <a href=\"{url}\">Reset Password</a></p><p>This link expires in 15 minutes.</p>")
+            await send_brevo(user["email"], "MELODEX Password Reset", f"<p>Reset your password: <a href=\"{url}\">Reset Password</a></p><p>This link expires in 15 minutes.</p>")
         except Exception:
             # Avoid logging exception details: provider errors can echo message
             # contents, including the one-time reset link.
@@ -1650,7 +1650,7 @@ async def verify_wallet(request: Request, body: dict):
         raise HTTPException(500, "Unable to verify payment right now. Please try again.")
     if pay.status_code >= 400 or not data.get("status") or not data.get("data"): raise HTTPException(400, data.get("message", "Unable to verify payment."))
     try: credit_result = await credit_paystack(reference, data["data"])
-    except ValueError: raise HTTPException(400, "Payment could not be verified as a valid MELODEXS CONNECT wallet funding.")
+    except ValueError: raise HTTPException(400, "Payment could not be verified as a valid MELODEX wallet funding.")
     with db_session() as db: balance=q(db,"SELECT balance FROM users WHERE id=:id",{"id":user_id}).scalar()
     message = "Payment has already been credited." if credit_result == "Already processed" else "Payment verified and wallet credited successfully."
     with db_session() as db: stored=q(db,"SELECT description FROM transactions WHERE reference=:reference",{"reference":reference}).scalar()
