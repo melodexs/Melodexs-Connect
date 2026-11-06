@@ -90,7 +90,7 @@ class Settings(BaseSettings):
     vtpass_sandbox_live_tests: bool = False
     brevo_api_key: str | None = None
     brevo_from_email: str | None = None
-    brevo_from_name: str = "MELODEXS CONNECT"
+    brevo_from_name: str = "MELODEX"
 
     @property
     def production(self) -> bool:
