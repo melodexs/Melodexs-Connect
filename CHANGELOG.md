@@ -4,6 +4,11 @@ Notable changes, newest first. Dates are deployment dates.
 
 ## November 2026
 
+### API accepts the new domain (melodex.com.ng)
+* **Changed**: the API now accepts requests from `https://melodex.com.ng` and `https://www.melodex.com.ng` as well as the old `melodexs-connect.onrender.com` address. Before this, anyone opening the site on the new domain could browse but sign-in, registration and purchases were refused (HTTP 403).
+* **Safe by design**: the allowed list is one exact set of three addresses (`KNOWN_SITE_ORIGINS`), used by both origin checks. Look-alikes (`melodex.com.ng.evil.example`, `evil-melodex.com.ng`, `http://`, other subdomains, `null`) stay blocked, and a blocked request still runs no handler code. `api.melodex.com.ng` is deliberately not on the list because pages are never loaded from it.
+* **Not changed yet**: the site still talks to the old API address, and Google sign-in, Paystack and the ISQUAREDATA callback still use the old links. Each moves in its own step. `tests/test_custom_domain_origins.py` pins all of this.
+
 ### Renamed to MELODEX
 * **Changed**: the product is now called **MELODEX** (was MELODEXS CONNECT). Customers see it on every page title, the logo, headings, the sidebar, the installed app name on a phone's home screen (web and Android), the offline page, receipts' wording, the Help and Privacy pages, the WhatsApp and email help messages, and the password-reset email subject and sender name.
 * **Deliberately unchanged**: the live web addresses (`melodexs-connect.onrender.com` and the API), the Render service names, the GitHub repository, the Android package id, the session cookie and its signing salt, saved settings keys and the internal code names. Customers never read these, and changing them would sign everyone out, stop Android installs updating, or point people at addresses that do not exist. `tests/test_brand_name.py` pins both halves.

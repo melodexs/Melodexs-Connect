@@ -135,13 +135,23 @@ def _security_headers(response) -> None:
     response.headers["Content-Security-Policy"] = WEB_CSP
 
 
+# The only web addresses allowed to call this API from a browser. The old
+# onrender.com address stays listed so saved links, installed apps and
+# anyone mid-session keep working while the custom domain takes over.
+KNOWN_SITE_ORIGINS = frozenset({
+    "https://melodexs-connect.onrender.com",
+    "https://melodex.com.ng",
+    "https://www.melodex.com.ng",
+})
+
+
 class SecurityMiddleware(BaseHTTPMiddleware):
     def __init__(self, application):
         super().__init__(application)
 
     async def dispatch(self, request: Request, call_next):
         origin = request.headers.get("origin")
-        allowed_origins = {"https://melodexs-connect.onrender.com"}
+        allowed_origins = set(KNOWN_SITE_ORIGINS)
         if settings.cheapdata_public_url:
             allowed_origins.add(settings.cheapdata_public_url.rstrip("/"))
         if not settings.production:
@@ -161,7 +171,7 @@ class SecurityMiddleware(BaseHTTPMiddleware):
             and request.url.path != "/api/paystack/webhook"
         ):
             configured = settings.cheapdata_public_url.rstrip("/") if settings.production else origin.rstrip("/")
-            if origin.rstrip("/") != configured and origin.rstrip("/") != "https://melodexs-connect.onrender.com":
+            if origin.rstrip("/") != configured and origin.rstrip("/") not in KNOWN_SITE_ORIGINS:
                 blocked = JSONResponse({"success": False, "message": "Cross-origin request blocked."}, status_code=403)
                 _security_headers(blocked)
                 return blocked
