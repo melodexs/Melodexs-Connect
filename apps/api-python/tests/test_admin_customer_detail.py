@@ -12,6 +12,29 @@ from app import main
 from app.database import db_session, q
 
 
+import pytest
+
+_CREATED_USER_IDS = []
+
+
+@pytest.fixture(autouse=True)
+def _clean_up_created_rows():
+    """These tests seed pending and failed debits. The rest of the suite shares
+    one database and its reconciliation tests assert there are NO pending
+    purchases, so leave nothing behind, pass or fail."""
+    _CREATED_USER_IDS.clear()
+    yield
+    ids = list(_CREATED_USER_IDS)
+    _CREATED_USER_IDS.clear()
+    if not ids:
+        return
+    with db_session() as db:
+        for user_id in ids:
+            q(db, "DELETE FROM transactions WHERE user_id=:id", {"id": user_id})
+            q(db, "DELETE FROM favorite_recipients WHERE user_id=:id", {"id": user_id})
+            q(db, "DELETE FROM users WHERE id=:id", {"id": user_id})
+
+
 def _phone(prefix):
     return f"{prefix}{int(secrets.token_hex(4), 16) % 10**8:08d}"
 
@@ -22,7 +45,9 @@ def _register(client, label, prefix):
         "name": f"{label} {suffix}", "email": f"{label.lower()}-{suffix}@example.com",
         "phone": _phone(prefix), "password": "password123"})
     assert response.status_code == 200, response.text
-    return response.json()["user"]["id"]
+    user_id = response.json()["user"]["id"]
+    _CREATED_USER_IDS.append(user_id)
+    return user_id
 
 
 def _make_admin(user_id):
