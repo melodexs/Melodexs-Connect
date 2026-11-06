@@ -264,6 +264,36 @@
 
         .margin { margin-top: 12px; }
 
+        /* ---- Admin v2: attention strip, section nav, filters ---- */
+        html { scroll-behavior: smooth; scroll-padding-top: 64px; }
+        .admin-nav { position: sticky; top: 0; z-index: 30; background: rgba(242, 245, 250, .94); backdrop-filter: blur(8px); border-bottom: 1px solid #E4EAF2; }
+        .admin-nav-inner { max-width: 1280px; margin: 0 auto; display: flex; gap: 8px; padding: 10px 4%; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+        .admin-nav-inner::-webkit-scrollbar { display: none; }
+        .admin-nav a { flex: 0 0 auto; padding: 8px 16px; border-radius: 999px; background: #fff; border: 1px solid #E4EAF2; color: var(--mc-ink); font-size: 14px; font-weight: 600; text-decoration: none; white-space: nowrap; }
+        .admin-nav a:hover { border-color: var(--mc-blue); color: var(--mc-blue); }
+        .admin-nav a:focus-visible, .attn-item:focus-visible { outline: 3px solid var(--mc-blue); outline-offset: 2px; }
+        .admin-nav a.active { background: var(--mc-blue); border-color: var(--mc-blue); color: #fff; }
+        .admin-nav .count { margin-left: 6px; padding: 1px 8px; border-radius: 999px; background: #D1FF42; color: #020817; font-size: 12px; font-weight: 800; }
+
+        .attention { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-bottom: 22px; }
+        .attn-item { display: block; text-decoration: none; color: inherit; padding: 16px 18px; border-radius: 14px; background: #fff; border: 1px solid #E4EAF2; border-left: 6px solid #2E9E5B; box-shadow: 0 4px 18px rgba(2, 8, 23, .06); }
+        .attn-item.warn { border-left-color: #E0A100; background: #FFFBEB; }
+        .attn-item.bad { border-left-color: #D13438; background: #FFF4F4; }
+        .attn-item .n { font-size: 30px; font-weight: 800; line-height: 1.1; }
+        .attn-item .l { font-size: 14px; font-weight: 700; margin-top: 2px; }
+        .attn-item .h { font-size: 13px; color: var(--mc-muted); margin-top: 4px; }
+
+        .stat-note { font-size: 12.5px; color: var(--mc-muted); margin-top: 6px; }
+        .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 14px 0; }
+        .toolbar input, .toolbar select { padding: 10px 12px; border: 1px solid #CBD5E1; border-radius: 10px; font-size: 14px; background: #fff; color: var(--mc-ink); min-height: 42px; }
+        .toolbar input[type=search] { flex: 1 1 240px; min-width: 0; }
+        .toolbar .result-count { font-size: 13.5px; color: var(--mc-muted); margin-left: auto; }
+        .toolbar button { min-height: 42px; }
+        .pager { display: flex; gap: 10px; align-items: center; justify-content: flex-end; margin-top: 12px; font-size: 13.5px; color: var(--mc-muted); }
+        .pager button { padding: 8px 14px; border-radius: 10px; border: 1px solid #CBD5E1; background: #fff; cursor: pointer; font-weight: 600; }
+        .pager button:disabled { opacity: .45; cursor: default; }
+        .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
         @media (max-width: 1000px) {
             .stats { grid-template-columns: repeat(3, 1fr); }
         }
@@ -298,14 +328,32 @@
     </button>
 </header>
 
+<nav class="admin-nav" aria-label="Admin sections">
+    <div class="admin-nav-inner" id="adminNav">
+        <a href="#overview">Overview</a>
+        <a href="#pricing">Pricing</a>
+        <a href="#providers">Providers</a>
+        <a href="#pendingPurchaseSection">Pending<span class="count" id="navPending" hidden></span></a>
+        <a href="#usersSection">Users</a>
+        <a href="#transactionsSection">Transactions</a>
+    </div>
+</nav>
+
 <div class="container">
 
     <div id="message" class="message"></div>
 
-    <div class="welcome">
+    <div class="welcome" id="overview">
         <h2>Welcome, <span id="adminName">Admin</span></h2>
         <p>Here is an overview of your MELODEXS CONNECT platform.</p>
     </div>
+
+    <section class="attention" id="attention" aria-label="Needs attention" aria-live="polite">
+        <a class="attn-item" href="#pendingPurchaseSection" id="attnPending"><div class="n">–</div><div class="l">Pending purchases</div><div class="h">Loading…</div></a>
+        <a class="attn-item" href="#transactionsSection" id="attnFailed"><div class="n">–</div><div class="l">Failed in recent activity</div><div class="h">Loading…</div></a>
+        <a class="attn-item" href="#transactionsSection" id="attnToday"><div class="n">–</div><div class="l">Activity today</div><div class="h">Loading…</div></a>
+        <a class="attn-item" href="#usersSection" id="attnEmpty"><div class="n">–</div><div class="l">Customers with a ₦0 wallet</div><div class="h">Loading…</div></a>
+    </section>
 
     <!-- STATISTICS -->
 
@@ -346,20 +394,20 @@
 
 
     <!-- DATA PRICING -->
-    <div class="section">
+    <div class="section" id="pricing">
         <h2>Data Pricing</h2>
         <p style="color:#6b7280;margin-bottom:18px;">Provider cost is what MELODEXS CONNECT pays. Selling price is the customer price. A manually set selling price stays fixed through synchronization; clear it with the API value <code>null</code> to return to the 2% round-up rule. Unclassified plans stay hidden from customers.</p>
         <div id="pythonCatalogControls">
-            <button class="save-btn" type="button" onclick="synchronizePlans()">Synchronize WiseSub plans</button>
+            <button class="save-btn" type="button" onclick="synchronizePlans()">Synchronize catalog plans</button>
             <button class="save-btn" type="button" onclick="autoCategorizePlans()">Auto-categorize new plans</button>
             <button class="toggle-btn" type="button" onclick="reconcilePurchases()">Check pending purchases</button>
             <p id="planSyncStatus" style="color:#6b7280;margin:12px 0 18px;">Loading synchronization status…</p>
         </div>
 
     <!-- FULFILLMENT PROVIDERS -->
-    <div class="section">
+    <div class="section" id="providers">
         <h2>Fulfillment Providers</h2>
-        <p style="color:#6b7280;margin-bottom:18px;">Multi-provider routing is disabled by default and purchases continue through WiseSub. Additional providers appear here once their API keys are configured as environment variables; they stay disabled until an administrator reviews them.</p>
+        <p style="color:#6b7280;margin-bottom:18px;">Each provider below shows whether it is enabled, healthy and which one is primary. The routing line underneath reflects the live server setting. Providers appear here once their API keys are configured as environment variables and stay disabled until an administrator reviews them.</p>
         <button class="save-btn" type="button" onclick="loadProviders()">Refresh providers</button>
         <button class="toggle-btn" type="button" onclick="compareProviderCosts()">Compare supplier costs</button>
         <div id="providerList" style="margin-top:14px;"></div>
@@ -397,9 +445,22 @@
 
     <!-- USERS -->
 
-    <div class="section">
+    <div class="section" id="usersSection">
 
         <h2>Registered Users</h2>
+
+        <div class="toolbar" role="search">
+            <label class="sr-only" for="userSearch">Search users</label>
+            <input type="search" id="userSearch" placeholder="Search name, email or phone" autocomplete="off">
+            <label class="sr-only" for="userFilter">Filter users</label>
+            <select id="userFilter">
+                <option value="all">All customers</option>
+                <option value="empty">₦0 wallet</option>
+                <option value="funded">Has balance</option>
+                <option value="admin">Admins</option>
+            </select>
+            <span class="result-count" id="userCount" aria-live="polite"></span>
+        </div>
 
         <div class="table-container">
 
@@ -436,9 +497,28 @@
 
     <!-- TRANSACTIONS -->
 
-    <div class="section">
+    <div class="section" id="transactionsSection">
 
         <h2>Recent Transactions</h2>
+
+        <div class="toolbar" role="search">
+            <label class="sr-only" for="txSearch">Search transactions</label>
+            <input type="search" id="txSearch" placeholder="Search reference, customer or description" autocomplete="off">
+            <label class="sr-only" for="txStatus">Filter by status</label>
+            <select id="txStatus">
+                <option value="all">Any status</option>
+                <option value="pending">Pending</option>
+                <option value="successful">Successful</option>
+                <option value="failed">Failed</option>
+            </select>
+            <label class="sr-only" for="txType">Filter by type</label>
+            <select id="txType">
+                <option value="all">Any type</option>
+                <option value="debit">Purchases</option>
+                <option value="wallet_funding">Top-ups</option>
+            </select>
+            <span class="result-count" id="txCount" aria-live="polite"></span>
+        </div>
 
         <div class="table-container">
 
@@ -853,12 +933,19 @@
 
             // Load everything
 
-            await Promise.all([
+            // allSettled: one failing section reports its own error and the
+            // rest still load, instead of the first failure blanking the page.
+            const loaded = await Promise.allSettled([
                 loadStats(user.id),
                 loadUsers(user.id),
                 loadTransactions(user.id),
                 loadPlans()
             ]);
+            const names = ["statistics", "users", "transactions", "data plans"];
+            const failures = loaded
+                .map((result, i) => result.status === "rejected" ? `${names[i]}: ${result.reason && result.reason.message || "failed to load"}` : null)
+                .filter(Boolean);
+            if (failures.length) showMessage("Some sections could not load. " + failures.join(" | "), "error");
 
             loadProviders();
 
@@ -1175,6 +1262,161 @@
 
     }
 
+
+
+    // =========================
+    // ADMIN v2: attention strip, search and filters
+    // =========================
+    // Keeps the rows the existing loaders fetch so Users and Transactions can be
+    // searched without extra requests. All text goes through escapeHtml.
+
+    const adminData = { users: [], transactions: [], pending: null };
+
+    function setAttention(id, n, label, hint, level) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.className = "attn-item" + (level ? " " + level : "");
+        el.innerHTML = `<div class="n">${escapeHtml(n)}</div><div class="l">${escapeHtml(label)}</div><div class="h">${escapeHtml(hint)}</div>`;
+    }
+
+    function sameLagosDay(iso) {
+        const d = new Date(iso);
+        if (isNaN(d)) return false;
+        const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Lagos", year: "numeric", month: "2-digit", day: "2-digit" });
+        return fmt.format(d) === fmt.format(new Date());
+    }
+
+    function refreshAttention() {
+        const tx = adminData.transactions;
+        const users = adminData.users;
+        const pending = adminData.pending;
+        if (pending === null) {
+            setAttention("attnPending", "–", "Pending purchases", "Not available on this server", "");
+        } else {
+            setAttention("attnPending", pending, "Pending purchases", pending ? "Customers are waiting. Review now." : "Nothing is waiting.", pending ? "warn" : "");
+            const badge = document.getElementById("navPending");
+            if (badge) { badge.textContent = pending; badge.hidden = !pending; }
+        }
+        const failed = tx.filter(t => String(t.status).toLowerCase() === "failed").length;
+        setAttention("attnFailed", failed, "Failed in recent activity", failed ? `Among the latest ${tx.length} transactions.` : `None in the latest ${tx.length}.`, failed ? "bad" : "");
+        const today = tx.filter(t => sameLagosDay(t.created_at));
+        const todayValue = today.filter(t => t.type === "debit" && String(t.status).toLowerCase() === "successful").reduce((a, t) => a + Number(t.amount || 0), 0);
+        setAttention("attnToday", today.length, "Activity today", `Purchases completed today: ${formatMoney(todayValue)}`, "");
+        const empty = users.filter(u => Number(u.balance || 0) <= 0).length;
+        setAttention("attnEmpty", empty, "Customers with a ₦0 wallet", users.length ? `Out of ${users.length} customers.` : "No customers yet.", "");
+    }
+
+    function matches(haystack, term) {
+        return String(haystack || "").toLowerCase().includes(term);
+    }
+
+    function renderUsers() {
+        const table = document.getElementById("usersTable");
+        const term = document.getElementById("userSearch").value.trim().toLowerCase();
+        const mode = document.getElementById("userFilter").value;
+        const rows = adminData.users.filter(u => {
+            if (term && !(matches(u.name, term) || matches(u.email, term) || matches(u.phone, term) || matches(u.id, term))) return false;
+            if (mode === "empty") return Number(u.balance || 0) <= 0;
+            if (mode === "funded") return Number(u.balance || 0) > 0;
+            if (mode === "admin") return Number(u.is_admin) === 1;
+            return true;
+        });
+        document.getElementById("userCount").textContent = `${rows.length} of ${adminData.users.length}`;
+        if (!rows.length) {
+            table.innerHTML = `<tr><td colspan="7" class="empty">${adminData.users.length ? "No customers match your search." : "No users found."}</td></tr>`;
+            return;
+        }
+        table.innerHTML = rows.map(user => `<tr>
+            <td>${escapeHtml(user.id)}</td>
+            <td>${escapeHtml(user.name)}</td>
+            <td>${escapeHtml(user.email)}</td>
+            <td>${escapeHtml(user.phone)}</td>
+            <td>${formatMoney(user.balance)}</td>
+            <td><span class="badge ${user.kyc_status === "approved" ? "badge-success" : "badge-pending"}">${escapeHtml(user.kyc_status || "pending")}</span></td>
+            <td>${Number(user.is_admin) === 1 ? `<span class="badge badge-admin">Yes</span>` : "No"}</td>
+        </tr>`).join("");
+    }
+
+    function statusBadge(status) {
+        const v = String(status || "").toLowerCase();
+        const cls = v === "successful" ? "badge-success" : v === "failed" ? "badge-failed" : "badge-pending";
+        return `<span class="badge ${cls}">${escapeHtml(status)}</span>`;
+    }
+
+    function renderTransactions() {
+        const table = document.getElementById("transactionsTable");
+        const term = document.getElementById("txSearch").value.trim().toLowerCase();
+        const status = document.getElementById("txStatus").value;
+        const type = document.getElementById("txType").value;
+        const rows = adminData.transactions.filter(t => {
+            if (status !== "all" && String(t.status).toLowerCase() !== status) return false;
+            if (type !== "all" && t.type !== type) return false;
+            if (!term) return true;
+            return matches(t.reference, term) || matches(t.user_name, term) || matches(t.user_email, term) || matches(t.description, term) || matches(t.id, term);
+        });
+        document.getElementById("txCount").textContent = `${rows.length} of ${adminData.transactions.length}`;
+        if (!rows.length) {
+            table.innerHTML = `<tr><td colspan="9" class="empty">${adminData.transactions.length ? "No transactions match your filters." : "No transactions found."}</td></tr>`;
+            return;
+        }
+        table.innerHTML = rows.map(t => `<tr>
+            <td>${escapeHtml(t.id)}</td>
+            <td>${escapeHtml(t.user_name || "Unknown User")}</td>
+            <td>${escapeHtml(t.user_email)}</td>
+            <td>${escapeHtml(t.type)}</td>
+            <td>${formatMoney(t.amount)}</td>
+            <td>${statusBadge(t.status)}</td>
+            <td>${escapeHtml(t.reference)}</td>
+            <td>${escapeHtml(t.description)}</td>
+            <td>${escapeHtml(t.created_at)}</td>
+        </tr>`).join("");
+    }
+
+    // Take over the two tables with the searchable renderers. The original
+    // loaders still fetch and validate; they hand their rows to us first.
+    (function wrapLoaders() {
+        const origUsers = loadUsers, origTx = loadTransactions;
+        loadUsers = async function (id) {
+            const response = await fetch("/api/admin/users");
+            const data = await response.json();
+            if (!response.ok || !data.success) throw new Error(data.message || "Could not load users.");
+            adminData.users = data.users || [];
+            renderUsers(); refreshAttention();
+        };
+        loadTransactions = async function (id) {
+            const response = await fetch("/api/admin/transactions");
+            const data = await response.json();
+            if (!response.ok || !data.success) throw new Error(data.message || "Could not load transactions.");
+            adminData.transactions = data.transactions || [];
+            renderTransactions(); refreshAttention();
+        };
+        void origUsers; void origTx;
+    })();
+
+    const origPending = loadPendingPurchases;
+    loadPendingPurchases = async function () {
+        await origPending();
+        const rows = document.querySelectorAll("#pendingPurchases tr");
+        const real = [...rows].filter(r => !r.querySelector(".empty")).length;
+        adminData.pending = real; refreshAttention();
+    };
+
+    ["userSearch", "userFilter"].forEach(id => document.getElementById(id).addEventListener("input", renderUsers));
+    ["txSearch", "txStatus", "txType"].forEach(id => document.getElementById(id).addEventListener("input", renderTransactions));
+
+    // Highlight the section being read.
+    (function trackActiveSection() {
+        const links = [...document.querySelectorAll("#adminNav a")];
+        const targets = links.map(a => document.querySelector(a.getAttribute("href"))).filter(Boolean);
+        if (!("IntersectionObserver" in window) || !targets.length) return;
+        const obs = new IntersectionObserver(entries => {
+            entries.forEach(e => {
+                if (!e.isIntersecting) return;
+                links.forEach(a => a.classList.toggle("active", a.getAttribute("href") === "#" + e.target.id));
+            });
+        }, { rootMargin: "-20% 0px -70% 0px" });
+        targets.forEach(t => obs.observe(t));
+    })();
 
     // =========================
     // START
