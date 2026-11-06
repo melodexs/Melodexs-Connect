@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <meta name="description" content="MELODEXS CONNECT administration.">
+    <meta name="description" content="MELODEX administration.">
     <meta name="robots" content="noindex, nofollow">
     <meta name="api-base-url" content="">
 
-    <title>MELODEXS CONNECT Admin</title>
+    <title>MELODEX Admin</title>
 
     <style>
         :root {
@@ -330,7 +330,7 @@
     <link rel="manifest" href="/manifest.webmanifest">
     <script src="/pwa.js" defer></script>
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-title" content="MELODEXS">
+    <meta name="apple-mobile-web-app-title" content="MELODEX">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
     <link rel="icon" type="image/png" href="/icons/melodexs-connect-192.png">
@@ -340,8 +340,8 @@
 
 <header>
     <div>
-        <h1>MELODEXS CONNECT Admin</h1>
-        <p>Manage your MELODEXS CONNECT platform</p>
+        <h1>MELODEX Admin</h1>
+        <p>Manage your MELODEX platform</p>
     </div>
 
     <button class="logout-btn" onclick="logout()">
@@ -366,7 +366,7 @@
 
     <div class="welcome" id="overview">
         <h2>Welcome, <span id="adminName">Admin</span></h2>
-        <p>Here is an overview of your MELODEXS CONNECT platform.</p>
+        <p>Here is an overview of your MELODEX platform.</p>
     </div>
 
     <section class="attention" id="attention" aria-label="Needs attention" aria-live="polite">
@@ -417,7 +417,7 @@
     <!-- DATA PRICING -->
     <div class="section" id="pricing">
         <h2>Data Pricing</h2>
-        <p style="color:#6b7280;margin-bottom:18px;">Provider cost is what MELODEXS CONNECT pays. Selling price is the customer price. A manually set selling price stays fixed through synchronization; clear it with the API value <code>null</code> to return to the 2% round-up rule. Unclassified plans stay hidden from customers.</p>
+        <p style="color:#6b7280;margin-bottom:18px;">Provider cost is what MELODEX pays. Selling price is the customer price. A manually set selling price stays fixed through synchronization; clear it with the API value <code>null</code> to return to the 2% round-up rule. Unclassified plans stay hidden from customers.</p>
         <div id="pythonCatalogControls">
             <button class="save-btn" type="button" onclick="synchronizePlans()">Synchronize catalog plans</button>
             <button class="save-btn" type="button" onclick="autoCategorizePlans()">Auto-categorize new plans</button>

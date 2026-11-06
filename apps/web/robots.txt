@@ -1,4 +1,4 @@
-# MELODEXS CONNECT
+# MELODEX
 # The product pages are public; account and money pages are not useful to a
 # crawler and are gated by a session anyway, so keep them out of the index.
 User-agent: *

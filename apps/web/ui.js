@@ -1,5 +1,5 @@
 /*
- * MELODEXS CONNECT — shared UI helpers (design-system edition).
+ * MELODEX — shared UI helpers (design-system edition).
  * Loaded on every authenticated page after api.js.
  */
 (function () {
@@ -28,7 +28,7 @@
     /* ---------- Session + user boot (ONE request per page) ----------
      * Every page used to boot with two sequential API calls (/api/session
      * then /api/user/{id}); each one costs a database round trip, which is
-     * what made "Connecting to MELODEXS..." linger. /api/bootstrap returns
+     * what made "Connecting to MELODEX..." linger. /api/bootstrap returns
      * both in a single round trip, and the promise is memoized so pages
      * that call requireSession() and refreshUserCache() in sequence only
      * ever make one request. */
@@ -276,7 +276,7 @@
             sidebar.className = "app-sidebar";
             sidebar.id = "app-sidebar";
             sidebar.innerHTML =
-                '<a class="sidebar-brand" href="/dashboard.html"><span class="logo-mark">M</span><span class="sidebar-brand-text">MELODEXS<small>CONNECT</small></span></a>' +
+                '<a class="sidebar-brand" href="/dashboard.html"><span class="logo-mark">M</span><span class="sidebar-brand-text">MELODEX</span></a>' +
                 '<nav class="sidebar-nav" aria-label="Sections">' +
                 /* Profile is not listed here: the account chip below (photo,
                    name, phone) already opens it. Phones have no chip, so the

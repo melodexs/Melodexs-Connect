@@ -1,7 +1,7 @@
 {
     "id": "/dashboard.html",
-    "name": "MELODEXS CONNECT",
-    "short_name": "MELODEXS",
+    "name": "MELODEX",
+    "short_name": "MELODEX",
     "description": "Fund your wallet and buy mobile data, airtime, electricity, TV subscriptions and result checker PINs.",
     "start_url": "/dashboard.html",
     "scope": "/",
@@ -38,7 +38,7 @@
             "sizes": "780x1688",
             "type": "image/webp",
             "form_factor": "narrow",
-            "label": "Welcome to MELODEXS CONNECT"
+            "label": "Welcome to MELODEX"
         },
         {
             "src": "/screenshots/login-narrow.webp",

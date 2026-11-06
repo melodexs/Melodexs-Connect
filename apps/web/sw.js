@@ -1,5 +1,5 @@
-const STATIC_CACHE = "melodexs-static-v3";
-const PAGES_CACHE = "melodexs-pages-v3";
+const STATIC_CACHE = "melodexs-static-v4";
+const PAGES_CACHE = "melodexs-pages-v4";
 const STATIC_ASSET = /\.(?:css|js|png|svg|webmanifest|woff2?)$/i;
 const OFFLINE_URL = "/offline.html";
 
