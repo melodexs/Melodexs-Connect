@@ -19,4 +19,4 @@ Disallow: /create-pin.html
 Disallow: /change-pin.html
 Disallow: /offline.html
 
-Sitemap: https://melodexs-connect.onrender.com/sitemap.xml
+Sitemap: https://melodex.com.ng/sitemap.xml

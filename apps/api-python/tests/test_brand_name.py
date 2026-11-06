@@ -100,7 +100,7 @@ def test_live_addresses_still_point_at_real_hosts():
     api_js = (WEB / "api.js").read_text(encoding="utf-8")
     assert "melodexs-connect-api.onrender.com" in api_js
     sitemap = (WEB / "sitemap.xml").read_text(encoding="utf-8")
-    assert "melodexs-connect.onrender.com" in sitemap
+    assert "melodex.com.ng" in sitemap
 
 
 def test_internal_javascript_api_names_are_unchanged():

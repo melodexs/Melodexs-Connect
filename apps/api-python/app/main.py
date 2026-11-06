@@ -113,7 +113,7 @@ WEB_CSP = (
     "style-src 'self' 'unsafe-inline' https://accounts.google.com; "
     "img-src 'self' data: https://accounts.google.com https://*.gstatic.com; "
     "font-src 'self' data:; "
-    "connect-src 'self' https://melodexs-connect-api.onrender.com https://accounts.google.com; "
+    "connect-src 'self' https://melodexs-connect-api.onrender.com https://api.melodex.com.ng https://accounts.google.com; "
     "frame-src https://accounts.google.com; "
     "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 )

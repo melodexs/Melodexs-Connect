@@ -28,7 +28,14 @@
     const originIsLocal = configuredApiOrigin && /^(https?:\/\/)?(localhost|127\.0\.0\.1)(:|\/|$)/.test(configuredApiOrigin);
     const safeConfiguredOrigin = pageIsLocal || !originIsLocal ? configuredApiOrigin : "";
 
-    const API_BASE_URL = safeConfiguredOrigin || (pageIsLocal ? "" : PRODUCTION_API_URL);
+    /* On the custom domain the site and API share one registrable domain
+       (melodex.com.ng and api.melodex.com.ng), so the browser treats the
+       session cookie as first-party. Everyone still on the old onrender.com
+       address (saved links, installed apps) keeps using the old API. */
+    const onCustomDomain = ["melodex.com.ng", "www.melodex.com.ng"].includes(window.location.hostname);
+    const CUSTOM_DOMAIN_API_URL = "https://api.melodex.com.ng";
+
+    const API_BASE_URL = safeConfiguredOrigin || (pageIsLocal ? "" : (onCustomDomain ? CUSTOM_DOMAIN_API_URL : PRODUCTION_API_URL));
     window.MELODEXS_CATEGORIZED_CATALOG = Boolean(safeConfiguredOrigin) || API_TARGET_IS_PYTHON;
 
     const originalFetch = window.fetch.bind(window);

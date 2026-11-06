@@ -2,4 +2,4 @@ Contact: mailto:okohmelody30@gmail.com
 Expires: 2027-12-31T23:59:59.000Z
 Policy: https://github.com/melodexs/Melodexs-Connect/blob/master/SECURITY.md
 Preferred-Languages: en
-Canonical: https://melodexs-connect.onrender.com/.well-known/security.txt
+Canonical: https://melodex.com.ng/.well-known/security.txt

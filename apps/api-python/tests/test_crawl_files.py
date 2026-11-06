@@ -15,9 +15,9 @@ def test_robots_and_sitemap_agree():
     disallowed = {line.split(":", 1)[1].strip()
                   for line in robots.splitlines() if line.lower().startswith("disallow:")}
     sitemap = (WEB / "sitemap.xml").read_text()
-    assert "Sitemap: https://melodexs-connect.onrender.com/sitemap.xml" in robots
+    assert "Sitemap: https://melodex.com.ng/sitemap.xml" in robots
     for loc in re.findall(r"<loc>([^<]+)</loc>", sitemap):
-        path = loc.split("melodexs-connect.onrender.com", 1)[1] or "/"
+        path = loc.split("melodex.com.ng", 1)[1] or "/"
         # Compare whole rules: "Disallow: /" must not match "/dashboard.html".
         assert path not in disallowed, f"{path} is in the sitemap but disallowed"
 
@@ -25,7 +25,7 @@ def test_robots_and_sitemap_agree():
 def test_sitemap_entries_exist():
     sitemap = (WEB / "sitemap.xml").read_text()
     for loc in re.findall(r"<loc>([^<]+)</loc>", sitemap):
-        path = loc.split("melodexs-connect.onrender.com", 1)[1]
+        path = loc.split("melodex.com.ng", 1)[1]
         target = WEB / (path.lstrip("/") or "index.html")
         assert target.exists(), f"sitemap points at a missing page: {path}"
 

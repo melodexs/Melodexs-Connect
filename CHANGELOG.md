@@ -4,6 +4,13 @@ Notable changes, newest first. Dates are deployment dates.
 
 ## November 2026
 
+### Site moves to melodex.com.ng
+* **Changed**: on `https://melodex.com.ng` the app now calls `https://api.melodex.com.ng`. Because the site and API now share one registrable domain, the sign-in cookie is first-party, which is the more reliable setup on iPhones and Safari. The bearer-token fallback stays as a safety net.
+* **Old address still works**: anyone on `melodexs-connect.onrender.com` (saved links, installed apps, the Android app) keeps using the old API unchanged. `api.js` picks the API from the page hostname, with an exact match on `melodex.com.ng` / `www.melodex.com.ng` only; look-alike hostnames fall back to the old API. A staging `<meta name="api-base-url">` and local development still win.
+* **Security policy**: the Content-Security-Policy now lists both API addresses in `connect-src` (explicit, no wildcard); without it the browser would block calls to whichever one is missing.
+* **Search and link previews**: sitemap, robots, social-preview tags and `security.txt` now name `melodex.com.ng`.
+* **Still to do**: Render `CHEAPDATA_PUBLIC_URL` (password-reset and Paystack return links), the Paystack and ISQUAREDATA callbacks, the Android app address, and the redirect from the old link. `tests/test_domain_switch.py` executes `api.js` for each hostname to pin all of the above.
+
 ### API accepts the new domain (melodex.com.ng)
 * **Changed**: the API now accepts requests from `https://melodex.com.ng` and `https://www.melodex.com.ng` as well as the old `melodexs-connect.onrender.com` address. Before this, anyone opening the site on the new domain could browse but sign-in, registration and purchases were refused (HTTP 403).
 * **Safe by design**: the allowed list is one exact set of three addresses (`KNOWN_SITE_ORIGINS`), used by both origin checks. Look-alikes (`melodex.com.ng.evil.example`, `evil-melodex.com.ng`, `http://`, other subdomains, `null`) stay blocked, and a blocked request still runs no handler code. `api.melodex.com.ng` is deliberately not on the list because pages are never loaded from it.
