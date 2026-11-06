@@ -4,6 +4,9 @@ Notable changes, newest first. Dates are deployment dates.
 
 ## November 2026
 
+### Google Search Console verification
+* **Added**: the `google-site-verification` meta tag on the landing page so the owner can verify melodex.com.ng in Google Search Console (sitemap submission, indexing requests). The tag is public by design. `tests/test_search_console_verification.py` keeps exactly one in the page head.
+
 ### Site moves to melodex.com.ng
 * **Changed**: on `https://melodex.com.ng` the app now calls `https://api.melodex.com.ng`. Because the site and API now share one registrable domain, the sign-in cookie is first-party, which is the more reliable setup on iPhones and Safari. The bearer-token fallback stays as a safety net.
 * **Old address still works**: anyone on `melodexs-connect.onrender.com` (saved links, installed apps, the Android app) keeps using the old API unchanged. `api.js` picks the API from the page hostname, with an exact match on `melodex.com.ng` / `www.melodex.com.ng` only; look-alike hostnames fall back to the old API. A staging `<meta name="api-base-url">` and local development still win.
